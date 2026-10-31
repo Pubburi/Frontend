@@ -180,71 +180,83 @@ const product = useQuery<Product>({
   })
 ```
 
-### 3. HTTP 실패와 API 오류를 같은 오류 계약으로 전달하기
+### 3. 삭제 처리 중 활성 버튼이 없어도 확인창의 키보드 포커스 유지하기
 
 **문제**
 
-화면은 JSON 형식의 업무 오류뿐 아니라 fetch 요청 실패와 JSON이 아닌 서버 오류에도 대응해야 한다. 화면마다 `fetch`와 응답 해석을 반복하면 사용자 안내와 필드별 오류 처리 방식이 달라진다.
+관리자 삭제 응답을 기다릴 때 취소·삭제 버튼이 모두 비활성화되면 Tab 포커스가 확인창 뒤의 화면으로 빠졌다. 화면에는 모달이 남아 있는데 키보드 사용자는 배경을 이동할 수 있었다.
 
 **원인**
 
-HTTP 상태, `ApiResponse.error`, 응답 본문의 파싱 가능 여부는 서로 다른 정보다. 통신 자체가 실패하면 HTTP 응답도 없으므로 단순한 JSON 처리만으로는 같은 인터페이스를 제공할 수 없다.
+기존 처리는 확인창 section의 keydown에서 첫/마지막 활성 버튼만 확인했다. 활성 버튼이 없는 상태와 disabled 전환으로 포커스가 section 밖으로 이동하는 상태를 다루지 않아, aria-modal 표시와 실제 조작 경계가 달라졌다.
 
 **해결**
 
-요청 함수를 하나로 모아 세션 쿠키를 포함하고, 응답 텍스트를 해석한 뒤 HTTP 실패와 업무 오류를 `ApiClientError`로 변환한다. 성공한 응답은 `data`를 꺼내 반환하며 오류에는 상태·코드·필드 정보를 남긴다.
+확인창이 열려 있는 동안 document capture 단계에서 키보드 경계를 관리한다. 활성 버튼이 없으면 확인창 자체로 포커스를 옮기고, 다시 활성화되면 정·역방향 순환을 복원한다. 비동기 pending과 취소 callback의 최신 값을 ref로 읽으며 닫을 때 listener를 제거하고 남아 있는 원래 버튼으로 돌아간다.
 
 **결과**
 
-호출부는 성공 데이터를 직접 사용하고, 실패 시에는 fetch 단계 네트워크 오류의 상태 0, HTTP 오류의 실제 상태, 업무 오류의 필드 정보를 같은 오류 객체에서 읽는다. HTML·일반 텍스트 오류가 JSON 파싱 예외로만 노출되는 흐름도 API 경계에서 정리한다.
+일반·좁은 웹 화면에서 삭제 처리 중 포커스가 확인창 안에 남고, 실패 응답 뒤에는 취소·키보드 순환·Escape 닫기·원래 버튼 복귀가 동작한다. 처리 중 Escape를 막는 기존 정책과 단일 삭제 요청을 유지한다. [재현 조건·오류 결과·한계](docs/plans/2026-11-01-pending-dialog-focus.md)
 
 **대체안/회고**
 
-각 화면에서 오류를 해석하는 대신 전송 계층에서 형태를 통일했다. 다만 API client가 구분한 정보를 화면이 올바르게 활용하는 것은 별도 책임이다. 세션 query는 401과 통신 장애를 구분하고 보호 경로는 재시도 상태를 제공한다. 상품·권한 등 서버의 업무 규칙 검증은 Backend의 책임이다.
+버튼 disabled나 ARIA 속성만으로 포커스 소유권이 보장되지는 않았다. section 조건 하나를 보완하는 대신, 이미 밖으로 이동한 포커스도 복원할 수 있는 수명 관리 범위를 선택했다. 네이티브 dialog나 라이브러리 전환은 대안으로 남기고 현재 공통 확인창의 레이아웃·삭제 정책을 보존했다. 현재는 버튼으로 구성한 단일 확인창의 키보드 범위이며 중첩 모달·전체 보조기술 조합·삭제된 trigger의 대체 복귀까지 완료했다는 뜻은 아니다.
 
 **코드**
 
-[API 요청·오류 계약](https://github.com/Pubburi/Frontend/blob/main/src/services/api.js)
+[공통 확인창의 포커스·listener 수명](https://github.com/Pubburi/Frontend/blob/main/src/components/ui.tsx)
 
-```js
-async function request(path, options = {}) {
-  let response
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
-      ...options,
-    })
-  } catch (cause) {
-    const error = new ApiClientError({ code: 'NETWORK_ERROR' }, 0)
-    error.cause = cause
-    throw error
-  }
-
-  const text = await response.text()
-  let envelope = null
-  if (text) {
-    try {
-      envelope = JSON.parse(text)
-    } catch {
-      if (!response.ok) {
-        throw new ApiClientError({ code: response.statusText || 'INVALID_RESPONSE' }, response.status)
+```tsx
+  const dialog = useRef<HTMLElement>(null)
+  const titleId = useId()
+  const current = useRef({ pending, onCancel })
+  current.current = { pending, onCancel }
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    dialog.current?.focus()
+    function handleKeyDown(event: KeyboardEvent) {
+      const root = dialog.current
+      if (!root) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!current.current.pending) {
+          current.current.onCancel()
+        }
+        return
       }
-      throw new ApiClientError({ code: 'INVALID_RESPONSE', message: '서버 응답을 읽을 수 없습니다.' }, response.status)
+      if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey)
+        return
+      const buttons = Array.from(
+        root.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+      )
+      const first = buttons[0]
+      const last = buttons.at(-1)
+      const focused = document.activeElement
+      if (!first || !last) {
+        event.preventDefault()
+        root.focus()
+      } else if (!root.contains(focused) || focused === root) {
+        event.preventDefault()
+        const target = event.shiftKey ? last : first
+        target.focus()
+      } else if (event.shiftKey && focused === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && focused === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
-  }
-  const hasEnvelope = envelope && Object.prototype.hasOwnProperty.call(envelope, 'data')
-
-  if (!response.ok || envelope?.error) {
-    const error = envelope?.error || { code: response.statusText, message: response.statusText }
-    throw new ApiClientError(error, response.status)
-  }
-
-  return hasEnvelope ? envelope.data : envelope
-}
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+      if (previous?.isConnected) previous.focus()
+    }
+  }, [])
+  useEffect(() => {
+    if (pending) dialog.current?.focus()
+  }, [pending])
 ```
 
 ### 4. React 전환에서 세션·개인 캐시·보호 경로 유지하기
