@@ -412,6 +412,7 @@ test('회원 후기를 등록·수정·확인 후 삭제', async ({ page, api })
   await page.getByLabel('후기', { exact: true }).fill('처음 남긴 후기')
   await page.getByRole('button', { name: '후기 등록', exact: true }).click()
   await expect(page.locator('.comment-row > p')).toHaveText('처음 남긴 후기')
+  await expect(page.getByLabel('후기', { exact: true })).toHaveValue('')
   await page.getByRole('button', { name: '수정', exact: true }).click()
   await page.getByLabel('후기 내용', { exact: true }).fill('수정한 후기')
   await page.getByRole('button', { name: '저장', exact: true }).click()
@@ -420,6 +421,144 @@ test('회원 후기를 등록·수정·확인 후 삭제', async ({ page, api })
   await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click()
   await expect(page.getByRole('heading', { name: '아직 등록된 후기가 없습니다' })).toBeVisible()
   expect(api.reviews).toEqual([])
+})
+
+test('후기 등록 응답은 제출 뒤 새로 입력한 초안을 지우지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const submissions = []
+  await page.route('**/api/comments', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    submissions.push(route.request().postDataJSON())
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/products/901')
+    const form = page.locator('.comment-form')
+    await form.getByLabel('후기', { exact: true }).fill('먼저 제출한 후기')
+    await form.getByRole('button', { name: '후기 등록', exact: true }).click()
+    await expect.poll(() => submissions.length).toBe(1)
+    await expect(form.getByRole('button', { name: '후기 등록', exact: true })).toBeDisabled()
+    await form.getByLabel('후기', { exact: true }).fill('다음 후기 초안')
+    await form.getByRole('combobox', { name: /^평점/ }).selectOption('2')
+    release()
+    await expect(page.getByRole('status')).toContainText('후기가 등록되었습니다.')
+    await expect(form.getByLabel('후기', { exact: true })).toHaveValue('다음 후기 초안')
+    await expect(form.getByRole('combobox', { name: /^평점/ })).toHaveValue('2')
+    await expect(page.locator('.comment-row > p')).toHaveText('먼저 제출한 후기')
+    expect(submissions).toEqual([{ productId: 901, rating: 5, comment: '먼저 제출한 후기' }])
+  } finally {
+    release()
+  }
+})
+
+for (const nextReview of [{ name: '같은', id: 11 }, { name: '다른', id: 12 }]) {
+  test(`이전 저장 완료는 취소 뒤 다시 연 ${nextReview.name} 후기 편집을 닫지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    api.reviews = [
+      { id: 11, productId: 901, userId: 'member', rating: 4, comment: '첫 번째 원문' },
+      { id: 12, productId: 901, userId: 'member', rating: 3, comment: '두 번째 원문' },
+    ]
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const submissions = []
+    await page.route('**/api/comments/11', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback()
+      submissions.push(route.request().postDataJSON())
+      await gate
+      await route.fallback()
+    })
+    try {
+      await page.goto('/products/901')
+      await page.locator('.comment-row').filter({ hasText: '첫 번째 원문' }).getByRole('button', { name: '수정', exact: true }).click()
+      await page.getByLabel('후기 내용', { exact: true }).fill('저장할 수정 본문')
+      await page.getByRole('button', { name: '저장', exact: true }).click()
+      await expect.poll(() => submissions.length).toBe(1)
+      await page.locator('.comment-edit-form').getByRole('button', { name: '취소', exact: true }).click()
+      const nextOriginal = nextReview.id === 11 ? '첫 번째 원문' : '두 번째 원문'
+      await page.locator('.comment-row').filter({ hasText: nextOriginal }).getByRole('button', { name: '수정', exact: true }).click()
+      // Re-entering identical content is still a new editing session.
+      await page.getByLabel('후기 내용', { exact: true }).fill('저장할 수정 본문')
+      await page.locator('.comment-edit-form').getByRole('combobox', { name: /^평점/ }).selectOption('4')
+      release()
+      await expect(page.getByRole('status')).toContainText('후기가 수정되었습니다.')
+      await expect(page.getByLabel('후기 내용', { exact: true })).toHaveValue('저장할 수정 본문')
+      await expect(page.locator('.comment-edit-form').getByRole('combobox', { name: /^평점/ })).toHaveValue('4')
+      await expect(page.getByRole('button', { name: '저장', exact: true })).toBeEnabled()
+      expect(api.reviews.find((review) => review.id === 11).comment).toBe('저장할 수정 본문')
+      expect(api.reviews.find((review) => review.id === 12).comment).toBe('두 번째 원문')
+      expect(submissions).toEqual([{ rating: 4, comment: '저장할 수정 본문' }])
+    } finally {
+      release()
+    }
+  })
+}
+
+test('후기 수정 응답은 저장 대기 중 계속 편집한 내용을 지우지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.reviews = [{ id: 11, productId: 901, userId: 'member', rating: 4, comment: '원래 후기' }]
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const submissions = []
+  await page.route('**/api/comments/11', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    submissions.push(route.request().postDataJSON())
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/products/901')
+    await page.getByRole('button', { name: '수정', exact: true }).click()
+    await page.getByLabel('후기 내용', { exact: true }).fill('먼저 저장할 본문')
+    await page.getByRole('button', { name: '저장', exact: true }).click()
+    await expect.poll(() => submissions.length).toBe(1)
+    await page.getByLabel('후기 내용', { exact: true }).fill('아직 저장하지 않은 수정')
+    release()
+    await expect(page.getByRole('status')).toContainText('후기가 수정되었습니다.')
+    await expect(page.getByLabel('후기 내용', { exact: true })).toHaveValue('아직 저장하지 않은 수정')
+    await expect(page.getByRole('button', { name: '저장', exact: true })).toBeEnabled()
+    expect(api.reviews[0].comment).toBe('먼저 저장할 본문')
+    expect(submissions).toEqual([{ rating: 4, comment: '먼저 저장할 본문' }])
+  } finally {
+    release()
+  }
+})
+
+test('후기 등록 거절 뒤 초안을 유지하고 명시적 재제출만 전송', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const submissions = []
+  await page.route('**/api/comments', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    submissions.push(route.request().postDataJSON())
+    if (submissions.length !== 1) return route.fallback()
+    await gate
+    await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+  })
+  try {
+    await page.goto('/products/901')
+    const form = page.locator('.comment-form')
+    await form.getByLabel('후기', { exact: true }).fill('처음 제출한 본문')
+    await form.getByRole('button', { name: '후기 등록', exact: true }).click()
+    await expect.poll(() => submissions.length).toBe(1)
+    await form.getByLabel('후기', { exact: true }).fill('다시 제출할 초안')
+    release()
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(form.getByLabel('후기', { exact: true })).toHaveValue('다시 제출할 초안')
+    await expect(form.getByRole('button', { name: '후기 등록', exact: true })).toBeEnabled()
+    expect(api.reviews).toEqual([])
+    expect(submissions).toHaveLength(1)
+    await form.getByRole('button', { name: '후기 등록', exact: true }).click()
+    await expect(page.locator('.comment-row > p')).toHaveText('다시 제출할 초안')
+    await expect(form.getByLabel('후기', { exact: true })).toHaveValue('')
+    expect(submissions.map((body) => body.comment)).toEqual(['처음 제출한 본문', '다시 제출할 초안'])
+    expect(api.reviews).toHaveLength(1)
+  } finally {
+    release()
+  }
 })
 
 test('관리자 상품·매장 등록 편집 삭제와 현재 탭 갱신', async ({ page, api }) => {
