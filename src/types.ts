@@ -15,6 +15,18 @@ export interface Product {
   img?: string | null
   orderCount: number
 }
+export interface ProductFeatureValues {
+  volumeMl: number | null
+  description: string | null
+  tasteTags: string[] | null
+  aromaTags: string[] | null
+  sourceName: string | null
+  sourceUrl: string | null
+  sourceNote: string | null
+}
+export interface ProductFeatures extends ProductFeatureValues {
+  productId: number
+}
 export interface Market {
   id: number
   name: string

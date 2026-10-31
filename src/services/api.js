@@ -95,6 +95,10 @@ export const api = {
   products: (params = {}) => request(`/products?${pageQuery(params, { page: 1, size: 12 })}`),
   popularProducts: () => request('/products/popular'),
   product: (id) => request(`/products/${id}`),
+  /** @param {number} id @returns {Promise<import('../types').ProductFeatures>} */
+  productFeatures: (id) => request(`/products/${id}/features`),
+  /** @param {number} id @param {import('../types').ProductFeatureValues} payload @returns {Promise<import('../types').ProductFeatures>} */
+  replaceProductFeatures: (id, payload) => request(`/admin/products/${id}/features`, { method: 'PUT', body: JSON.stringify(payload) }),
   createProduct: (payload) => request('/admin/products', { method: 'POST', body: JSON.stringify(payload) }),
   updateProduct: (id, payload) => request(`/admin/products/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteProduct: (id) => request(`/admin/products/${id}`, { method: 'DELETE' }),

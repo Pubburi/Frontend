@@ -1158,6 +1158,17 @@ textarea.form-control {
 }
 
 .admin-form-actions { align-self: end; }
+.feature-editor { border: 1px solid var(--line); padding: 18px; border-radius: 10px; min-width: 0; }
+.feature-editor h3 { margin: 0; }
+.feature-form { display: grid; gap: 16px; }
+.feature-tag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
+.feature-tags { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.feature-tags legend { font-weight: 700; font-size: 14px; padding: 0 4px; }
+.feature-form textarea { min-height: 90px; resize: vertical; }
+.feature-tag-items { display: grid; gap: 10px; }
+.feature-tag-item { display: flex; align-items: start; gap: 8px; }
+.feature-tag-item .field-group { min-width: 0; flex: 1; }
+.feature-tag-item textarea { min-height: 44px; }
 .form-context { display: grid; align-self: center; }
 
 .table-row {

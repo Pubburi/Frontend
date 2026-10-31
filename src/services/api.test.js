@@ -48,6 +48,16 @@ describe('api client', () => {
     expect(pageQuery({ page: 2, size: 12, q: '', type: '탁주' })).toBe('page=2&size=12&type=%ED%83%81%EC%A3%BC')
   })
 
+  it('keeps separate feature GET and credentialed full PUT without changing product CRUD', async () => {
+    const features = { productId: 901, volumeMl: null, description: null, tasteTags: [], aromaTags: null, sourceName: '검수 근거', sourceUrl: null, sourceNote: null }
+    mockResponse({ data: features, message: 'ok', error: null })
+    await expect(api.productFeatures(901)).resolves.toEqual(features)
+    expect(fetch).toHaveBeenLastCalledWith('/api/products/901/features', expect.objectContaining({ credentials: 'include' }))
+    const { productId, ...payload } = features
+    await expect(api.replaceProductFeatures(productId, payload)).resolves.toEqual(features)
+    expect(fetch).toHaveBeenLastCalledWith('/api/admin/products/901/features', expect.objectContaining({ credentials: 'include', method: 'PUT', body: JSON.stringify(payload) }))
+  })
+
   it('normalizes non-json server failures into a friendly error', async () => {
     mockTextResponse('Internal Server Error', false, 500, 'Internal Server Error')
 
