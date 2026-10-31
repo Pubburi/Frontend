@@ -91,6 +91,10 @@ export const api = {
   join: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
   idAvailable: (id) => request(`/users/id-available?id=${encodeURIComponent(id)}`),
   profile: (id) => request(`/users/${encodeURIComponent(id)}/profile`),
+  /** @returns {Promise<import('../types').ExplicitPreferences>} */
+  ownPreferences: () => request('/users/me/preferences'),
+  /** @param {import('../types').ExplicitPreferences} payload @returns {Promise<import('../types').ExplicitPreferences>} */
+  replaceOwnPreferences: (payload) => request('/users/me/preferences', { method: 'PUT', body: JSON.stringify(payload) }),
 
   products: (params = {}) => request(`/products?${pageQuery(params, { page: 1, size: 12 })}`),
   popularProducts: () => request('/products/popular'),

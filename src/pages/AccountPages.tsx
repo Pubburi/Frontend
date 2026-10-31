@@ -202,6 +202,7 @@ export function ProfilePage() {
               <p className="section-kicker">My Page</p>
               <h1>{profile.data?.user?.name || user?.name}님의 취향 기록</h1>
               <p className="muted">{user?.id}</p>
+              <Link className="btn btn-outline-dark" to="/preferences">내 취향 설정</Link>
             </div>
             <button
               className="btn btn-outline-dark"

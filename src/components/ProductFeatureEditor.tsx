@@ -8,11 +8,10 @@ import {
   featureSaveKey,
   featuresToDraft,
   unknownFeatures,
-  type TagDraft,
-  type TagStatus,
 } from '../productFeatures'
 import type { Product, ProductFeatures } from '../types'
 import { Empty, Loading } from './ui'
+import { TagEditor } from './TagEditor'
 
 export function ProductFeatureEditor({
   product,
@@ -112,93 +111,6 @@ function FeatureForm({
         current === submitted ? featuresToDraft(result.data) : current,
       )
   }
-  function tagField(key: 'taste' | 'aroma', label: string) {
-    const value = draft[key]
-    const update = (next: TagDraft) => setDraft({ ...draft, [key]: next })
-    return (
-      <fieldset className="feature-tags">
-        <legend>{label}</legend>
-        <label className="field-group">
-          <span>확인 상태</span>
-          <select
-            className="form-select"
-            aria-label={`${label} 확인 상태`}
-            value={value.status}
-            onChange={(e) =>
-              update({
-                ...value,
-                status: e.target.value as TagStatus,
-                values:
-                  e.target.value === 'tags' && !value.values.length
-                    ? ['']
-                    : value.values,
-              })
-            }
-          >
-            <option value="unknown">미확인</option>
-            <option value="empty">검수 완료 · 선언할 태그 없음</option>
-            <option value="tags">확인한 태그 입력</option>
-          </select>
-        </label>
-        {value.status === 'tags' && (
-          <div className="feature-tag-items">
-            {value.values.map((tag, index) => (
-              <div className="feature-tag-item" key={index}>
-                <label className="field-group">
-                  <span>
-                    {label} {index + 1}
-                  </span>
-                  <textarea
-                    className="form-control"
-                    aria-label={`${label} ${index + 1}`}
-                    required
-                    maxLength={40}
-                    rows={1}
-                    value={tag}
-                    onChange={(e) =>
-                      update({
-                        ...value,
-                        values: value.values.map((current, i) =>
-                          i === index ? e.target.value : current,
-                        ),
-                      })
-                    }
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-secondary"
-                  aria-label={`${label} ${index + 1} 삭제`}
-                  onClick={() =>
-                    update({
-                      ...value,
-                      values: value.values.filter((_, i) => i !== index),
-                    })
-                  }
-                >
-                  삭제
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-dark"
-              disabled={value.values.length >= 20}
-              onClick={() =>
-                update({ ...value, values: [...value.values, ''] })
-              }
-            >
-              {label} 추가
-            </button>
-            <small>
-              항목별로 최대 20개·각 40자. 대소문자만 다른 중복도 사용할 수
-              없습니다.
-            </small>
-          </div>
-        )}
-      </fieldset>
-    )
-  }
   return (
     <form
       className="feature-form"
@@ -232,8 +144,16 @@ function FeatureForm({
         />
       </label>
       <div className="feature-tag-grid">
-        {tagField('taste', '맛 태그')}
-        {tagField('aroma', '향 태그')}
+        <TagEditor
+          label="맛 태그"
+          value={draft.taste}
+          onChange={(taste) => setDraft({ ...draft, taste })}
+        />
+        <TagEditor
+          label="향 태그"
+          value={draft.aroma}
+          onChange={(aroma) => setDraft({ ...draft, aroma })}
+        />
       </div>
       <label className="field-group">
         <span>출처명{sourceRequired ? ' (필수)' : ' (선택)'}</span>

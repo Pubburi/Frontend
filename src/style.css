@@ -1169,6 +1169,13 @@ textarea.form-control {
 .feature-tag-item { display: flex; align-items: start; gap: 8px; }
 .feature-tag-item .field-group { min-width: 0; flex: 1; }
 .feature-tag-item textarea { min-height: 44px; }
+.preferences-view { gap: 20px; }
+.preferences-form { display: grid; gap: 22px; }
+.preference-section { display: grid; gap: 16px; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); min-width: 0; }
+.preference-section h2, .preference-section p { margin: 0; }
+.preference-categories { display: flex; flex-wrap: wrap; gap: 16px; }
+.preference-categories label { display: flex; gap: 5px; align-items: center; }
+.preference-ranges { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; }
 .form-context { display: grid; align-self: center; }
 
 .table-row {

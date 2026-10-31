@@ -48,6 +48,15 @@ describe('api client', () => {
     expect(pageQuery({ page: 2, size: 12, q: '', type: '탁주' })).toBe('page=2&size=12&type=%ED%83%81%EC%A3%BC')
   })
 
+  it('uses only the session-bound preferences path with cookies and a full body', async () => {
+    const value = { surveyStatus: 'SKIPPED', softPreferences: { categories: null, tasteTags: null, aromaTags: null, targetAbvPercent: null }, hardConstraints: { minPriceKrw: null, maxPriceKrw: null, minAbvPercent: null, maxAbvPercent: null } }
+    mockResponse({ data: value, message: 'ok', error: null })
+    await expect(api.ownPreferences()).resolves.toEqual(value)
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/preferences', expect.objectContaining({ credentials: 'include' }))
+    await expect(api.replaceOwnPreferences(value)).resolves.toEqual(value)
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/preferences', expect.objectContaining({ credentials: 'include', method: 'PUT', body: JSON.stringify(value) }))
+  })
+
   it('keeps separate feature GET and credentialed full PUT without changing product CRUD', async () => {
     const features = { productId: 901, volumeMl: null, description: null, tasteTags: [], aromaTags: null, sourceName: '검수 근거', sourceUrl: null, sourceNote: null }
     mockResponse({ data: features, message: 'ok', error: null })
