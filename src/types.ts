@@ -15,6 +15,10 @@ export interface Product {
   img?: string | null
   orderCount: number
 }
+export interface FavoriteState {
+  productId: number
+  favorited: boolean
+}
 export interface ProductFeatureValues {
   volumeMl: number | null
   description: string | null

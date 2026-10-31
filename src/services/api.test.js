@@ -67,6 +67,21 @@ describe('api client', () => {
     expect(fetch).toHaveBeenLastCalledWith('/api/admin/products/901/features', expect.objectContaining({ credentials: 'include', method: 'PUT', body: JSON.stringify(payload) }))
   })
 
+  it('찜은 계정 선택자와 본문 없이 본인 경로·쿠키·유한 페이지 계약을 사용한다', async () => {
+    mockResponse({ data: { items: [], page: 2, size: 12, total: 0, totalPages: 0, hasNext: false }, message: 'ok', error: null })
+    await api.ownFavorites({ page: 2, size: 12 })
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/favorites?page=2&size=12', expect.objectContaining({ credentials: 'include' }))
+    mockResponse({ data: { productId: 901, favorited: true }, message: 'ok', error: null })
+    await expect(api.favoriteState(901)).resolves.toEqual({ productId: 901, favorited: true })
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/favorites/901', expect.objectContaining({ credentials: 'include' }))
+    await api.addFavorite(901)
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/favorites/901', expect.objectContaining({ credentials: 'include', method: 'PUT' }))
+    expect(fetch.mock.calls.at(-1)[1].body).toBeUndefined()
+    await api.removeFavorite(901)
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/favorites/901', expect.objectContaining({ credentials: 'include', method: 'DELETE' }))
+    expect(fetch.mock.calls.at(-1)[1].body).toBeUndefined()
+  })
+
   it('normalizes non-json server failures into a friendly error', async () => {
     mockTextResponse('Internal Server Error', false, 500, 'Internal Server Error')
 

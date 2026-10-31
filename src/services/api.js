@@ -95,6 +95,14 @@ export const api = {
   ownPreferences: () => request('/users/me/preferences'),
   /** @param {import('../types').ExplicitPreferences} payload @returns {Promise<import('../types').ExplicitPreferences>} */
   replaceOwnPreferences: (payload) => request('/users/me/preferences', { method: 'PUT', body: JSON.stringify(payload) }),
+  /** @param {{ page?: number, size?: number }} params @returns {Promise<import('../types').Page<import('../types').Product>>} */
+  ownFavorites: (params = {}) => request(`/users/me/favorites?${pageQuery(params, { page: 1, size: 12 })}`),
+  /** @param {number} id @returns {Promise<import('../types').FavoriteState>} */
+  addFavorite: (id) => request(`/users/me/favorites/${id}`, { method: 'PUT' }),
+  /** @param {number} id @returns {Promise<import('../types').FavoriteState>} */
+  favoriteState: (id) => request(`/users/me/favorites/${id}`),
+  /** @param {number} id @returns {Promise<import('../types').FavoriteState>} */
+  removeFavorite: (id) => request(`/users/me/favorites/${id}`, { method: 'DELETE' }),
 
   products: (params = {}) => request(`/products?${pageQuery(params, { page: 1, size: 12 })}`),
   popularProducts: () => request('/products/popular'),

@@ -12,6 +12,7 @@ import { categories, carouselImages } from '../catalog'
 import { useSession } from '../queries'
 import { useCart } from '../state/cart'
 import { useUi } from '../state/ui'
+import { ProductFavorite } from '../components/FavoriteAction'
 import {
   Confirm,
   Empty,
@@ -474,6 +475,7 @@ function ProductDetail({ id }: { id: string }) {
           >
             {quantity}개 장바구니에 담기
           </button>
+          <ProductFavorite product={item} />
           <div className="comment-box">
             <div className="comment-title">
               <div>

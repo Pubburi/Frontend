@@ -203,6 +203,7 @@ export function ProfilePage() {
               <h1>{profile.data?.user?.name || user?.name}님의 취향 기록</h1>
               <p className="muted">{user?.id}</p>
               <Link className="btn btn-outline-dark" to="/preferences">내 취향 설정</Link>
+              <Link className="btn btn-outline-dark" to="/favorites">내 찜 목록</Link>
             </div>
             <button
               className="btn btn-outline-dark"
