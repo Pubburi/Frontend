@@ -260,81 +260,118 @@ const product = useQuery<Product>({
   }, [pending])
 ```
 
-### 4. React 전환에서 세션·개인 캐시·보호 경로 유지하기
+### 4. 인증 캐시 초기화와 진행 중인 취향 쓰기의 수명 분리
 
 **문제**
 
-고객·관리자 화면을 모두 React로 옮기면서 세션 복원과 로그인 복귀, 계정별 주문, 관리자 접근 제한을 유지해야 했다. 세션 조회 장애를 비로그인으로 취급하거나 다른 계정의 캐시를 재사용하면 화면은 열려도 사용자 경계가 달라진다.
+취향 저장 응답을 받기 전에 로그아웃하고 같은 계정으로 다시 로그인하면, 서버에는 새 값이 저장됐는데 새 편집 화면은 이전 값에 머물렀다. R01 초기 구현을 검토하며 이 순서를 재현했다. 다른 계정에 이전 응답이 섞이지 않도록 하는 검사만으로는 같은 계정의 재로그인 문제를 해결하지 못했다.
 
 **원인**
 
-기존 세션 초기화는 모든 오류를 null로 바꿨다. 새 query 캐시에는 로그인 사용자와 소유 리소스를 명시해야 하며, 상태 라이브러리만 바꾸고 계정 전환의 초기화 책임을 두지 않으면 개인 상태가 남는다.
+로그인·로그아웃의 `client.clear()`는 개인 query와 mutation cache를 지웠다. 하지만 이미 인증 검사를 통과한 HTTP 쓰기는 서버에서 계속될 수 있다. mutation 개수가 0이라는 이유로 새 GET을 열면 쓰기 전 값을 편집 초기값으로 확정한다. 이전 세션 응답을 거부하는 검사는 유지돼야 하므로, 그 늦은 응답으로 새 폼을 고치는 것도 올바른 해결이 아니었다. 캐시가 비워진 상태와 서버 쓰기가 끝난 상태를 혼동한 것이 원인이었다.
 
 **해결**
 
-세션은 하나의 query로 공유하고 401만 비로그인으로 해석한다. 조회 장애는 재시도 화면으로 구분한다. 로그인·로그아웃에서는 기존 query를 비운 뒤 새 세션을 설정하며 개인 조회 key에는 계정 ID를 넣는다. 보호 경로는 확인 중/장애/비로그인/권한 부족을 분리하고 관리자 화면은 lazy/Suspense로 진입 뒤 로드한다. Vue 브리지 없이 모든 실제 라우트를 React로 교체했다.
+계정별 미완료 HTTP 소유를 QueryClient 밖의 Zustand Map에 두었다. 취향·인증값 대신 요청 토큰만 보관하고 자기 `finally`만 해제한다. 같은 계정의 새 세션은 이전 HTTP 응답이 정착한 뒤 새 GET으로 편집을 시작하며, 다른 계정은 독립적으로 사용한다. 인증 캐시는 계속 초기화한다. 늦은 응답은 캡처한 세션과 현재 세션이 같을 때만 캐시에 반영한다. 화면을 떠났으면 로컬 입력·알림을 갱신하지 않고, 같은 화면에서는 현재 초안이 제출한 객체와 같을 때만 정규화하고 이후의 새 입력을 보존한다.
 
 **결과**
 
-비회원의 원래 목적지를 보존해 로그인으로 연결하고 일반 회원은 관리자 화면/API에 진입하지 않는다. 가입·로그아웃·다른 계정 로그인 뒤 이전 회원의 화면 데이터를 재사용하지 않으며, 세션 조회 장애 뒤 재시도로 복원한다. 웹의 실제 서버 권한은 Backend가 판단한다. [이전 범위·검증과 남은 통합 과제](docs/plans/2026-10-31-react-migration.md)
+동일 계정으로 다시 로그인하면 진행 중인 취향 쓰기의 응답을 기다린 뒤 새 GET으로 서버 저장값과 편집 초기값을 일치시킨다. 다른 계정은 독립적으로 읽고 편집하며, 이전 세션의 늦은 응답은 새 세션에 적용하지 않는다. 같은 화면에서 저장 중 새로 입력한 초안도 유지한다. 이 동작은 같은 웹 실행 안의 계정 이동에 적용되며, 브라우저 종료·전체 재로딩을 넘는 미확정 저장까지 보장하지 않는다. [조건과 한계](docs/plans/2026-11-01-explicit-preferences-ui.md)
 
 **대체안/회고**
 
-별도 Vue/React 라우팅 브리지는 두 런타임·중복 상태·제거 비용을 남긴다. 현재 화면 규모에서는 공통 API·CSS·정적 자산을 유지하며 전체 라우트를 옮기는 방식을 선택했다. 공개 UI fixture 검증과 실제 Backend 통합 검증은 구분하며, 검증하지 않은 로딩 단축이나 접근 제어의 완전성을 주장하지 않는다.
+미완료 쓰기를 기억하려고 로그아웃 시 개인 캐시를 남기는 대신, 취향값을 담지 않는 요청 소유만 분리했다. 저장 중 로그아웃을 막는 방법은 계정 이동까지 묶으며, 전송 취소만으로 이미 시작한 서버 작업의 취소를 보장할 수도 없다. 이 Map은 같은 웹 실행 안에서만 유효하다. 브라우저 종료·전체 재로딩 뒤 미확정 커밋 조정과 여러 창의 수정 충돌에는 별도 서버 계약이 필요하다. 초기 구현에서 재현한 결함과 확인한 한계를 기록하며 운영 장애나 모든 동시성 문제의 해결로 표현하지 않는다.
 
 **코드**
 
-[세션 query](https://github.com/Pubburi/Frontend/blob/main/src/queries.ts) · [보호 경로](https://github.com/Pubburi/Frontend/blob/main/src/App.tsx) · [로그인과 캐시 교체](https://github.com/Pubburi/Frontend/blob/main/src/pages/AccountPages.tsx)
+[미완료 요청 소유](https://github.com/Pubburi/Frontend/blob/main/src/state/preferenceWrites.ts) · [새 GET의 시작 조건과 세션·초안 검사](https://github.com/Pubburi/Frontend/blob/main/src/pages/PreferencesPage.tsx) · [인증 캐시 초기화](https://github.com/Pubburi/Frontend/blob/main/src/pages/AccountPages.tsx)
 
 ```ts
-export async function readSession(): Promise<User | null> {
-  try {
-    return await api.me()
-  } catch (error) {
-    if (error instanceof ApiClientError && error.status === 401) return null
-    throw error
-  }
+import { create } from 'zustand'
+
+interface PreferenceWrites {
+  owners: Map<string, symbol>
+  begin: (userId: string) => symbol | null
+  finish: (userId: string, owner: symbol) => void
 }
-export const useSession = () =>
-  useQuery({ queryKey: ['session'], queryFn: readSession, staleTime: Infinity })
+// HTTP writes may still finish after logout clears the account query/mutation cache.
+// Keep only transient ownership here; never store preferences or credentials.
+export const usePreferenceWrites = create<PreferenceWrites>((set, get) => ({
+  owners: new Map(),
+  begin(userId) {
+    if (get().owners.has(userId)) return null
+    const owner = Symbol()
+    set({ owners: new Map(get().owners).set(userId, owner) })
+    return owner
+  },
+  finish(userId, owner) {
+    if (get().owners.get(userId) !== owner) return
+    const next = new Map(get().owners)
+    next.delete(userId)
+    set({ owners: next })
+  },
+}))
 ```
 
 ```tsx
-function Guard({
-  mode,
-  children,
-}: {
-  mode: 'auth' | 'admin' | 'guest'
-  children: ReactNode
-}) {
-  const session = useSession()
-  const location = useLocation()
-  const [search] = useSearchParams()
-  if (session.isPending)
-    return <Loading label="로그인 상태를 확인하는 중입니다." />
-  if (session.isError)
-    return (
-      <Empty title="로그인 상태를 확인하지 못했습니다">
-        <button onClick={() => session.refetch()}>다시 시도</button>
-      </Empty>
-    )
-  if (mode === 'guest')
-    return session.data ? (
-      <Navigate to={safeRedirect(search.get('redirect'))} replace />
-    ) : (
-      children
-    )
-  if (!session.data)
-    return (
-      <Navigate
-        to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`}
-        replace
-      />
-    )
-  if (mode === 'admin' && session.data.role !== 'ADMIN')
-    return <Navigate to="/" replace />
-  return children
-}
+  const pending = usePreferenceWrites((state) => state.owners.has(user.id))
+  const [initial, setInitial] = useState<ExplicitPreferences | null>(null)
+  const query = useQuery({
+    queryKey: preferenceQueryKey(user.id),
+    queryFn: api.ownPreferences,
+    enabled: !initial && !pending,
+    refetchOnReconnect: false,
+  })
+  useEffect(() => {
+    if (!initial && !pending && query.isSuccess && !query.isFetching)
+      setInitial(query.data)
+  }, [initial, pending, query.data, query.isSuccess, query.isFetching])
+```
+
+```tsx
+  const sameSession = () => client.getQueryData(['session']) === user
+  async function save(surveyStatus: SurveyStatus) {
+    const submitted = draft
+    let payload: ExplicitPreferences
+    try {
+      payload =
+        surveyStatus === 'COMPLETED'
+          ? buildPreferencePayload(submitted)
+          : emptyPreferences(surveyStatus)
+    } catch (error) {
+      ui.error(error)
+      return
+    }
+    const owner = usePreferenceWrites.getState().begin(user.id)
+    if (!owner) return
+    ui.clear()
+    try {
+      const saved = await api.replaceOwnPreferences(payload)
+      if (!sameSession()) return
+      client.setQueryData(preferenceQueryKey(user.id), saved)
+      if (!mounted.current) return
+      setDraft((current) =>
+        current === submitted ? preferencesToDraft(saved) : current,
+      )
+      setConfirm(null)
+      ui.status(
+        surveyStatus === 'COMPLETED'
+          ? '취향이 저장되었습니다.'
+          : surveyStatus === 'SKIPPED'
+            ? '설문을 건너뛰었습니다.'
+            : '취향 입력을 초기화했습니다.',
+      )
+    } catch (error) {
+      if (!sameSession()) return
+      if (error instanceof ApiClientError && error.status === 401) {
+        client.removeQueries({ queryKey: ['account', user.id] })
+        client.setQueryData(['session'], null)
+      }
+      if (mounted.current) ui.error(error)
+    } finally {
+      usePreferenceWrites.getState().finish(user.id, owner)
+    }
+  }
 ```
 
 <a id="technology"></a>
