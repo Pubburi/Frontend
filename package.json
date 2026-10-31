@@ -1,11 +1,12 @@
 {
-  "name": "pubburi-vue",
+  "name": "pubburi-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:browser": "playwright test",
     "audit:deps": "npm audit --audit-level=moderate",
@@ -15,15 +16,20 @@
     "check": "bash scripts/check.sh"
   },
   "dependencies": {
-    "pinia": "^2.3.1",
-    "vue": "^3.5.42",
-    "vue-router": "^4.6.4"
+    "@tanstack/react-query": "5.105.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.5",
+    "zustand": "5.0.16"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
-    "@vitejs/plugin-vue": "^5.2.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "4.7.0",
     "jsdom": "^24.1.3",
     "sharp": "^0.35.5",
+    "typescript": "7.0.2",
     "vite": "^6.4.5",
     "vitest": "^4.1.12"
   },

@@ -4,7 +4,7 @@
   <p><strong>취향에 맞는 한 잔을 발견하고 기록하는 주류 큐레이션</strong></p>
   <p>상품 탐색·후기·데모 주문과 관리자 웹</p>
   <a href="https://github.com/Pubburi/Frontend/actions/workflows/ci.yml"><img src="https://github.com/Pubburi/Frontend/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/Vue-3-4FC08D" alt="Vue 3" /> <img src="https://img.shields.io/badge/Vite-6-646CFF" alt="Vite 6" /> <img src="https://img.shields.io/badge/Node.js-24-5FA04E" alt="Node.js 24" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB" alt="React 19" /> <img src="https://img.shields.io/badge/Vite-6-646CFF" alt="Vite 6" /> <img src="https://img.shields.io/badge/Node.js-24-5FA04E" alt="Node.js 24" />
 </div>
 
 <br />
@@ -26,7 +26,7 @@
 
 ## ✍ 프로젝트 개요
 
-상품을 탐색하고 후기를 확인하며 데모 주문을 생성하는 주점부리 웹입니다. 현재 Vue 3·Vite·Pinia·Vue Router를 사용합니다.
+상품을 탐색하고 후기를 확인하며 데모 주문을 생성하는 주점부리 웹입니다. Vite·React·TypeScript·React Router·TanStack Query·Zustand를 사용합니다.
 
 <a id="features"></a>
 
@@ -44,136 +44,140 @@
 
 ## 🧩 대표 문제 해결
 
-### 1. 브라우저 저장값을 검증하고 주문 성공 뒤에만 장바구니 비우기
+### 1. 저장된 장바구니를 보존하며 상태 관리 교체하기
 
 **문제**
 
-장바구니는 새로고침 뒤에도 복원되어야 하지만 브라우저에 저장된 값은 신뢰할 수 없다. 손상된 JSON이나 범위를 벗어난 수량을 화면 상태로 받아들이는 문제와, 주문 요청이 실패했는데 선택한 상품까지 잃는 문제를 함께 다뤄야 했다.
+Pinia에서 Zustand로 바꾸면서 기존 브라우저 장바구니까지 버리면 프레임워크 전환이 사용자 선택 상태의 손실로 이어진다. 손상된 JSON·잘못된 수량과 주문 실패 뒤 상태 보존도 함께 다뤄야 했다.
 
 **원인**
 
-`localStorage`의 문자열은 서버가 보장한 데이터가 아니며 수량 입력도 문자열·소수·음수가 될 수 있다. 주문 요청의 완료와 로컬 상태 초기화를 같은 시점으로 취급하면 실패 시 재시도에 필요한 상태가 사라진다.
+기존 `pubburi-cart`에는 상품·수량의 원시 배열이 저장돼 있다. 새로운 저장 미들웨어의 기본 envelope를 그대로 적용하면 기존 값과 구조가 달라지고, 주문 요청 전에 초기화하면 실패 시 복구할 선택 상태가 사라진다.
 
 **해결**
 
-복원과 저장 경계에서 배열·상품 객체·정수로 해석되는 ID·음수가 아닌 가격을 확인하고 수량을 정규화한다. 수량은 1–99의 정수로 제한하고 해석할 수 없는 JSON은 빈 목록으로 복원한다. 데모 주문에는 상품 ID와 수량을 보내며, 주문 API의 성공 응답을 기다린 다음 장바구니를 비운다.
+Zustand store에 같은 키·원시 배열 형식의 저장 어댑터를 두고 복원 경계의 정규화를 유지했다. 수량은 1–99로 제한하며 잘못된 저장값은 빈 목록으로 복원한다. 주문에는 상품 ID·수량을 보내고 서버 성공 뒤 메모리 장바구니를 비운다. 브라우저 보관 실패는 별도로 처리해 편집과 성공한 주문의 결과를 중단하지 않고, 보관 제약을 독립 안내한다.
 
 **결과**
 
-화면은 정규화한 수량으로 합계를 계산하고, 주문 API가 거절되면 초기화 구문에 도달하지 않아 선택 상태를 유지한다. 브라우저에 보관한 상품 가격은 화면 표시용이며 서버의 주문 가격 검증을 대신하지 않는다.
+이전 Vue가 저장한 배열을 React에서 그대로 복원하고 새로고침 뒤에도 선택 상품·수량을 유지한다. 주문 거절 시 장바구니와 요청 사항을 보존하며 성공 후 서버 주문 금액을 주문 내역에서 확인한다. 브라우저의 가격은 표시용이고 서버 금액 검증을 대신하지 않는다.
 
 **대체안/회고**
 
-실패 후 장바구니를 다시 만드는 방식보다 성공 이후 초기화하는 흐름이 단순하다. 현재 필터는 저장 구조와 수량의 기본 방어이며 상품의 실재성·가격의 최신성을 보장하지 않는다. 저장 범위는 이 브라우저이고 계정 장바구니·로그인 시 병합은 별도 구현 대상이다. 이 사례는 데이터 보존에 관한 설계이며 전후 응답 시간 개선을 주장하지 않는다.
+버전 envelope를 새로 도입하기보다 이미 사용하는 저장 계약을 유지했다. 저장소 접근·읽기·쓰기 차단에도 메모리 편집과 서버가 성공시킨 주문을 유지한다. 보관이 불가능한 동안 새로고침·다른 기기로 상태가 이어지는 것은 보장하지 않는다. 계정 장바구니·로그인 병합·서버 중복 주문 방지는 후속 기능이다.
 
 **코드**
 
-[저장값 정규화·복원 및 주문 처리](https://github.com/Pubburi/Frontend/blob/main/src/stores/cart.js)
+[Zustand 장바구니·저장 경계](https://github.com/Pubburi/Frontend/blob/main/src/state/cart.ts)
 
-```js
-export const MAX_CART_QUANTITY = 99
-
-export function normalizeQuantity(value) {
+```ts
+export function normalizeQuantity(value: unknown) {
   const quantity = Math.trunc(Number(value))
-  if (!Number.isFinite(quantity)) return 1
-  return Math.min(MAX_CART_QUANTITY, Math.max(1, quantity))
+  return Number.isFinite(quantity)
+    ? Math.min(MAX_CART_QUANTITY, Math.max(1, quantity))
+    : 1
 }
-
-export function normalizeCart(value) {
+export function normalizeCart(value: unknown): CartItem[] {
   if (!Array.isArray(value)) return []
   return value
-    .filter((item) => item?.product && Number.isInteger(Number(item.product.id)) && Number(item.product.price) >= 0)
-    .map((item) => ({ product: item.product, quantity: normalizeQuantity(item.quantity) }))
+    .filter(
+      (item) =>
+        item?.product &&
+        Number.isInteger(Number(item.product.id)) &&
+        Number(item.product.price) >= 0,
+    )
+    .map((item) => ({
+      product: item.product,
+      quantity: normalizeQuantity(item.quantity),
+    }))
 }
+```
 
-function readCart() {
+메모리 반영을 먼저 하고 보관 예외가 주문 결과를 바꾸지 않게 한다.
+
+```ts
+function save(items: CartItem[]) {
+  const normalized = normalizeCart(items)
+  set({ items: normalized })
   try {
-    return normalizeCart(JSON.parse(localStorage.getItem('pubburi-cart') || '[]'))
+    if (!storage) {
+      set({ storageWarning: true })
+      return
+    }
+    storage.setItem(CART_KEY, JSON.stringify(normalized))
+    set({ storageWarning: false })
   } catch {
-    return []
+    // Browser persistence is optional; it cannot reject a completed server order.
+    set({ storageWarning: true })
   }
 }
 ```
 
-Pinia의 주문 action은 다음 순서로 로컬 상태를 변경한다.
+주문 action은 API 성공 응답 이후 저장 상태를 변경한다.
 
-```js
-    async checkout(userId) {
-      const order = await api.createOrder({
-        userId,
-        orderType: this.orderForm.orderType,
-        orderTable: this.orderForm.orderTable.trim(),
-        details: this.items.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
-      })
-      this.items = []
-      this.persist()
-      this.orderForm.orderTable = ''
-      return order
-    }
+```ts
+async checkout(userId) {
+        const { items, orderForm } = get()
+        const order = await api.createOrder({
+          userId,
+          orderType: orderForm.orderType,
+          orderTable: orderForm.orderTable.trim(),
+          details: items.map((item) => ({
+            productId: item.product.id,
+            quantity: item.quantity,
+          })),
+        })
+        save([])
+        set({ orderForm: { ...get().orderForm, orderTable: '' } })
+        return order
+      },
 ```
 
-### 2. 빠른 검색·상세 이동에서 최신 요청의 결과만 화면에 반영하기
+### 2. 검색·상세 경로별로 서버 상태를 분리해 늦은 응답 보호하기
 
 **문제**
 
-검색 응답이 오기 전에 필터를 해제하면 URL은 바뀌었지만 새 상품 목록 요청이 누락됐다. 상세 조회 도중 목록으로 돌아가 다른 상품을 열어도 이전 조회가 끝날 때까지 새 상세를 읽지 못했다.
+기존 고객 탐색에서 검색 응답 전에 필터를 해제하면 최신 요청이 누락됐고, 진행 중 상세를 떠나 다른 상품으로 이동해도 새 상세를 표시하지 못했다. Vue에서 고친 이 사용자 결과를 React 전환에서도 보존해야 했다.
 
 **원인**
 
-쓰기 버튼의 중복 처리를 막는 `ui.run`을 읽기 전환에도 사용해 같은 키의 새 요청을 거절했다. 이 제한만 없애면 전역 catalog에 마지막으로 도착한 응답이 저장되므로, 이전 성공·실패가 현재 화면과 알림을 바꾸는 문제도 함께 해결해야 했다.
+이전 읽기/쓰기 공용 중복 차단과 단일 catalog 상태는 최신 의도와 늦은 응답을 구분하지 못했다. 프레임워크만 바꾸고 같은 공용 응답 칸을 만들면 동일한 문제가 다시 생긴다.
 
 **해결**
 
-주문·후기 같은 쓰기는 기존 중복 실행 차단을 유지하고, 상품 목록·상세·후기 페이지 읽기에는 `runLatest`를 사용한다. 요청마다 버전을 발급하고 현재 버전인지 확인한 뒤 catalog·알림·로딩 상태를 변경한다. 상세 ID는 요청 시작 시 고정하며 화면을 떠날 때 해당 읽기 버전을 무효화한다. 검색 버튼은 조회 중에도 새 조건을 제출할 수 있게 했다.
+TanStack Query에서 검색 조건 전체·상품 ID·후기 페이지를 query key에 포함한다. 화면은 현재 URL key를 구독하며 이전 응답은 이전 key의 캐시에만 저장된다. 상세 컴포넌트도 상품 ID로 구분해 수량·편집 상태가 다른 상품으로 섞이지 않게 하고, 읽기 오류는 해당 query의 화면에서 안내한다. 쓰기는 Zustand의 동기 pending 검사로 중복 실행을 차단한다.
 
 **결과**
 
-필터를 해제한 최신 URL의 상품을 읽고, 이전 응답이 늦게 도착해도 현재 목록·상세를 보존한다. 떠난 상세의 실패는 새 화면의 오류 알림으로 표시하지 않으며, 이전 요청의 종료가 현재 요청의 로딩 표시를 먼저 끄지 않는다. 이 결과는 응답 순서를 제어한 정확성 검증이며 네트워크 속도 개선 수치가 아니다. [재현 조건과 결과](docs/plans/2026-10-31-latest-product-requests.md)
+검색 중 해제한 URL의 새 목록을 읽고, 떠난 상세의 늦은 성공·실패가 현재 상품이나 전역 오류를 바꾸지 않는다. 이전 읽기의 종료가 현재 읽기의 로딩 상태를 먼저 끄지도 않는다. 이는 응답 순서의 정확성 결과이며 네트워크 속도 개선 수치가 아니다. [이전 결함 재현](docs/plans/2026-10-31-latest-product-requests.md) · [React 전환 검증 범위](docs/plans/2026-10-31-react-migration.md)
 
 **대체안/회고**
 
-이전 요청을 전부 기다리는 방식은 사용자 의도를 누락하고, 키만 다르게 만드는 방식은 늦은 응답의 상태 덮어쓰기를 막지 못한다. 전송 취소만으로는 이미 완료된 응답·후속 작업의 반영을 보장할 수 없어 적용 시점의 버전 검사를 선택했다. 현재는 이전 GET의 전송을 취소하지 않으므로 서버 작업이 계속될 수 있다. 관리자 조회·세션 초기화와 후기 쓰기 이후 재조회는 별도 경계이며 React 전환에서는 같은 사용자 결과를 유지해야 한다.
+전역 catalog에 응답을 복사하고 버전을 다시 관리하는 대신 query key가 서버 상태를 소유하게 했다. 고객/관리자 key와 개인 주문의 계정 ID도 분리한다. 현재 이전 GET 전송 자체는 취소하지 않으므로 사용하지 않는 서버 작업은 계속될 수 있다. 실제 서버 통합과 재시도 정책은 API별로 검증을 더한다.
 
 **코드**
 
-[읽기 실행·무효화](https://github.com/Pubburi/Frontend/blob/main/src/stores/ui.js) · [catalog 적용 경계](https://github.com/Pubburi/Frontend/blob/main/src/stores/catalog.js) · [상세 수명주기](https://github.com/Pubburi/Frontend/blob/main/src/views/ProductDetailView.vue)
+[상품·후기 query와 라우트 상태](https://github.com/Pubburi/Frontend/blob/main/src/pages/CatalogPages.tsx)
 
-```js
-    async runLatest(key, action, options = {}) {
-      const version = ++this.requestVersion
-      this.latestVersions[key] = version
-      this.pending[key] = true
-      const isCurrent = () => this.latestVersions[key] === version
-      if (options.clear !== false) this.clear()
-      try {
-        const data = await action(isCurrent)
-        if (!isCurrent()) return { ok: false, stale: true }
-        if (options.success) this.setStatus(options.success)
-        return { ok: true, data }
-      } catch (error) {
-        if (!isCurrent()) return { ok: false, stale: true }
-        this.setError(error)
-        return { ok: false, error }
-      } finally {
-        if (isCurrent()) delete this.pending[key]
-      }
-    },
-    cancelLatest(key) {
-      this.latestVersions[key] = ++this.requestVersion
-      delete this.pending[key]
-    },
+```tsx
+const products = useQuery<Page<Product>>({
+    queryKey: ['catalog', 'products', filters],
+    queryFn: () => api.products(filters),
+  })
 ```
 
-응답을 받은 catalog도 현재 요청인지 검사한 뒤 상태에 반영한다.
+상세와 후기에도 현재 상품·페이지를 key에 포함한다.
 
-```js
-    async loadProducts(params = {}, isCurrent = () => true) {
-      const filters = { ...this.filters, ...params }
-      this.filters = filters
-      const page = await api.products(filters)
-      if (isCurrent()) this.productsPage = page
-      return page
-    },
+```tsx
+const product = useQuery<Product>({
+    queryKey: ['catalog', 'product', id],
+    queryFn: () => api.product(id),
+  })
+  const comments = useQuery<Page<Review>>({
+    queryKey: ['reviews', id, page],
+    queryFn: () => api.comments(id, { page, size: 10 }),
+    enabled: product.isSuccess,
+  })
 ```
 
 ### 3. HTTP 실패와 API 오류를 같은 오류 계약으로 전달하기
@@ -196,7 +200,7 @@ HTTP 상태, `ApiResponse.error`, 응답 본문의 파싱 가능 여부는 서�
 
 **대체안/회고**
 
-각 화면에서 오류를 해석하는 대신 전송 계층에서 형태를 통일했다. 다만 API client가 구분한 정보를 화면이 올바르게 활용하는 것은 별도 책임이다. 세션 초기화에서 네트워크 실패를 비로그인과 구분하는 동작은 아직 개선 대상이며, 이 사례가 그 문제까지 해결했다는 뜻은 아니다.
+각 화면에서 오류를 해석하는 대신 전송 계층에서 형태를 통일했다. 다만 API client가 구분한 정보를 화면이 올바르게 활용하는 것은 별도 책임이다. 세션 query는 401과 통신 장애를 구분하고 보호 경로는 재시도 상태를 제공한다. 상품·권한 등 서버의 업무 규칙 검증은 Backend의 책임이다.
 
 **코드**
 
@@ -243,65 +247,80 @@ async function request(path, options = {}) {
 }
 ```
 
-### 4. 보안 업데이트와 기존 Vue 동작의 호환성 함께 지키기
+### 4. React 전환에서 세션·개인 캐시·보호 경로 유지하기
 
 **문제**
 
-고정된 의존성 그래프에서 Vue·Vite·Vitest·sharp 및 전이 패키지의 보안 권고가 보고됐다. React 전환을 기다리는 동안에도 현재 Vue 웹을 유지해야 하므로 일괄 강제 업데이트로 동작을 바꾸는 접근은 적절하지 않았다.
+고객·관리자 화면을 모두 React로 옮기면서 세션 복원과 로그인 복귀, 계정별 주문, 관리자 접근 제한을 유지해야 했다. 세션 조회 장애를 비로그인으로 취급하거나 다른 계정의 캐시를 재사용하면 화면은 열려도 사용자 경계가 달라진다.
 
 **원인**
 
-애플리케이션 소스가 그대로여도 lockfile이 오래되면 알려진 취약 버전을 계속 설치한다. 사용처가 없는 Vue Test Utils도 beautifier 계열의 전이 의존성을 남겼으며, sharp는 이미지 처리용 native 라이브러리까지 영향을 받았다.
+기존 세션 초기화는 모든 오류를 null로 바꿨다. 새 query 캐시에는 로그인 사용자와 소유 리소스를 명시해야 하며, 상태 라이브러리만 바꾸고 계정 전환의 초기화 책임을 두지 않으면 개인 상태가 남는다.
 
 **해결**
 
-공식 권고와 Node·peer 호환 범위를 확인해 Vue 3·Vite 6·Vitest 4를 유지한 수정 버전을 적용했다. 사용하지 않는 테스트 유틸은 제거하고 이미지 도구의 실제 변환 경로를 유지했다. 의존성 검사에서 보통 이상 권고를 실패로 처리하도록 검사 명령도 추가했다.
+세션은 하나의 query로 공유하고 401만 비로그인으로 해석한다. 조회 장애는 재시도 화면으로 구분한다. 로그인·로그아웃에서는 기존 query를 비운 뒤 새 세션을 설정하며 개인 조회 key에는 계정 ID를 넣는다. 보호 경로는 확인 중/장애/비로그인/권한 부족을 분리하고 관리자 화면은 lazy/Suspense로 진입 뒤 로드한다. Vue 브리지 없이 모든 실제 라우트를 React로 교체했다.
 
 **결과**
 
-2026년 10월 31일 기준 전체·운영 의존성의 `npm audit` 보고 항목은 각각 0개가 됐다. 이는 변경 전 높음 8·보통 6 항목에 대한 알려진 보안 권고의 검사 결과이며, 실제 공격 차단 실험이나 모든 보안 위험의 부재를 뜻하지 않는다. 현재 화면·API·정적 자산은 유지했다.
+비회원의 원래 목적지를 보존해 로그인으로 연결하고 일반 회원은 관리자 화면/API에 진입하지 않는다. 가입·로그아웃·다른 계정 로그인 뒤 이전 회원의 화면 데이터를 재사용하지 않으며, 세션 조회 장애 뒤 재시도로 복원한다. 웹의 실제 서버 권한은 Backend가 판단한다. [이전 범위·검증과 남은 통합 과제](docs/plans/2026-10-31-react-migration.md)
 
 **대체안/회고**
 
-강제 audit fix나 peer 검사 생략 대신 호환 범위를 확인하고 lockfile을 갱신했다. lock 생성 중 발생한 npm 11.5.2의 peer 해석 오류는 격리된 npm 12.2.1로 처리해 전역 도구를 바꾸지 않았다. 새 권고가 생기면 다시 평가하며 보안 항목 감소를 앱 성능 향상으로 해석하지 않는다.
+별도 Vue/React 라우팅 브리지는 두 런타임·중복 상태·제거 비용을 남긴다. 현재 화면 규모에서는 공통 API·CSS·정적 자산을 유지하며 전체 라우트를 옮기는 방식을 선택했다. 공개 UI fixture 검증과 실제 Backend 통합 검증은 구분하며, 검증하지 않은 로딩 단축이나 접근 제어의 완전성을 주장하지 않는다.
 
 **코드**
 
-[의존성 명세](https://github.com/Pubburi/Frontend/blob/main/package.json) · [선정 근거와 적용 조건](docs/DEPENDENCIES.md)
+[세션 query](https://github.com/Pubburi/Frontend/blob/main/src/queries.ts) · [보호 경로](https://github.com/Pubburi/Frontend/blob/main/src/App.tsx) · [로그인과 캐시 교체](https://github.com/Pubburi/Frontend/blob/main/src/pages/AccountPages.tsx)
 
-```json
-{
-  "name": "pubburi-vue",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "test": "vitest run",
-    "test:browser": "playwright test",
-    "audit:deps": "npm audit --audit-level=moderate",
-    "check:images": "node scripts/check-images.mjs",
-    "optimize:images": "node scripts/optimize-images.mjs",
-    "preview": "vite preview",
-    "check": "bash scripts/check.sh"
-  },
-  "dependencies": {
-    "pinia": "^2.3.1",
-    "vue": "^3.5.42",
-    "vue-router": "^4.6.4"
-  },
-  "devDependencies": {
-    "@playwright/test": "1.64.1",
-    "@vitejs/plugin-vue": "^5.2.3",
-    "jsdom": "^24.1.3",
-    "sharp": "^0.35.5",
-    "vite": "^6.4.5",
-    "vitest": "^4.1.12"
-  },
-  "engines": {
-    "node": ">=24 <25"
+```ts
+export async function readSession(): Promise<User | null> {
+  try {
+    return await api.me()
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 401) return null
+    throw error
   }
+}
+export const useSession = () =>
+  useQuery({ queryKey: ['session'], queryFn: readSession, staleTime: Infinity })
+```
+
+```tsx
+function Guard({
+  mode,
+  children,
+}: {
+  mode: 'auth' | 'admin' | 'guest'
+  children: ReactNode
+}) {
+  const session = useSession()
+  const location = useLocation()
+  const [search] = useSearchParams()
+  if (session.isPending)
+    return <Loading label="로그인 상태를 확인하는 중입니다." />
+  if (session.isError)
+    return (
+      <Empty title="로그인 상태를 확인하지 못했습니다">
+        <button onClick={() => session.refetch()}>다시 시도</button>
+      </Empty>
+    )
+  if (mode === 'guest')
+    return session.data ? (
+      <Navigate to={safeRedirect(search.get('redirect'))} replace />
+    ) : (
+      children
+    )
+  if (!session.data)
+    return (
+      <Navigate
+        to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`}
+        replace
+      />
+    )
+  if (mode === 'admin' && session.data.role !== 'ADMIN')
+    return <Navigate to="/" replace />
+  return children
 }
 ```
 
@@ -311,10 +330,10 @@ async function request(path, options = {}) {
 
 | 영역 | 현재 기술 |
 |---|---|
-| 화면 | Vue 3, 로컬 CSS primitive |
-| 상태·라우팅 | Pinia, Vue Router |
+| 화면 | React 19, TypeScript, 로컬 CSS primitive |
+| 상태·라우팅 | TanStack Query 5, Zustand 5, React Router 7 |
 | 빌드 | Vite 6, Node.js 24, npm lockfile |
-| 테스트 | Vitest, jsdom |
+| 테스트 | TypeScript strict, Vitest, jsdom, Playwright Chromium |
 | 이미지 | WebP, sharp 기반 최적화 스크립트 |
 | CI | GitHub Actions · frontend-ci |
 
@@ -324,7 +343,7 @@ async function request(path, options = {}) {
 
 ~~~mermaid
 flowchart LR
-    Views["Vue 화면 · 공통 UI"] --> Stores["Pinia · Router"]
+    Views["React 화면 · 공통 UI"] --> Stores["React Router · Query · Zustand"]
     Stores --> Client["API client · credentials include"]
     Client --> Proxy["Vite /api proxy · 개발 환경"]
     Proxy --> Backend["Backend :9987"]
@@ -377,11 +396,11 @@ main은 PR·frontend-ci 성공·최신 main 반영·대화 해결을 요구합�
 ## 🗺️ 개발 계획
 
 - [x] [의존성 보안 경고 검토·수정 및 CI 검사](docs/DEPENDENCIES.md)
-- [ ] Vite·React·TypeScript·React Router·TanStack Query·Zustand로 전환
-- [ ] 기존 화면·라우팅·Pinia 상태·API 호출을 React 구조로 이전
-- [ ] 기존 API 계약·세션 로그인·정적 자산·고객/관리자 기능 유지
-- [ ] Vue 전용 테스트를 React에 맞게 전환하고 CI·문서 갱신
-- [ ] 주요 고객·관리자 흐름의 기능 동등성 확인
+- [x] Vite·React·TypeScript·React Router·TanStack Query·Zustand로 실제 라우트 이전
+- [x] 고객·관리자 화면과 상태·세션·장바구니·API 호출을 React 구조로 이전
+- [x] 기존 API·세션·저장 형식·CSS·정적 자산 유지 및 fixture 사용자 흐름 검증
+- [x] Vue 전용 테스트를 React 상태/계약 검증으로 전환하고 typecheck·CI·문서 갱신
+- [ ] 실제 Backend 통합·인수와 전체 기능 동등성 최종 확인
 - [ ] 취향 입력·맞춤 추천·추천 이유·피드백·검색 필터·찜 화면 구현
 
 기한은 **2027년 2월 5일**이며 P1·P2 모두 필수 목표입니다. 승인된 기획과 [프론트 작업 기준](AGENTS.md)에 따라 진행하고, 실제 완성 화면을 검증한 뒤 이미지를 추가합니다.

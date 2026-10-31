@@ -1,10 +1,10 @@
 # Frontend working guide
 
-- Current stack is Vue 3, Vite, Pinia and Vue Router. Approved migration target: Vite, React, TypeScript, React Router, TanStack Query and Zustand. Preserve feature parity and update this guide when migrated.
+- Current stack is Vite, React, TypeScript, React Router, TanStack Query and Zustand. All customer/admin routes use React; do not reintroduce a Vue bridge. Preserve the feature-parity checklist in docs/plans/2026-10-31-react-migration.md.
 - Keep API calls in src/services/api.js with credentials: include and existing /api contracts.
-- Preserve customer/admin state separation, lazy admin loading and product route query state.
+- Keep server/session data in TanStack Query with route parameters and account ownership in keys. Keep the raw pubburi-cart storage format in Zustand. Clear private query data on login/logout and preserve lazy admin loading and product URL state.
 - Keep local style.css primitives, ink/forest/gold/cream palette and WebP images.
-- Root validation: npm run check. Image tooling: npm run optimize:images.
+- Root validation: npm run check (including strict TypeScript, API/state unit tests and production Chromium flows). Image tooling: npm run optimize:images.
 - Do not commit node_modules/, dist/, credentials or .env. Update docs with changes.
 - Use PRs and Conventional Commits. Mobile implementation is separately owned.
 
