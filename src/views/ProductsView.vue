@@ -30,7 +30,7 @@
           <option value="name">이름순</option>
         </select>
       </label>
-      <button type="submit" class="btn btn-dark filter-submit" :disabled="ui.isPending('products')">검색하기</button>
+      <button type="submit" class="btn btn-dark filter-submit" :aria-busy="ui.isPending('products')">검색하기</button>
     </form>
 
     <div v-if="activeFilters.length" class="active-filters" aria-label="적용된 필터">
@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ProductCard from '../components/product/ProductCard.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
@@ -80,11 +80,17 @@ watch(
   async (query) => {
     const filters = parseProductQuery(query, categoryNames)
     Object.assign(form, { type: filters.type, q: filters.q, sort: filters.sort })
-    const result = await ui.run('products', () => catalog.loadProducts(filters))
-    loadError.value = result.ok ? null : result.error
+    await loadProducts(filters)
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => ui.cancelLatest('products'))
+
+async function loadProducts(filters) {
+  const result = await ui.runLatest('products', (isCurrent) => catalog.loadProducts(filters, isCurrent))
+  if (!result.stale) loadError.value = result.ok ? null : result.error
+}
 
 function routeQuery(page = 1) {
   return buildProductQuery(form, page)
@@ -95,8 +101,7 @@ function applyFilters() {
 }
 
 async function loadCurrent() {
-  const result = await ui.run('products', () => catalog.loadProducts(parseProductQuery(route.query, categoryNames)))
-  loadError.value = result.ok ? null : result.error
+  await loadProducts(parseProductQuery(route.query, categoryNames))
 }
 
 function loadPage(page) {

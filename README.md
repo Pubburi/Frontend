@@ -112,47 +112,68 @@ Pinia의 주문 action은 다음 순서로 로컬 상태를 변경한다.
     }
 ```
 
-### 2. 관리자 작업의 갱신 범위를 활성 탭에 한정하기
+### 2. 빠른 검색·상세 이동에서 최신 요청의 결과만 화면에 반영하기
 
 **문제**
 
-관리자 화면은 상품·매장·주문·후기·회원을 함께 다룬다. 한 영역을 변경한 뒤 다른 영역까지 다시 조회하거나, 고객 탐색 화면의 필터와 페이지를 관리 화면에서 공유하지 않도록 경계를 정해야 했다.
+검색 응답이 오기 전에 필터를 해제하면 URL은 바뀌었지만 새 상품 목록 요청이 누락됐다. 상세 조회 도중 목록으로 돌아가 다른 상품을 열어도 이전 조회가 끝날 때까지 새 상세를 읽지 못했다.
 
 **원인**
 
-고객 카탈로그의 검색 조건과 관리자 페이지의 조회 단위는 다르다. 상품 관리가 고객 카탈로그 상태를 재사용하면 고객 화면의 필터가 관리 목록에 영향을 줄 수 있고, 공통 전체 새로고침은 실제로 변경한 영역을 드러내지 못한다.
+쓰기 버튼의 중복 처리를 막는 `ui.run`을 읽기 전환에도 사용해 같은 키의 새 요청을 거절했다. 이 제한만 없애면 전역 catalog에 마지막으로 도착한 응답이 저장되므로, 이전 성공·실패가 현재 화면과 알림을 바꾸는 문제도 함께 해결해야 했다.
 
 **해결**
 
-고객용 `catalog`와 관리자용 `admin`을 별도 Pinia store로 두고 관리자 목록마다 페이지 상태를 소유하게 했다. 활성 탭의 조회 action만 선택하고, 주문 완료 같은 변경 action은 관련 주문 목록만 다시 불러온다.
+주문·후기 같은 쓰기는 기존 중복 실행 차단을 유지하고, 상품 목록·상세·후기 페이지 읽기에는 `runLatest`를 사용한다. 요청마다 버전을 발급하고 현재 버전인지 확인한 뒤 catalog·알림·로딩 상태를 변경한다. 상세 ID는 요청 시작 시 고정하며 화면을 떠날 때 해당 읽기 버전을 무효화한다. 검색 버튼은 조회 중에도 새 조건을 제출할 수 있게 했다.
 
 **결과**
 
-후기 탭의 새로고침은 후기 API를 선택하며 주문·회원 목록을 함께 요청하지 않는다. 주문 완료 후에도 갱신 범위가 주문 목록으로 한정된다. 이는 조회 책임과 상태 경계의 결과이며 실제 지연 시간이나 처리량의 개선 수치는 아직 제시하지 않는다.
+필터를 해제한 최신 URL의 상품을 읽고, 이전 응답이 늦게 도착해도 현재 목록·상세를 보존한다. 떠난 상세의 실패는 새 화면의 오류 알림으로 표시하지 않으며, 이전 요청의 종료가 현재 요청의 로딩 표시를 먼저 끄지 않는다. 이 결과는 응답 순서를 제어한 정확성 검증이며 네트워크 속도 개선 수치가 아니다. [재현 조건과 결과](docs/plans/2026-10-31-latest-product-requests.md)
 
 **대체안/회고**
 
-모든 목록을 한 번에 갱신하면 호출부는 단순하지만 변경 범위와 재조회 범위가 달라진다. 현재는 탭별 action을 명시하는 방식을 선택했다. 이 분리는 데이터 조회의 지연 로딩이며 관리자 화면 번들의 코드 분할을 뜻하지 않는다. 빠른 탭 전환의 응답 경쟁은 별도 개선 과제다.
+이전 요청을 전부 기다리는 방식은 사용자 의도를 누락하고, 키만 다르게 만드는 방식은 늦은 응답의 상태 덮어쓰기를 막지 못한다. 전송 취소만으로는 이미 완료된 응답·후속 작업의 반영을 보장할 수 없어 적용 시점의 버전 검사를 선택했다. 현재는 이전 GET의 전송을 취소하지 않으므로 서버 작업이 계속될 수 있다. 관리자 조회·세션 초기화와 후기 쓰기 이후 재조회는 별도 경계이며 React 전환에서는 같은 사용자 결과를 유지해야 한다.
 
 **코드**
 
-[관리자 조회·변경 action](https://github.com/Pubburi/Frontend/blob/main/src/stores/admin.js) · [독립된 고객 카탈로그](https://github.com/Pubburi/Frontend/blob/main/src/stores/catalog.js)
+[읽기 실행·무효화](https://github.com/Pubburi/Frontend/blob/main/src/stores/ui.js) · [catalog 적용 경계](https://github.com/Pubburi/Frontend/blob/main/src/stores/catalog.js) · [상세 수명주기](https://github.com/Pubburi/Frontend/blob/main/src/views/ProductDetailView.vue)
 
 ```js
-    async loadActive(params = {}) {
-      if (this.tab === 'products') return this.loadProducts(params)
-      if (this.tab === 'markets') return this.loadMarkets(params)
-      if (this.tab === 'orders') return this.loadOrders(params)
-      if (this.tab === 'comments') return this.loadComments(params)
-      return this.loadUsers(params)
-    }
+    async runLatest(key, action, options = {}) {
+      const version = ++this.requestVersion
+      this.latestVersions[key] = version
+      this.pending[key] = true
+      const isCurrent = () => this.latestVersions[key] === version
+      if (options.clear !== false) this.clear()
+      try {
+        const data = await action(isCurrent)
+        if (!isCurrent()) return { ok: false, stale: true }
+        if (options.success) this.setStatus(options.success)
+        return { ok: true, data }
+      } catch (error) {
+        if (!isCurrent()) return { ok: false, stale: true }
+        this.setError(error)
+        return { ok: false, error }
+      } finally {
+        if (isCurrent()) delete this.pending[key]
+      }
+    },
+    cancelLatest(key) {
+      this.latestVersions[key] = ++this.requestVersion
+      delete this.pending[key]
+    },
 ```
 
+응답을 받은 catalog도 현재 요청인지 검사한 뒤 상태에 반영한다.
+
 ```js
-    async completeOrder(id) {
-      await api.completeOrder(id)
-      await this.loadOrders({ page: this.ordersPage.page })
-    }
+    async loadProducts(params = {}, isCurrent = () => true) {
+      const filters = { ...this.filters, ...params }
+      this.filters = filters
+      const page = await api.products(filters)
+      if (isCurrent()) this.productsPage = page
+      return page
+    },
 ```
 
 ### 3. HTTP 실패와 API 오류를 같은 오류 계약으로 전달하기
