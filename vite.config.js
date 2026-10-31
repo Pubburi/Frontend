@@ -1,11 +1,15 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { configDefaults } from 'vitest/config'
 
 export default defineConfig(({ mode }) => ({
   plugins: [vue()],
   test: {
     environment: 'jsdom',
     globals: true,
+    exclude: [...configDefaults.exclude, 'tests/browser/**'],
+    reporters: ['default', 'junit'],
+    outputFile: { junit: 'reports/unit.xml' },
   },
   server: {
     proxy: {
