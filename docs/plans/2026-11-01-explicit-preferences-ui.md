@@ -18,13 +18,25 @@
 
 첫 GET이 성공하기 전에는 저장 폼을 열지 않는다. 실패를 미입력 취향으로 바꾸어 PUT하지 않으며 명시적 다시 불러오기로 재시도한다. 새 진입은 현재 서버 값을 읽은 뒤 편집 초기값을 확정하고, 편집 중에는 query를 비활성화해 재연결/재조회가 입력 상태를 unmount하지 않도록 한다. 최신 값은 화면을 떠났다가 다시 진입해 읽는다.
 
-개인 query key는 계정 ID를 포함하고 기존 로그인/로그아웃의 query 초기화를 유지한다. 쓰기는 계정별 mutation key와 동기 pending 검사로 중복 전송을 막는다. 저장 중 화면을 나갔다 돌아오면 해당 계정의 기존 쓰기가 끝난 뒤 새 GET을 수행해 초기 읽기/쓰기의 경쟁을 피한다. 전송 중 새 입력을 허용하되 성공 응답의 정규화는 현재 초안이 제출한 객체와 동일할 때만 반영한다.
+개인 query key는 계정 ID를 포함하고 기존 로그인/로그아웃의 query 초기화를 유지한다. 쓰기는 개인 query cache와 별개인 계정별 미완료 HTTP 요청 소유 기록으로 중복 전송을 막는다. 저장 중 화면을 나갔다 돌아오면 해당 계정의 기존 HTTP 응답 정착 뒤 새 GET을 수행해 초기 읽기/쓰기의 경쟁을 피한다. 전송 중 새 입력을 허용하되 성공 응답의 정규화는 현재 초안이 제출한 객체와 동일할 때만 반영한다.
 
 늦은 PUT은 캡처한 session 객체가 현재 session과 같은 경우에만 개인 캐시를 갱신한다. 화면을 떠났으면 로컬 입력/알림은 갱신하지 않는다. 다른 계정으로 로그인한 뒤 이전 성공이 private cache를 다시 만들거나 이전 401이 새 계정을 로그아웃시키지 않는다. 현재 계정의 GET/PUT 401은 그 계정의 개인 query와 세션을 비우고 원래 경로를 보존한 로그인으로 연결한다. 네트워크/503/필드 오류를 401이나 기본값으로 해석하지 않는다.
 
 선호는 localStorage에 저장하지 않는다. 화면을 떠난 미저장 초안의 영구 보관, 브라우저 여러 창의 계정 동기화/동시 편집, ETag 충돌 해결과 요청 취소는 이번 증분이 아니다. Backend의 실제 권한/epoch 검증이 서버 저장을 결정한다.
 
-공식 참고: [TanStack mutation](https://tanstack.com/query/latest/docs/framework/react/guides/mutations), [mutation key별 진행 상태](https://tanstack.com/query/latest/docs/framework/react/reference/useIsMutating). 기존 라이브러리/lockfile과 global retry:false는 유지했다.
+공식 참고: [TanStack query key](https://tanstack.com/query/latest/docs/framework/react/guides/query-keys), [명시적 query 비활성화](https://tanstack.com/query/latest/docs/framework/react/guides/disabling-queries). 기존 라이브러리/lockfile과 global retry:false는 유지했다.
+
+### 독립 검토: 같은 계정 재로그인과 미완료 요청
+
+초기 구현 `215fb2f`의 mutationCache 기반 pending은 로그인/로그아웃의 `client.clear()`에서 사라졌다. 이미 서버 guard를 통과한 A의 PUT이 계속 실행되는 동안 같은 A로 다시 로그인하면 새 GET이 이전 값을 읽어 폼을 열었고, 이후 PUT이 반영되어도 새 편집 초기값이 이전 값에 고정됐다. 이는 B 계정에 늦은 결과가 섞이는 경계와 다르다.
+
+동일 production Chromium/자체 API fixture에서 **새 세션의 GET/폼 정착→보류한 이전 PUT 해제** 순서를 고정했다. 수정 전 서버 값은 12.5인데 새 입력은 빈값으로 남는 결과 위반을 **1/1** 재현했다. 새 GET이 실행되기 전에 gate를 해제했던 준비 시도는 이 분모에 포함하지 않는다. 수정 후 같은 흐름의 위반은 **0/1**이다. 고정 정확성 시나리오이며 실제 사용자 오류율·시간 성능 개선이 아니다.
+
+수정은 Zustand의 계정별 메모리 소유 Map에 요청 토큰만 두고, 해당 HTTP 요청의 finally에서 자기 토큰만 해제한다. 개인 취향/인증값을 보관하지 않으며 auth query/mutation cache 초기화를 막지 않는다. 동일 A가 재로그인해도 이전 HTTP 응답 정착을 기다렸다가 새 GET을 수행하고, B는 독립적으로 읽고 편집한다. 이전 세션의 결과/알림을 새 세션에 복사하지 않는다. unit은 cache clear와 소유자만 해제하는 경계를 확인하며 브라우저는 새 세션의 최종 값까지 검증한다.
+
+실제 HTTP 쓰기는 기존 API client를 직접 await하고 읽기/저장 응답의 cache는 Query에 둔다. 외부 연결 상태를 근거로 전송을 미루는 별도 mutation 큐를 두지 않아, 인터넷이 끊겨도 reachable localhost API의 실제 응답으로 저장/실패를 판정한다. 브라우저 offline/online 이벤트와 로컬 API 503 응답을 조합해 입력 보존·소유 해제·명시적 다음 저장만 가능한지 확인한다. 온라인 이벤트만으로 자동 재전송하지 않는다.
+
+이는 같은 웹 실행 내 SPA 이동·로그아웃/로그인의 요청 수명 보존이다. 브라우저 종료/전체 페이지 재로딩을 넘어선 미확정 서버 커밋의 조정·서버 작업 취소·다른 창 충돌의 보장은 아니다.
 
 ## 검증
 
@@ -45,6 +57,8 @@ npm run check
 - 비회원의 원래 경로 로그인 복귀와 현재 private GET 401의 만료 처리.
 
 최초 두 계정 경합 검사에서 로그인 링크를 버튼으로 찾은 검증 준비 오류를 수정했다. 앱 결함/성능 수치로 집계하거나 기다림·재시도로 숨기지 않았다. 수정한 선택 9개 흐름은 통과했다. 최종 `npm run check`는 Node24.22.1에서 저장소 검사·locked 설치·audit 0·이미지·strict TypeScript·단위 **39개**·프로덕션 빌드·Chromium **41개**를 통과했다. 기존 32개 브라우저 흐름과 미처리 API/pageerror 검사도 유지했다. 이후 source 변경 없이 문서/인계만 정리하고 파일별 dist SHA-256을 ignored 인계에 남겼다. fixture는 직접 작성한 시연 값이며 실제 취향/추천 품질 성과가 아니다.
+
+이후 위 동일 계정 재로그인 경계를 수정하고 관련 단위 2개·취향 브라우저 10개를 먼저 통과했다. HTTP 직접 실행/로컬 복구 경계까지 정리한 최종 `npm run check`는 Node24.22.1에서 저장소 검사·locked 설치·audit 0·이미지·strict TypeScript·단위 **41개**·프로덕션 빌드·Chromium **43개**를 통과했다. 기존 다른 계정 late 응답 격리와 32개 기존 흐름을 유지했고 미처리 API/pageerror는 없었다. 이후 source 변경 없이 인계만 정리하고 최종 dist를 다시 동결했다. 초기 UI 검사와 최종 수정 검사를 구분한다.
 
 ## 실제 통합 인계·대표 사례
 

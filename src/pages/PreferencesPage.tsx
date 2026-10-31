@@ -1,21 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  useIsMutating,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '../services/api'
 import { useSession } from '../queries'
 import { useUi } from '../state/ui'
+import { usePreferenceWrites } from '../state/preferenceWrites'
 import { categories } from '../catalog'
 import { Confirm, Empty, Loading } from '../components/ui'
 import { TagEditor } from '../components/TagEditor'
 import {
   buildPreferencePayload,
   emptyPreferences,
-  preferenceMutationKey,
   preferenceQueryKey,
   preferencesToDraft,
   type PreferenceDraft,
@@ -36,11 +31,7 @@ export function PreferencesPage() {
 }
 function PreferenceEditor({ user }: { user: User }) {
   const client = useQueryClient()
-  const pending =
-    useIsMutating({
-      mutationKey: preferenceMutationKey(user.id),
-      exact: true,
-    }) > 0
+  const pending = usePreferenceWrites((state) => state.owners.has(user.id))
   const [initial, setInitial] = useState<ExplicitPreferences | null>(null)
   const query = useQuery({
     queryKey: preferenceQueryKey(user.id),
@@ -90,7 +81,13 @@ function PreferenceEditor({ user }: { user: User }) {
           </button>
         </Empty>
       ) : (
-        <Loading label="내 취향을 불러오는 중입니다." />
+        <Loading
+          label={
+            pending
+              ? '진행 중인 취향 저장을 기다리는 중입니다.'
+              : '내 취향을 불러오는 중입니다.'
+          }
+        />
       )}
     </section>
   )
@@ -115,15 +112,9 @@ function PreferenceForm({
       mounted.current = false
     }
   }, [])
-  const mutationKey = preferenceMutationKey(user.id)
-  const mutation = useMutation({
-    mutationKey,
-    mutationFn: api.replaceOwnPreferences,
-  })
-  const pending = useIsMutating({ mutationKey, exact: true }) > 0
+  const pending = usePreferenceWrites((state) => state.owners.has(user.id))
   const sameSession = () => client.getQueryData(['session']) === user
   async function save(surveyStatus: SurveyStatus) {
-    if (client.isMutating({ mutationKey, exact: true })) return
     const submitted = draft
     let payload: ExplicitPreferences
     try {
@@ -135,9 +126,11 @@ function PreferenceForm({
       ui.error(error)
       return
     }
+    const owner = usePreferenceWrites.getState().begin(user.id)
+    if (!owner) return
     ui.clear()
     try {
-      const saved = await mutation.mutateAsync(payload)
+      const saved = await api.replaceOwnPreferences(payload)
       if (!sameSession()) return
       client.setQueryData(preferenceQueryKey(user.id), saved)
       if (!mounted.current) return
@@ -159,6 +152,8 @@ function PreferenceForm({
         client.setQueryData(['session'], null)
       }
       if (mounted.current) ui.error(error)
+    } finally {
+      usePreferenceWrites.getState().finish(user.id, owner)
     }
   }
   function submit(event: FormEvent) {

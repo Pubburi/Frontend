@@ -14,8 +14,6 @@ export interface PreferenceDraft {
 }
 export const preferenceQueryKey = (userId: string) =>
   ['account', userId, 'preferences'] as const
-export const preferenceMutationKey = (userId: string) =>
-  ['preferences-replace', userId] as const
 export const emptyPreferences = (
   surveyStatus: SurveyStatus,
 ): ExplicitPreferences => ({

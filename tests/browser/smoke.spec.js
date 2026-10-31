@@ -1021,6 +1021,44 @@ test('취향 저장 중 같은 경로에 재진입하면 완료 뒤 최신값을
   } finally { release() }
 })
 
+test('취향 저장 중 같은 계정으로 다시 로그인해도 완료 뒤 최신값으로 편집', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let writes = 0
+  await page.route('**/api/users/me/preferences', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes += 1
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/preferences')
+    await page.getByLabel('선호 도수 (%)', { exact: true }).fill('12.5')
+    await page.getByRole('button', { name: '취향 저장', exact: true }).click()
+    await expect.poll(() => writes).toBe(1)
+    await page.getByRole('link', { name: '마이페이지', exact: true }).click()
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+    await page.getByRole('link', { name: '로그인', exact: true }).click()
+    await page.getByLabel('아이디', { exact: true }).fill('member')
+    await page.getByLabel('비밀번호', { exact: true }).fill('fixture-password')
+    await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+    await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('form[aria-label="내 취향 설정"]') || document.querySelector('[role="status"][aria-label="진행 중인 취향 저장을 기다리는 중입니다."]'))
+    const premature = await page.getByRole('form', { name: '내 취향 설정' }).isVisible()
+    if (premature) await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('')
+    const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/users/me/preferences' && result.request().method() === 'PUT')
+    release()
+    await (await response).finished()
+    await expect.poll(() => api.preferences.member?.softPreferences.targetAbvPercent).toBe(12.5)
+    await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('12.5')
+    expect(premature).toBe(false)
+    expect(writes).toBe(1)
+    expect(api.calls.filter((call) => call.method === 'GET' && call.path === '/users/me/preferences')).toHaveLength(2)
+    await expect(page.getByRole('status').filter({ hasText: '취향이 저장되었습니다.' })).toHaveCount(0)
+  } finally { release() }
+})
+
 test('비회원은 취향 API를 읽지 않고 원래 취향 경로로 로그인 복귀', async ({ page, api }) => {
   await page.goto('/preferences')
   await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/preferences')
@@ -1034,6 +1072,27 @@ test('취향 API의 만료 응답은 기본값으로 저장하지 않고 다시 
   await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/preferences')
   await expect(page.getByRole('button', { name: '취향 저장', exact: true })).toHaveCount(0)
   expect(api.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
+})
+
+test('외부 연결 상태와 무관하게 로컬 취향 API의 실제 전송 결과로 복구', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let writes = 0
+  await page.route('**/api/users/me/preferences', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes += 1
+    await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+  })
+  await page.goto('/preferences')
+  await page.getByLabel('선호 도수 (%)', { exact: true }).fill('12.5')
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+  await page.getByRole('button', { name: '취향 저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('button', { name: '취향 저장', exact: true })).toBeEnabled()
+  await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('12.5')
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  expect(writes).toBe(1)
+  expect(api.preferences.member).toBeUndefined()
 })
 
 test('주문 내역은 확정·추정·미확인 금액과 삭제 상품을 구분', async ({ page, api }) => {
