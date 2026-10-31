@@ -30,6 +30,10 @@ jobs:
         run: python3 scripts/check_repository.py
       - name: Install locked dependencies
         run: npm ci
+      - name: Audit locked dependencies
+        run: npm run audit:deps
+      - name: Verify native image tooling
+        run: npm run check:images
       - name: Test
         run: npm run test
       - name: Build

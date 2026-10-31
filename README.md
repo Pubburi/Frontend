@@ -49,7 +49,7 @@
 | 화면 | Vue 3, 로컬 CSS primitive |
 | 상태·라우팅 | Pinia, Vue Router |
 | 빌드 | Vite 6, Node.js 24, npm lockfile |
-| 테스트 | Vitest, Vue Test Utils, jsdom |
+| 테스트 | Vitest, jsdom |
 | 이미지 | WebP, sharp 기반 최적화 스크립트 |
 | CI | GitHub Actions · frontend-ci |
 
@@ -99,7 +99,7 @@ npm run optimize:images
 npm run check
 ~~~
 
-저장소 검사, lockfile 기반 설치, 기존 Vue 테스트와 프로덕션 빌드를 실행합니다. CI도 같은 테스트·빌드를 수행합니다.
+저장소 검사, lockfile 기반 설치, 의존성 보안 검사, 이미지 변환 확인, 기존 Vue 테스트와 프로덕션 빌드를 실행합니다. CI도 같은 검증을 수행합니다.
 
 main은 PR·frontend-ci 성공·최신 main 반영·대화 해결을 요구합니다. 필수 승인은 0명이고 관리자에게도 적용합니다. Squash merge 뒤 작업 브랜치를 정리합니다.
 
@@ -109,7 +109,7 @@ main은 PR·frontend-ci 성공·최신 main 반영·대화 해결을 요구합�
 
 ## 🗺️ 개발 계획
 
-- [ ] [이전한 의존성의 보안 경고 검토·업데이트](docs/DEPENDENCIES.md)
+- [x] [의존성 보안 경고 검토·수정 및 CI 검사](docs/DEPENDENCIES.md)
 - [ ] Vite·React·TypeScript·React Router·TanStack Query·Zustand로 전환
 - [ ] 기존 화면·라우팅·Pinia 상태·API 호출을 React 구조로 이전
 - [ ] 기존 API 계약·세션 로그인·정적 자산·고객/관리자 기능 유지
