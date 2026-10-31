@@ -7,7 +7,7 @@ README는 실제 구현에서 독립적으로 설명할 수 있는 사례 4개�
 | FE-CS01 | 프레임워크 전환 중 장바구니 저장 계약 보존 | src/state/cart.ts, src/state/cart.test.ts, src/pages/AccountPages.tsx | Vue raw 배열을 같은 pubburi-cart 키에서 복원·검증하며 실패 보존/성공 후 초기화를 React에서 확인. 저장소 getter/읽기/쓰기 차단에도 메모리와 성공 주문 결과를 유지하고 보관 제약을 분리 안내. 서버 멱등성·계정 병합·보관 차단 중 새로고침 복원은 후속. | 기존 브라우저 저장 경계 소재를 유지하며 라이브러리 변경의 실제 호환 문제와 구현을 보완했다. |
 | FE-CS02 | 경로별 서버 상태와 최신 응답 격리 | src/pages/CatalogPages.tsx, tests/browser/smoke.spec.js, docs/plans/2026-10-31-latest-product-requests.md | 과거 Vue의 2/2→0/2 재현 기록을 보존하고 React에서도 같은 게이트 시나리오를 검증. Query key에 조건/상품/페이지를 포함하고 이전 응답/오류를 분리. 전송 취소·시간 성능 개선은 아님. | 기존 요청 경쟁 소재를 실제 React 소스로 갱신하고 수명주기/상태 소유와 대안을 설명한다. |
 | FE-CS03 | 삭제 처리 중 확인창의 키보드 포커스 보존 | src/components/ui.tsx, tests/browser/smoke.spec.js, docs/plans/2026-11-01-pending-dialog-focus.md | 일반/좁은 웹의 응답 보류·활성 버튼 0개·실패 뒤 복구에서 실제 포커스 이탈을 재현하고 capture 수명/최신 callback/자체 포커스로 수정. 전체 보조기술·중첩 모달·삭제된 trigger 대체 복귀는 별도. | 기존 API 오류 계약 정리보다 파괴적 작업의 비동기/DOM 경계·실제 원인·키보드 복구·구현 대안·재현 근거가 구체적이어서 세 번째를 교체했다. |
-| FE-CS04 | 세션·개인 캐시·보호 경로를 유지한 React 이전 | src/App.tsx, src/queries.ts, src/pages/AccountPages.tsx, docs/plans/2026-10-31-react-migration.md | 전 라우트 React·관리자 lazy/Suspense·계정 ID key·로그인/logout 캐시 초기화, 가입/계정 전환·권한·장애 fixture 검증. 실제 Backend/MySQL의 선택한 가입·후기·주문·세션·관리자 읽기를 추가 확인했고 전체 C04·최종 인수는 별도. | 단순 보안 패키지 갱신보다 실제 계정/저장/수명주기 경계·브리지 대안·호환 검증이 드러나 네 번째를 교체했다. |
+| FE-CS04 | 인증 캐시 초기화와 진행 중인 취향 쓰기의 수명 분리 | src/state/preferenceWrites.ts, src/pages/PreferencesPage.tsx, docs/plans/2026-11-01-explicit-preferences-ui.md | 초기 구현215fb2f의 동일 계정 재로그인 불일치1/1→수정6b96411의0/1은 고정 fixture 정확성. 실제 MySQL 사용자 행 잠금·SPA 재로그인에서 원래 PUT200/새 GET13.75를 별도 확인. 전체 reload·서버 작업 취소·다중 창/자연 부하 보장 아님. | 기존 React 이전 소개보다 캐시와 HTTP 수명의 경계·구체적 원인·대안·구현 기여·독립 실제 DB 확인이 강해 네 번째만 교체했다. 실제 운영 사용자의 부재로 재현된 초기 구현 결함을 자동 제외하지 않는다. |
 
 ## 선정에서 제외한 주장
 
@@ -17,7 +17,9 @@ README는 실제 구현에서 독립적으로 설명할 수 있는 사례 4개�
 
 ## 더 강한 사례의 확보·교체
 
-2026-11-01 R01 명시취향 입력은 개인 GET/PUT·선호/필수 범위·null/[]/0·계정 전환과 늦은 응답의 소유를 구현했다. [범위·검증·한계](plans/2026-11-01-explicit-preferences-ui.md)는 새 입력 기능의 실제 근거이며 추천 품질/시간 성능이나 과거 장애 성과가 아니다. 기존 계정/캐시·비동기 사례와 겹치고 더 강한 독립적인 개선을 입증한 자료가 아직 없어 README 현재 기능만 추가하고 네 사례/순서를 유지했다.
+2026-11-01 실제 DB 근거 추가 후 FE-CS04를 **인증 캐시 초기화와 진행 중인 취향 쓰기의 수명 분리**로 교체했다. 초기 R01 검토 때는 기존 계정/비동기 소재와 겹친다고 보류했지만, 동일 A의 cache.clear→계속 중인 HTTP→새 GET의 원인과 토큰 분리/기존 보안 초기화 보존이라는 선택, 고정 재현1/1→0/1에 실제 사용자 행 잠금/SPA 재로그인 확인이 더해져 기존 네 번째보다 구체적인 채용 소재라고 판단했다. 자연 부하·사용자 오류율·시간 성능으로 바꾸지 않았으며 다른 세 사례/순서·총 네 개는 그대로다. 이전 React 설계·검증의 원문은 아래 역사 기록과 기존 이전 계획에 보존한다.
+
+2026-11-01 R01 명시취향 입력은 개인 GET/PUT·선호/필수 범위·null/[]/0·계정 전환과 늦은 응답의 소유를 구현했다. [범위·검증·한계](plans/2026-11-01-explicit-preferences-ui.md)는 새 입력 기능의 실제 근거이며 추천 품질/시간 성능이나 과거 장애 성과가 아니다. 초기 fixture 단계에서는 기존 계정/캐시·비동기 사례와 겹친다고 보아 README 현재 기능만 추가하고 사례 교체를 보류했다. 이 초기 판단은 위 실제 DB 근거 추가 후 FE-CS04 교체로 갱신했다.
 
 2026-11-01 F03 관리자 특성 편집은 null/검수된 빈 태그·출처·전체 교체·상품 전환 초안 소유를 구현했다. [기능/검증 기록](plans/2026-11-01-admin-product-features.md)은 새 계약의 실제 구현과 검증이며 과거 장애·시간 개선을 주장하지 않는다. 기존 네 사례보다 더 강한 독립적 문제 해결의 근거가 아직 없으므로 README 현재 기능에만 추가하고 네 사례·순서를 보존했다.
 
@@ -36,3 +38,85 @@ README는 실제 구현에서 독립적으로 설명할 수 있는 사례 4개�
 - 더 강한 사례 하나가 생기면 해당 사례부터 즉시 교체한다. 네 개가 모일 때까지 기다리지 않고, 교체 근거가 없는 나머지 내용·순서는 보존한다. 최종 README는 항상 4개를 유지한다.
 - 성능 과제는 변경 전에 기준 커밋·동일 입력/부하/환경·워밍업·반복·제외 조건을 정하고 실제 기준값을 측정한다. 변경 후 원값·표본 수·중앙값/분포·절대 차이·개선율·실패/누락·한계를 남긴다. 0 기준값의 상대 개선율이나 잡음 수준 차이는 개선 성과로 쓰지 않는다.
 - 테스트·CI 수치와 audit 항목 수는 정확성/보안 점검 근거로만 관리하고 앱 성능 수치로 바꾸지 않는다. README에 회귀 검증 수·목록·CI 집계를 옮기지 않는다.
+
+
+## 이전 FE-CS04 원문 보존 · React 이전
+
+3b9647b의 README 네 번째 사례 원문이다. 현재 대표 사례는 위 선정 표를 따르며, React 설계/이전 기여를 삭제하지 않고 역사 기록으로 보존한다.
+
+### 4. React 전환에서 세션·개인 캐시·보호 경로 유지하기
+
+**문제**
+
+고객·관리자 화면을 모두 React로 옮기면서 세션 복원과 로그인 복귀, 계정별 주문, 관리자 접근 제한을 유지해야 했다. 세션 조회 장애를 비로그인으로 취급하거나 다른 계정의 캐시를 재사용하면 화면은 열려도 사용자 경계가 달라진다.
+
+**원인**
+
+기존 세션 초기화는 모든 오류를 null로 바꿨다. 새 query 캐시에는 로그인 사용자와 소유 리소스를 명시해야 하며, 상태 라이브러리만 바꾸고 계정 전환의 초기화 책임을 두지 않으면 개인 상태가 남는다.
+
+**해결**
+
+세션은 하나의 query로 공유하고 401만 비로그인으로 해석한다. 조회 장애는 재시도 화면으로 구분한다. 로그인·로그아웃에서는 기존 query를 비운 뒤 새 세션을 설정하며 개인 조회 key에는 계정 ID를 넣는다. 보호 경로는 확인 중/장애/비로그인/권한 부족을 분리하고 관리자 화면은 lazy/Suspense로 진입 뒤 로드한다. Vue 브리지 없이 모든 실제 라우트를 React로 교체했다.
+
+**결과**
+
+비회원의 원래 목적지를 보존해 로그인으로 연결하고 일반 회원은 관리자 화면/API에 진입하지 않는다. 가입·로그아웃·다른 계정 로그인 뒤 이전 회원의 화면 데이터를 재사용하지 않으며, 세션 조회 장애 뒤 재시도로 복원한다. 웹의 실제 서버 권한은 Backend가 판단한다. [이전 범위·검증과 남은 통합 과제](docs/plans/2026-10-31-react-migration.md)
+
+**대체안/회고**
+
+별도 Vue/React 라우팅 브리지는 두 런타임·중복 상태·제거 비용을 남긴다. 현재 화면 규모에서는 공통 API·CSS·정적 자산을 유지하며 전체 라우트를 옮기는 방식을 선택했다. 공개 UI fixture 검증과 실제 Backend 통합 검증은 구분하며, 검증하지 않은 로딩 단축이나 접근 제어의 완전성을 주장하지 않는다.
+
+**코드**
+
+[세션 query](https://github.com/Pubburi/Frontend/blob/main/src/queries.ts) · [보호 경로](https://github.com/Pubburi/Frontend/blob/main/src/App.tsx) · [로그인과 캐시 교체](https://github.com/Pubburi/Frontend/blob/main/src/pages/AccountPages.tsx)
+
+```ts
+export async function readSession(): Promise<User | null> {
+  try {
+    return await api.me()
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 401) return null
+    throw error
+  }
+}
+export const useSession = () =>
+  useQuery({ queryKey: ['session'], queryFn: readSession, staleTime: Infinity })
+```
+
+```tsx
+function Guard({
+  mode,
+  children,
+}: {
+  mode: 'auth' | 'admin' | 'guest'
+  children: ReactNode
+}) {
+  const session = useSession()
+  const location = useLocation()
+  const [search] = useSearchParams()
+  if (session.isPending)
+    return <Loading label="로그인 상태를 확인하는 중입니다." />
+  if (session.isError)
+    return (
+      <Empty title="로그인 상태를 확인하지 못했습니다">
+        <button onClick={() => session.refetch()}>다시 시도</button>
+      </Empty>
+    )
+  if (mode === 'guest')
+    return session.data ? (
+      <Navigate to={safeRedirect(search.get('redirect'))} replace />
+    ) : (
+      children
+    )
+  if (!session.data)
+    return (
+      <Navigate
+        to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`}
+        replace
+      />
+    )
+  if (mode === 'admin' && session.data.role !== 'ADMIN')
+    return <Navigate to="/" replace />
+  return children
+}
+```
