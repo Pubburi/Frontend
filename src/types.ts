@@ -40,6 +40,22 @@ export interface User {
   role: 'USER' | 'ADMIN'
   stamps?: number
 }
+export type SurveyStatus = 'NOT_STARTED' | 'SKIPPED' | 'COMPLETED'
+export interface ExplicitPreferences {
+  surveyStatus: SurveyStatus
+  softPreferences: {
+    categories: string[] | null
+    tasteTags: string[] | null
+    aromaTags: string[] | null
+    targetAbvPercent: number | null
+  }
+  hardConstraints: {
+    minPriceKrw: number | null
+    maxPriceKrw: number | null
+    minAbvPercent: number | null
+    maxAbvPercent: number | null
+  }
+}
 export interface Review {
   id: number
   productId: number

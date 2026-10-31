@@ -11,12 +11,13 @@ const pageOf = (items, size = 12) => ({
 const success = (data) => ({ data, message: 'ok', error: null })
 const failure = (code) => ({ data: null, message: null, error: { code, message: code } })
 const unknownFeatures = (productId) => ({ productId, volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null })
+const emptyPreference = (surveyStatus = 'NOT_STARTED') => ({ surveyStatus, softPreferences: { categories: null, tasteTags: null, aromaTags: null, targetAbvPercent: null }, hardConstraints: { minPriceKrw: null, maxPriceKrw: null, minAbvPercent: null, maxAbvPercent: null } })
 
 const test = base.extend({
   api: [async ({ page }, use) => {
     const state = {
       user: null, catalogFailures: 0, sessionFailures: 0, orderFailures: 0,
-      catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {},
+      catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {}, preferences: {},
       users: [
         { id: 'member', name: '시험회원', role: 'USER', stamps: 3 },
         { id: 'other', name: '다른회원', role: 'USER', stamps: 0 },
@@ -62,6 +63,15 @@ const test = base.extend({
           status: state.user ? 200 : 401,
           json: state.user ? success(state.user) : failure('UNAUTHORIZED'),
         })
+        return
+      }
+      if (path === '/users/me/preferences' && ['GET', 'PUT'].includes(method)) {
+        if (!state.user) { await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') }); return }
+        if (method === 'PUT') {
+          const normalize = (tags) => tags === null ? null : tags.map((tag) => tag.trim().toLowerCase()).sort()
+          state.preferences[state.user.id] = { ...body, softPreferences: { ...body.softPreferences, categories: body.softPreferences.categories?.toSorted() ?? null, tasteTags: normalize(body.softPreferences.tasteTags), aromaTags: normalize(body.softPreferences.aromaTags) } }
+        }
+        await route.fulfill({ json: success(state.preferences[state.user.id] ?? emptyPreference()) })
         return
       }
       if (request.method() === 'GET' && path === '/products') {
@@ -833,6 +843,197 @@ test('관리자 회원 변경·자기 삭제 차단·후기 삭제', async ({ pa
   await review.getByRole('button', { name: '삭제', exact: true }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click()
   await expect(review).toHaveCount(0)
+})
+
+test('마이페이지에서 명시취향을 저장·재편집하고 건너뛰기와 초기화를 구분', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.goto('/profile')
+  await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+  await expect(page).toHaveURL('/preferences')
+  const form = page.getByRole('form', { name: '내 취향 설정' })
+  await expect(page.getByText('아직 입력하지 않음', { exact: true })).toBeVisible()
+  await expect(form.getByLabel('최대 가격 (원)', { exact: true })).toHaveValue('')
+  await form.getByLabel('주종 선호 상태').selectOption('tags')
+  await form.getByRole('checkbox', { name: '탁주', exact: true }).check()
+  await form.getByRole('checkbox', { name: '약 · 청주', exact: true }).check()
+  await form.getByLabel('맛 태그 확인 상태').selectOption('tags')
+  await form.getByLabel('맛 태그 1', { exact: true }).fill('OWNED\nFIXTURE')
+  await form.getByLabel('향 태그 확인 상태').selectOption('empty')
+  await form.getByLabel('선호 도수 (%)', { exact: true }).fill('80.25')
+  await form.getByLabel('최소 가격 (원)', { exact: true }).fill('0')
+  await form.getByLabel('최대 가격 (원)', { exact: true }).fill('0')
+  await form.getByLabel('최소 도수 (%)', { exact: true }).fill('0')
+  await form.getByLabel('최대 도수 (%)', { exact: true }).fill('10.5')
+  await form.getByRole('button', { name: '취향 저장', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('취향이 저장되었습니다.')
+  expect(api.preferences.member).toEqual({ surveyStatus: 'COMPLETED', softPreferences: { categories: ['약 · 청주', '탁주'], tasteTags: ['owned\nfixture'], aromaTags: [], targetAbvPercent: 80.25 }, hardConstraints: { minPriceKrw: 0, maxPriceKrw: 0, minAbvPercent: 0, maxAbvPercent: 10.5 } })
+  const saved = api.calls.find((call) => call.method === 'PUT' && call.path === '/users/me/preferences')
+  expect(Object.keys(saved.body)).toEqual(['surveyStatus', 'softPreferences', 'hardConstraints'])
+  await page.reload()
+  await expect(form.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('80.25')
+  await expect(form.getByLabel('맛 태그 1', { exact: true })).toHaveValue('owned\nfixture')
+  await expect(form.getByLabel('최대 가격 (원)', { exact: true })).toHaveValue('0')
+  await form.getByLabel('최소 가격 (원)', { exact: true }).fill('100')
+  await form.getByRole('button', { name: '이번에는 건너뛰기', exact: true }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: '취소', exact: true }).click()
+  await expect(form.getByLabel('최소 가격 (원)', { exact: true })).toHaveValue('100')
+  await form.getByRole('button', { name: '이번에는 건너뛰기', exact: true }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: '건너뛰기', exact: true }).click()
+  await expect(page.getByText('건너뜀', { exact: true })).toBeVisible()
+  expect(api.preferences.member).toEqual(emptyPreference('SKIPPED'))
+  await expect(form.getByLabel('최대 가격 (원)', { exact: true })).toHaveValue('')
+  await form.getByRole('button', { name: '저장값 초기화', exact: true }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: '초기화', exact: true }).click()
+  await expect(page.getByText('아직 입력하지 않음', { exact: true })).toBeVisible()
+  expect(api.preferences.member).toEqual(emptyPreference())
+  await form.getByLabel('주종 선호 상태').selectOption('empty')
+  await form.getByRole('button', { name: '취향 저장', exact: true }).click()
+  await expect(page.getByText('입력 완료', { exact: true })).toBeVisible()
+  expect(api.preferences.member.softPreferences.categories).toEqual([])
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('취향 읽기 실패에는 저장을 열지 않고 쓰기 오류 뒤에도 입력을 보존', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let reads = 0
+  let writes = 0
+  await page.route('**/api/users/me/preferences', async (route) => {
+    if (route.request().method() === 'GET' && ++reads === 1) return route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+    if (route.request().method() === 'PUT' && ++writes === 1) return route.fulfill({ status: 400, json: { data: null, message: null, error: { code: 'VALIDATION_FAILED', message: 'invalid', fields: { targetAbvPercent: '선호 도수를 다시 확인해 주세요.' } } } })
+    await route.fallback()
+  })
+  await page.goto('/preferences')
+  await expect(page.getByRole('heading', { name: '취향을 불러오지 못했습니다' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '취향 저장', exact: true })).toHaveCount(0)
+  expect(writes).toBe(0)
+  await page.getByRole('button', { name: '취향 다시 불러오기', exact: true }).click()
+  const form = page.getByRole('form', { name: '내 취향 설정' })
+  await form.getByLabel('선호 도수 (%)', { exact: true }).fill('35.25')
+  await form.getByRole('button', { name: '취향 저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('선호 도수를 다시 확인해 주세요.')
+  await expect(form.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('35.25')
+  expect(api.preferences.member).toBeUndefined()
+  await form.getByRole('button', { name: '취향 저장', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('취향이 저장되었습니다.')
+  expect(writes).toBe(2)
+})
+
+test('취향 저장 대기 중 새 입력과 재연결은 현재 초안을 바꾸지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const submissions = []
+  await page.route('**/api/users/me/preferences', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    submissions.push(route.request().postDataJSON())
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/preferences')
+    const form = page.getByRole('form', { name: '내 취향 설정' })
+    await form.getByLabel('선호 도수 (%)', { exact: true }).fill('10')
+    await form.getByRole('button', { name: '취향 저장', exact: true }).click()
+    await expect.poll(() => submissions.length).toBe(1)
+    await expect(form.getByRole('button', { name: '취향 저장', exact: true })).toBeDisabled()
+    await form.getByLabel('선호 도수 (%)', { exact: true }).fill('20')
+    await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')) })
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await expect(form.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('20')
+    release()
+    await expect(page.getByRole('status')).toContainText('취향이 저장되었습니다.')
+    await expect(form.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('20')
+    expect(api.preferences.member.softPreferences.targetAbvPercent).toBe(10)
+    expect(submissions).toHaveLength(1)
+    expect(api.calls.filter((call) => call.method === 'GET' && call.path === '/users/me/preferences')).toHaveLength(1)
+  } finally { release() }
+})
+
+for (const { method, status } of [{ method: 'GET', status: 200 }, { method: 'PUT', status: 200 }, { method: 'PUT', status: 401 }]) {
+  test(`이전 계정의 늦은 취향 ${method} ${status} 결과가 새 계정에 섞이지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    const old = emptyPreference('COMPLETED')
+    old.softPreferences.tasteTags = ['old-account-private-fixture']
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    let held = false
+    await page.route('**/api/users/me/preferences', async (route) => {
+      if (route.request().method() !== method || held) return route.fallback()
+      held = true
+      await gate
+      if (method === 'PUT' && status === 200) api.preferences.member = old
+      await route.fulfill({ status, json: status === 200 ? success(old) : failure('UNAUTHORIZED') })
+    })
+    try {
+      await page.goto('/preferences')
+      if (method === 'PUT') {
+        await page.getByLabel('선호 도수 (%)', { exact: true }).fill('10')
+        await page.getByRole('button', { name: '취향 저장', exact: true }).click()
+      }
+      await expect.poll(() => held).toBe(true)
+      await page.getByRole('link', { name: '마이페이지', exact: true }).click()
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await page.getByRole('link', { name: '로그인', exact: true }).click()
+      await page.getByLabel('아이디', { exact: true }).fill('other')
+      await page.getByLabel('비밀번호', { exact: true }).fill('fixture-password')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+      await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+      const form = page.getByRole('form', { name: '내 취향 설정' })
+      await form.getByLabel('선호 도수 (%)', { exact: true }).fill('25')
+      const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/users/me/preferences' && result.request().method() === method)
+      release()
+      await (await response).finished()
+      await expect(form.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('25')
+      await expect(page.getByText('old-account-private-fixture')).toHaveCount(0)
+      await expect(page.getByRole('status').filter({ hasText: '취향이 저장되었습니다.' })).toHaveCount(0)
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      expect(api.preferences.other).toBeUndefined()
+      await expect(page.getByText('아직 입력하지 않음', { exact: true })).toBeVisible()
+    } finally { release() }
+  })
+}
+
+test('취향 저장 중 같은 경로에 재진입하면 완료 뒤 최신값을 읽고 편집', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let writes = 0
+  await page.route('**/api/users/me/preferences', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes += 1
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/preferences')
+    await page.getByLabel('선호 도수 (%)', { exact: true }).fill('12.5')
+    await page.getByRole('button', { name: '취향 저장', exact: true }).click()
+    await expect.poll(() => writes).toBe(1)
+    await page.getByRole('link', { name: '마이페이지', exact: true }).click()
+    await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+    await expect(page.getByRole('form', { name: '내 취향 설정' })).toHaveCount(0)
+    expect(api.calls.filter((call) => call.method === 'GET' && call.path === '/users/me/preferences')).toHaveLength(1)
+    release()
+    await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('12.5')
+    expect(writes).toBe(1)
+    expect(api.calls.filter((call) => call.method === 'GET' && call.path === '/users/me/preferences')).toHaveLength(2)
+  } finally { release() }
+})
+
+test('비회원은 취향 API를 읽지 않고 원래 취향 경로로 로그인 복귀', async ({ page, api }) => {
+  await page.goto('/preferences')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/preferences')
+  expect(api.calls.some((call) => call.path === '/users/me/preferences')).toBe(false)
+})
+
+test('취향 API의 만료 응답은 기본값으로 저장하지 않고 다시 로그인으로 연결', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.route('**/api/users/me/preferences', (route) => route.fulfill({ status: 401, json: failure('UNAUTHORIZED') }))
+  await page.goto('/preferences')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/preferences')
+  await expect(page.getByRole('button', { name: '취향 저장', exact: true })).toHaveCount(0)
+  expect(api.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
 })
 
 test('주문 내역은 확정·추정·미확인 금액과 삭제 상품을 구분', async ({ page, api }) => {

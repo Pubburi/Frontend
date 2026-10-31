@@ -203,12 +203,14 @@ export function ProductCard({ product }: { product: Product }) {
 export function Confirm({
   title,
   description,
+  confirmLabel = '삭제',
   pending,
   onCancel,
   onConfirm,
 }: {
   title: string
   description?: string
+  confirmLabel?: string
   pending?: boolean
   onCancel: () => void
   onConfirm: () => void
@@ -296,7 +298,7 @@ export function Confirm({
             disabled={pending}
             onClick={onConfirm}
           >
-            {pending ? '처리 중…' : '삭제'}
+            {pending ? '처리 중…' : confirmLabel}
           </button>
         </div>
       </section>

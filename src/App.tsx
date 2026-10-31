@@ -17,6 +17,7 @@ import { useUi } from './state/ui'
 import { Empty, Image, Loading } from './components/ui'
 import { HomePage, ProductsPage, ProductDetailPage } from './pages/CatalogPages'
 import { AccountPage, CartPage, ProfilePage } from './pages/AccountPages'
+import { PreferencesPage } from './pages/PreferencesPage'
 
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 function Guard({
@@ -178,6 +179,14 @@ export function App() {
               element={
                 <Guard mode="auth">
                   <ProfilePage />
+                </Guard>
+              }
+            />
+            <Route
+              path="/preferences"
+              element={
+                <Guard mode="auth">
+                  <PreferencesPage />
                 </Guard>
               }
             />
