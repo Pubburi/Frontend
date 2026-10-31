@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
@@ -7,6 +7,8 @@ import { useSession } from '../queries'
 import { useUi } from '../state/ui'
 import { Confirm, Empty, Loading, Pagination } from '../components/ui'
 import { OrderLines, orderMoney } from '../components/OrderLines'
+import { ProductFeatureEditor } from '../components/ProductFeatureEditor'
+import { featureSaveKey } from '../productFeatures'
 import { money, orderType } from '../utils/format'
 import type { Market, Order, Page, Product, Review, User } from '../types'
 
@@ -107,6 +109,8 @@ function AdminPanel({
   const [editing, setEditing] = useState<Item | null>(null)
   const [deleting, setDeleting] = useState<Item | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [featureProduct, setFeatureProduct] = useState<Product | null>(null)
+  const featureTrigger = useRef<HTMLButtonElement | null>(null)
   const idOf = (item: Item) => ('oId' in item ? item.oId : item.id)
   const saveKey = `admin-${tab}-save`
   const deleteKey = `admin-${tab}-delete`
@@ -192,7 +196,11 @@ function AdminPanel({
       },
       `${labels[tab]} 정보가 삭제되었습니다.`,
     )
-    if (result.ok) setDeleting(null)
+    if (result.ok) {
+      setDeleting(null)
+      if (tab === 'products')
+        setFeatureProduct((current) => (current?.id === id ? null : current))
+    }
   }
   async function complete(order: Order) {
     await ui.run(
@@ -348,6 +356,18 @@ function AdminPanel({
             </div>
           </form>
         )}
+        {tab === 'products' && featureProduct && user?.role === 'ADMIN' && (
+          <ProductFeatureEditor
+            key={`${user.id}:${featureProduct.id}`}
+            product={featureProduct}
+            userId={user.id}
+            onClose={() => {
+              setFeatureProduct(null)
+              if (featureTrigger.current?.isConnected)
+                featureTrigger.current.focus()
+            }}
+          />
+        )}
         {query.isPending ? (
           <Loading />
         ) : query.isError ? (
@@ -480,6 +500,20 @@ function AdminPanel({
                     </>
                   )}
                   <div className="button-row table-actions">
+                    {tab === 'products' && user?.role === 'ADMIN' && (
+                      <button
+                        className="btn btn-sm btn-outline-dark"
+                        disabled={
+                          ui.pending[featureSaveKey(user.id, Number(id))]
+                        }
+                        onClick={(event) => {
+                          featureTrigger.current = event.currentTarget
+                          setFeatureProduct(item as Product)
+                        }}
+                      >
+                        특성 편집
+                      </button>
+                    )}
                     {tab !== 'comments' && (
                       <button
                         className="btn btn-sm btn-outline-dark"
