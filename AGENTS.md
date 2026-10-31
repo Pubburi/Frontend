@@ -8,6 +8,13 @@
 - Do not commit node_modules/, dist/, credentials or .env. Update docs with changes.
 - Use PRs and Conventional Commits. Mobile implementation is separately owned.
 
+## Commit messages and units
+
+- Follow CONTRIBUTING.md. Use an English Conventional Commit type (`feat`, `fix`, `refactor`, `perf`, `test`, `ci`, `build`, `docs`, `chore`, `revert`) with an optional scope, then a Korean subject. Write any necessary body in Korean; keep identifiers and product names in their original form.
+- Keep each commit to one reviewable purpose, including its required implementation, tests and docs. Split unrelated features, refactors or dependency updates into separate commits/PRs. Every commit should remain buildable and verifiable; avoid WIP, empty commits and artificial file-by-file splitting.
+- Keep Squash merge. Use separate coherent PRs for independent units that must remain distinct on main. PR titles and the final squash title/body must be Korean Conventional Commits; explicitly check the final merge message.
+- Apply this rule to new work without rewriting already merged history.
+
 ## Repository responsibilities
 
 - Frontend owns web UI, routing, client state, API consumption, browser tests, static assets, and frontend documentation and PRs.
