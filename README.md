@@ -258,6 +258,7 @@ async function request(path, options = {}) {
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",
+    "test:browser": "playwright test",
     "audit:deps": "npm audit --audit-level=moderate",
     "check:images": "node scripts/check-images.mjs",
     "optimize:images": "node scripts/optimize-images.mjs",
@@ -270,6 +271,7 @@ async function request(path, options = {}) {
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@vitejs/plugin-vue": "^5.2.3",
     "jsdom": "^24.1.3",
     "sharp": "^0.35.5",
@@ -338,10 +340,12 @@ npm run optimize:images
 ## ✅ 검증과 협업
 
 ~~~bash
+npm ci
+npx playwright install chromium
 npm run check
 ~~~
 
-저장소 검사, lockfile 기반 설치, 의존성 보안 검사, 이미지 변환 확인, 기존 Vue 테스트와 프로덕션 빌드를 실행합니다. CI도 같은 검증을 수행합니다.
+브라우저는 처음 한 번 준비합니다. 검증 범위와 CI 실행 절차는 [테스트·CI 안내](docs/TESTING.md)를 따릅니다.
 
 main은 PR·frontend-ci 성공·최신 main 반영·대화 해결을 요구합니다. 필수 승인은 0명이고 관리자에게도 적용합니다. Squash merge 뒤 작업 브랜치를 정리합니다.
 

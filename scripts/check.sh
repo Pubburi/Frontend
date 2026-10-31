@@ -6,4 +6,5 @@ npm ci
 npm run audit:deps
 npm run check:images
 npm run test
-npm run build
+VITE_API_BASE_URL=/api npm run build
+npm run test:browser
