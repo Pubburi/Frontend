@@ -110,7 +110,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ConfirmDialog from '../components/ui/ConfirmDialog.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
@@ -138,18 +138,28 @@ const editForm = reactive({ rating: 5, comment: '' })
 
 watch(() => route.params.id, loadProduct, { immediate: true })
 
+onBeforeUnmount(() => {
+  ui.cancelLatest('product-detail')
+  ui.cancelLatest('comments')
+})
+
 async function loadProduct() {
+  const productId = route.params.id
+  ui.cancelLatest('comments')
   catalog.clearProduct()
   quantity.value = 1
-  const result = await ui.run('product-detail', async () => {
-    await catalog.loadProduct(route.params.id)
-    await catalog.loadComments(route.params.id)
+  editingId.value = null
+  pendingDelete.value = null
+  const result = await ui.runLatest('product-detail', async (isCurrent) => {
+    await catalog.loadProduct(productId, isCurrent)
+    if (isCurrent()) await catalog.loadComments(productId, {}, isCurrent)
   })
-  loadError.value = result.ok ? null : result.error
+  if (!result.stale) loadError.value = result.ok ? null : result.error
 }
 
 function loadComments(page) {
-  return ui.run('comments', () => catalog.loadComments(route.params.id, { page }))
+  const productId = route.params.id
+  return ui.runLatest('comments', (isCurrent) => catalog.loadComments(productId, { page }, isCurrent))
 }
 
 function addToCart() {

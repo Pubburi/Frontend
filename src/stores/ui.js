@@ -4,6 +4,8 @@ export const useUiStore = defineStore('ui', {
   state: () => ({
     notice: null,
     pending: {},
+    latestVersions: {},
+    requestVersion: 0,
   }),
   getters: {
     status: (state) => (state.notice?.type === 'success' ? state.notice.message : ''),
@@ -39,6 +41,29 @@ export const useUiStore = defineStore('ui', {
       } finally {
         delete this.pending[key]
       }
+    },
+    async runLatest(key, action, options = {}) {
+      const version = ++this.requestVersion
+      this.latestVersions[key] = version
+      this.pending[key] = true
+      const isCurrent = () => this.latestVersions[key] === version
+      if (options.clear !== false) this.clear()
+      try {
+        const data = await action(isCurrent)
+        if (!isCurrent()) return { ok: false, stale: true }
+        if (options.success) this.setStatus(options.success)
+        return { ok: true, data }
+      } catch (error) {
+        if (!isCurrent()) return { ok: false, stale: true }
+        this.setError(error)
+        return { ok: false, error }
+      } finally {
+        if (isCurrent()) delete this.pending[key]
+      }
+    },
+    cancelLatest(key) {
+      this.latestVersions[key] = ++this.requestVersion
+      delete this.pending[key]
     },
   },
 })

@@ -38,10 +38,12 @@ export const useCatalogStore = defineStore('catalog', {
     comments: (state) => state.commentsPage.items,
   },
   actions: {
-    async loadProducts(params = {}) {
-      this.filters = { ...this.filters, ...params }
-      this.productsPage = await api.products(this.filters)
-      return this.productsPage
+    async loadProducts(params = {}, isCurrent = () => true) {
+      const filters = { ...this.filters, ...params }
+      this.filters = filters
+      const page = await api.products(filters)
+      if (isCurrent()) this.productsPage = page
+      return page
     },
     async loadPopularProducts() {
       this.popularProducts = await api.popularProducts()
@@ -51,14 +53,16 @@ export const useCatalogStore = defineStore('catalog', {
       this.marketsPage = await api.markets({ page: 1, size: 12, ...params })
       return this.marketsPage
     },
-    async loadProduct(id) {
+    async loadProduct(id, isCurrent = () => true) {
       this.selectedProduct = null
-      this.selectedProduct = await api.product(id)
-      return this.selectedProduct
+      const product = await api.product(id)
+      if (isCurrent()) this.selectedProduct = product
+      return product
     },
-    async loadComments(productId, params = {}) {
-      this.commentsPage = await api.comments(productId, { page: 1, size: 10, ...params })
-      return this.commentsPage
+    async loadComments(productId, params = {}, isCurrent = () => true) {
+      const page = await api.comments(productId, { page: 1, size: 10, ...params })
+      if (isCurrent()) this.commentsPage = page
+      return page
     },
     async createComment(payload) {
       const comment = await api.createComment(payload)

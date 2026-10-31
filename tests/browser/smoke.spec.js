@@ -125,3 +125,58 @@ test('존재하지 않는 상품의 직접 링크는 구매 없이 404 복귀 �
   await expect(page.getByRole('heading', { name: /시험 (탁주|사케)/ })).toHaveCount(0)
   await expect(page.getByRole('link', { name: '전체 주류 보기', exact: true })).toHaveAttribute('href', '/products')
 })
+
+test('진행 중 검색을 해제하면 최신 URL의 상품 요청과 결과를 보존', async ({ page, api }) => {
+  let releaseOld
+  const oldGate = new Promise((resolve) => { releaseOld = resolve })
+  let oldRequested = false
+  await page.route('**/api/products?**', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('q') !== '시험 탁주') return route.fallback()
+    oldRequested = true
+    await oldGate
+    await route.fulfill({ json: success(pageOf([products[0]])) })
+  })
+  try {
+    await page.goto('/products?q=시험%20탁주')
+    await expect.poll(() => oldRequested).toBe(true)
+    await page.getByRole('button', { name: '전체 해제', exact: true }).click()
+    await expect(page).toHaveURL((url) => !url.searchParams.has('q'))
+    await expect.poll(() => api.calls.some((call) => call.path === '/products' && !call.query.q)).toBe(true)
+    await expect(page.locator('.product-card')).toHaveCount(2)
+    const oldResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get('q') === '시험 탁주')
+    releaseOld()
+    await (await oldResponse).finished()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+    await expect(page.getByRole('heading', { name: '시험 사케', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '상품을 불러오지 못했습니다' })).toHaveCount(0)
+  } finally {
+    releaseOld()
+  }
+})
+
+test('상세 조회 중 다른 상품으로 이동하면 이전 실패를 새 상세에 표시하지 않음', async ({ page }) => {
+  let releaseOld
+  const oldGate = new Promise((resolve) => { releaseOld = resolve })
+  let oldRequested = false
+  await page.route('**/api/products/901', async (route) => {
+    oldRequested = true
+    await oldGate
+    await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+  })
+  try {
+    await page.goto('/products')
+    await page.getByRole('heading', { name: '시험 탁주', exact: true }).getByRole('link').click()
+    await expect.poll(() => oldRequested).toBe(true)
+    await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+    await page.getByRole('heading', { name: '시험 사케', exact: true }).getByRole('link').click()
+    await expect(page.getByRole('heading', { name: '시험 사케', level: 1 })).toBeVisible()
+    const oldResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/products/901')
+    releaseOld()
+    await (await oldResponse).finished()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+    await expect(page.getByRole('heading', { name: '시험 사케', level: 1 })).toBeVisible()
+    await expect(page.getByRole('alert')).toHaveCount(0)
+  } finally {
+    releaseOld()
+  }
+})
