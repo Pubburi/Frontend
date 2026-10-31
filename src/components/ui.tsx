@@ -176,7 +176,8 @@ export function ProductCard({ product }: { product: Product }) {
           <span>도수 {product.abv}%</span>
         </p>
         <p className="product-orders">
-          시연 주문 수량 {Number(product.orderCount || 0).toLocaleString('ko-KR')}개
+          시연 주문 수량{' '}
+          {Number(product.orderCount || 0).toLocaleString('ko-KR')}개
         </p>
         <div className="button-row">
           <Link
@@ -214,11 +215,54 @@ export function Confirm({
 }) {
   const dialog = useRef<HTMLElement>(null)
   const titleId = useId()
+  const current = useRef({ pending, onCancel })
+  current.current = { pending, onCancel }
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     dialog.current?.focus()
-    return () => previous?.focus()
+    function handleKeyDown(event: KeyboardEvent) {
+      const root = dialog.current
+      if (!root) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!current.current.pending) {
+          current.current.onCancel()
+        }
+        return
+      }
+      if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey)
+        return
+      const buttons = Array.from(
+        root.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+      )
+      const first = buttons[0]
+      const last = buttons.at(-1)
+      const focused = document.activeElement
+      if (!first || !last) {
+        event.preventDefault()
+        root.focus()
+      } else if (!root.contains(focused) || focused === root) {
+        event.preventDefault()
+        const target = event.shiftKey ? last : first
+        target.focus()
+      } else if (event.shiftKey && focused === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && focused === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+      if (previous?.isConnected) previous.focus()
+    }
   }, [])
+  useEffect(() => {
+    if (pending) dialog.current?.focus()
+  }, [pending])
   return (
     <div
       className="dialog-backdrop"
@@ -232,31 +276,9 @@ export function Confirm({
         className="confirm-dialog"
         role="alertdialog"
         aria-modal="true"
+        aria-busy={pending}
         aria-labelledby={titleId}
         tabIndex={-1}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape' && !pending) onCancel()
-          if (e.key === 'Tab') {
-            const buttons = Array.from(
-              dialog.current?.querySelectorAll<HTMLButtonElement>(
-                'button:not(:disabled)',
-              ) || [],
-            )
-            const first = buttons[0],
-              last = buttons.at(-1)
-            if (
-              e.shiftKey &&
-              (document.activeElement === first ||
-                document.activeElement === dialog.current)
-            ) {
-              e.preventDefault()
-              last?.focus()
-            } else if (!e.shiftKey && document.activeElement === last) {
-              e.preventDefault()
-              first?.focus()
-            }
-          }
-        }}
       >
         <p className="section-kicker">Confirm</p>
         <h2 id={titleId}>{title}</h2>

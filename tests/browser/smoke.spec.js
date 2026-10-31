@@ -513,3 +513,52 @@ test('관리자 주문 완료·삭제와 탈퇴 회원의 보존 이력 표시',
   await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click()
   await expect(page.getByRole('button', { name: /#501/ })).toHaveCount(0)
 })
+
+for (const viewport of [{ name: '일반', width: 1280, height: 900 }, { name: '좁은 웹', width: 390, height: 844 }]) {
+  test(`${viewport.name} 화면의 삭제 처리 중에도 키보드 포커스는 확인창 안에 유지`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    let attempts = 0
+    await page.route('**/api/admin/products/901', async (route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback()
+      attempts += 1
+      await gate
+      await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+    })
+    try {
+      await page.goto('/admin')
+      const trigger = page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '삭제', exact: true })
+      await trigger.click()
+      const dialog = page.getByRole('alertdialog')
+      await expect(dialog).toBeFocused()
+      await page.keyboard.press('Shift+Tab')
+      await expect(dialog.getByRole('button', { name: '삭제', exact: true })).toBeFocused()
+      await page.keyboard.press('Enter')
+      await expect.poll(() => attempts).toBe(1)
+      await expect(dialog.getByRole('button', { name: '취소', exact: true })).toBeDisabled()
+      await page.keyboard.press('Tab')
+      await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+      await page.keyboard.press('Shift+Tab')
+      await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeVisible()
+      const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/admin/products/901')
+      release()
+      await (await response).finished()
+      await expect(dialog.getByRole('button', { name: '취소', exact: true })).toBeEnabled()
+      await page.keyboard.press('Tab')
+      await expect(dialog.getByRole('button', { name: '취소', exact: true })).toBeFocused()
+      await page.keyboard.press('Shift+Tab')
+      await expect(dialog.getByRole('button', { name: '삭제', exact: true })).toBeFocused()
+      await page.keyboard.press('Escape')
+      await expect(dialog).toHaveCount(0)
+      await expect(trigger).toBeFocused()
+      expect(attempts).toBe(1)
+      expect(api.catalog.some((product) => product.id === 901)).toBe(true)
+    } finally {
+      release()
+    }
+  })
+}

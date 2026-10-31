@@ -6,7 +6,7 @@ README는 실제 구현에서 독립적으로 설명할 수 있는 사례 4개�
 |---|---|---|---|---|
 | FE-CS01 | 프레임워크 전환 중 장바구니 저장 계약 보존 | src/state/cart.ts, src/state/cart.test.ts, src/pages/AccountPages.tsx | Vue raw 배열을 같은 pubburi-cart 키에서 복원·검증하며 실패 보존/성공 후 초기화를 React에서 확인. 저장소 getter/읽기/쓰기 차단에도 메모리와 성공 주문 결과를 유지하고 보관 제약을 분리 안내. 서버 멱등성·계정 병합·보관 차단 중 새로고침 복원은 후속. | 기존 브라우저 저장 경계 소재를 유지하며 라이브러리 변경의 실제 호환 문제와 구현을 보완했다. |
 | FE-CS02 | 경로별 서버 상태와 최신 응답 격리 | src/pages/CatalogPages.tsx, tests/browser/smoke.spec.js, docs/plans/2026-10-31-latest-product-requests.md | 과거 Vue의 2/2→0/2 재현 기록을 보존하고 React에서도 같은 게이트 시나리오를 검증. Query key에 조건/상품/페이지를 포함하고 이전 응답/오류를 분리. 전송 취소·시간 성능 개선은 아님. | 기존 요청 경쟁 소재를 실제 React 소스로 갱신하고 수명주기/상태 소유와 대안을 설명한다. |
-| FE-CS03 | 공통 API client의 오류 계약 | src/services/api.js, src/services/api.test.js, src/state/ui.ts, src/queries.ts | envelope·업무 필드·비JSON·통신 실패 계약을 유지. 새 세션 query는 401만 null로 바꾸고 503/통신 장애는 재시도 상태로 전달. | 공통 전송 계층의 기존 판단을 보존하며 React 소비 경계를 연결했다. |
+| FE-CS03 | 삭제 처리 중 확인창의 키보드 포커스 보존 | src/components/ui.tsx, tests/browser/smoke.spec.js, docs/plans/2026-11-01-pending-dialog-focus.md | 일반/좁은 웹의 응답 보류·활성 버튼 0개·실패 뒤 복구에서 실제 포커스 이탈을 재현하고 capture 수명/최신 callback/자체 포커스로 수정. 전체 보조기술·중첩 모달·삭제된 trigger 대체 복귀는 별도. | 기존 API 오류 계약 정리보다 파괴적 작업의 비동기/DOM 경계·실제 원인·키보드 복구·구현 대안·재현 근거가 구체적이어서 세 번째를 교체했다. |
 | FE-CS04 | 세션·개인 캐시·보호 경로를 유지한 React 이전 | src/App.tsx, src/queries.ts, src/pages/AccountPages.tsx, docs/plans/2026-10-31-react-migration.md | 전 라우트 React·관리자 lazy/Suspense·계정 ID key·로그인/logout 캐시 초기화, 가입/계정 전환·권한·장애 fixture 검증. 실제 Backend/MySQL의 선택한 가입·후기·주문·세션·관리자 읽기를 추가 확인했고 전체 C04·최종 인수는 별도. | 단순 보안 패키지 갱신보다 실제 계정/저장/수명주기 경계·브리지 대안·호환 검증이 드러나 네 번째를 교체했다. |
 
 ## 선정에서 제외한 주장
@@ -16,6 +16,8 @@ README는 실제 구현에서 독립적으로 설명할 수 있는 사례 4개�
 - 관리자 lazy 분리·audit/테스트 수·번들 크기를 앱 성능 개선으로 해석하는 주장: 같은 조건의 전후 성능 자료가 없다.
 
 ## 더 강한 사례의 확보·교체
+
+2026-11-01에는 FE-CS03만 삭제 처리 중 포커스 보존으로 교체했다. 기존 API client/오류 계약과 테스트는 변경하거나 삭제하지 않는다. 이 사례는 실제 확인창 상태 전환에서 발견한 사용자 결함·응답 gate·DOM focus·listener 수명·실패 복구를 다루어 기존 공통 API 소개보다 채용 관점의 근거가 강하다고 판단했다. 다른 세 사례와 순서·총 네 개는 보존했다.
 
 2026-10-31에는 FE-CS02의 관리자 활성 탭 조회 사례를 최신 요청 보존 사례로 교체했다. 이전 사례의 관리자 상태 분리는 코드에 유지한다. 최신 사례는 실제 URL/화면 의도와 요청 누락을 재현하고, 단순 중복 차단 해제·키 분리·전송 취소와 상태 적용 버전 검사의 차이를 설명한다. 기존 FE-CS01·03·04보다 무조건 새롭다는 이유로 교체하지 않았으며 나머지 세 사례와 순서는 보존했다.
 
