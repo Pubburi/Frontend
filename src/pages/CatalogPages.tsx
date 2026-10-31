@@ -345,8 +345,7 @@ function ProductDetail({ id }: { id: string }) {
   const location = useLocation()
   const [quantity, setQuantity] = useState(1)
   const [page, setPage] = useState(1)
-  const [rating, setRating] = useState(5)
-  const [text, setText] = useState('')
+  const [draft, setDraft] = useState({ rating: 5, comment: '' })
   const [editing, setEditing] = useState<Review | null>(null)
   const [deleting, setDeleting] = useState<Review | null>(null)
   const product = useQuery<Product>({
@@ -363,35 +362,41 @@ function ProductDetail({ id }: { id: string }) {
   }
   async function submit(event: FormEvent) {
     event.preventDefault()
+    const submitted = draft
     const result = await ui.run(
       'comment-create',
       async () => {
         await api.createComment({
           productId: Number(id),
-          rating,
-          comment: text.trim(),
+          rating: submitted.rating,
+          comment: submitted.comment.trim(),
         })
         await refresh()
       },
       '후기가 등록되었습니다.',
     )
-    if (result.ok) setText('')
+    if (result.ok)
+      setDraft((current) =>
+        current === submitted ? { ...current, comment: '' } : current,
+      )
   }
   async function saveReview(event: FormEvent) {
     event.preventDefault()
     if (!editing) return
+    const submitted = editing
     const result = await ui.run(
-      `comment-edit-${editing.id}`,
+      `comment-edit-${submitted.id}`,
       async () => {
-        await api.updateComment(editing.id, {
-          rating: editing.rating,
-          comment: editing.comment.trim(),
+        await api.updateComment(submitted.id, {
+          rating: submitted.rating,
+          comment: submitted.comment.trim(),
         })
         await refresh()
       },
       '후기가 수정되었습니다.',
     )
-    if (result.ok) setEditing(null)
+    if (result.ok)
+      setEditing((current) => (current === submitted ? null : current))
   }
   async function removeReview() {
     if (!deleting) return
@@ -484,8 +489,10 @@ function ProductDetail({ id }: { id: string }) {
                   <span>평점</span>
                   <select
                     className="form-select"
-                    value={rating}
-                    onChange={(e) => setRating(Number(e.target.value))}
+                    value={draft.rating}
+                    onChange={(e) =>
+                      setDraft({ ...draft, rating: Number(e.target.value) })
+                    }
                   >
                     {[5, 4, 3, 2, 1].map((value) => (
                       <option key={value} value={value}>
@@ -502,10 +509,12 @@ function ProductDetail({ id }: { id: string }) {
                     placeholder="상품에 대한 솔직한 후기를 남겨주세요."
                     aria-label="후기"
                     required
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    value={draft.comment}
+                    onChange={(e) =>
+                      setDraft({ ...draft, comment: e.target.value })
+                    }
                   />
-                  <small>{text.length} / 200</small>
+                  <small>{draft.comment.length} / 200</small>
                 </label>
                 <button
                   className="btn btn-dark"
