@@ -83,19 +83,33 @@ describe('상품 특성 전체 교체 입력 계약', () => {
   })
 
   it('맛·향의 공백/정규화 중복·개수·길이 위반을 전송하지 않는다', () => {
-    for (const text of [
-      '',
-      'one\n\ntwo',
-      'SWEET\n sweet ',
-      'a'.repeat(41),
-      Array.from({ length: 21 }, (_, i) => `tag-${i}`).join('\n'),
+    for (const values of [
+      [],
+      [''],
+      ['one', '', 'two'],
+      ['SWEET', ' sweet '],
+      ['a'.repeat(41)],
+      Array.from({ length: 21 }, (_, i) => `tag-${i}`),
     ])
       expect(() =>
         buildFeaturePayload({
           ...featuresToDraft({ ...unknownFeatures(), sourceName: '근거' }),
-          taste: { status: 'tags', text },
+          taste: { status: 'tags', values },
         }),
       ).toThrow()
+  })
+
+  it('내부 개행이 포함된 단일 태그를 구분자로 다시 나누지 않는다', () => {
+    const existing = {
+      ...unknownFeatures(),
+      tasteTags: ['owned\nfixture'],
+      sourceName: '직접 작성 표본',
+    }
+    const draft = featuresToDraft(existing)
+    expect(draft.taste.values).toEqual(['owned\nfixture'])
+    expect(
+      buildFeaturePayload({ ...draft, description: '설명만 변경' }).tasteTags,
+    ).toEqual(existing.tasteTags)
   })
 
   it('계정 정보·다른 프로토콜·상대 URL을 거부하고 선택적 출처를 길이 제한한다', () => {

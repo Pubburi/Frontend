@@ -3,7 +3,7 @@ import type { ProductFeatureValues } from './types'
 export type TagStatus = 'unknown' | 'empty' | 'tags'
 export interface TagDraft {
   status: TagStatus
-  text: string
+  values: string[]
 }
 export interface FeatureDraft {
   volumeMl: string
@@ -16,7 +16,7 @@ export interface FeatureDraft {
 }
 const tagDraft = (tags: string[] | null): TagDraft => ({
   status: tags === null ? 'unknown' : tags.length ? 'tags' : 'empty',
-  text: tags?.join('\n') ?? '',
+  values: tags ? [...tags] : [],
 })
 export function featuresToDraft(value: ProductFeatureValues): FeatureDraft {
   return {
@@ -52,18 +52,16 @@ function optionalText(text: string, max: number, label: string) {
 function tags(draft: TagDraft, label: string): string[] | null {
   if (draft.status === 'unknown') return null
   if (draft.status === 'empty') return []
-  const values = draft.text
-    .trim()
-    .split(/\r?\n/)
-    .map((tag) => tag.trim())
+  const values = draft.values.map((tag) => tag.trim())
   if (values.length > 20)
     throw new Error(`${label}는 최대 20개까지 입력해 주세요.`)
   if (
+    !values.length ||
     values.some(
       (tag) => !tag || tag.length > 40 || tag.toLowerCase().length > 40,
     )
   )
-    throw new Error(`${label}는 한 줄에 한 개씩 1~40자로 입력해 주세요.`)
+    throw new Error(`${label}는 항목별로 1~40자로 입력해 주세요.`)
   if (new Set(values.map((tag) => tag.toLowerCase())).size !== values.length)
     throw new Error(`${label}에서 대소문자·공백을 제외한 중복을 제거해 주세요.`)
   return values

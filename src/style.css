@@ -1165,6 +1165,10 @@ textarea.form-control {
 .feature-tags { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 .feature-tags legend { font-weight: 700; font-size: 14px; padding: 0 4px; }
 .feature-form textarea { min-height: 90px; resize: vertical; }
+.feature-tag-items { display: grid; gap: 10px; }
+.feature-tag-item { display: flex; align-items: start; gap: 8px; }
+.feature-tag-item .field-group { min-width: 0; flex: 1; }
+.feature-tag-item textarea { min-height: 44px; }
 .form-context { display: grid; align-self: center; }
 
 .table-row {

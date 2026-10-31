@@ -638,14 +638,19 @@ test('관리자가 미확인·빈 태그·출처를 구분해 상품 특성을 �
   await form.getByLabel('용량 (mL)', { exact: true }).fill('750')
   await form.getByLabel('상품 설명', { exact: true }).fill('직접 작성한 기술 검증 설명')
   await form.getByLabel('향 태그 확인 상태').selectOption('tags')
-  await form.getByLabel('향 태그', { exact: true }).fill('SWEET\nFloral')
+  await form.getByLabel('향 태그 1', { exact: true }).fill('SWEET')
+  await form.getByRole('button', { name: '향 태그 추가', exact: true }).click()
+  await form.getByLabel('향 태그 2', { exact: true }).fill('Floral')
+  await form.getByRole('button', { name: '향 태그 추가', exact: true }).click()
+  await form.getByRole('button', { name: '향 태그 3 삭제', exact: true }).click()
   await form.getByLabel('출처명', { exact: true }).fill('자체 작성 검증 표본')
   await form.getByLabel('출처 URL', { exact: true }).fill('https://example.com/fixture')
   await form.getByLabel('공개 검수 메모', { exact: true }).fill('기술 검증값이며 실제 주류 속성 아님')
   await expect(form.getByText(/공개되는 내용이므로/)).toBeVisible()
   await form.getByRole('button', { name: '특성 저장', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('시험 탁주 특성이 저장되었습니다.')
-  await expect(form.getByLabel('향 태그', { exact: true })).toHaveValue('floral\nsweet')
+  await expect(form.getByLabel('향 태그 1', { exact: true })).toHaveValue('floral')
+  await expect(form.getByLabel('향 태그 2', { exact: true })).toHaveValue('sweet')
   expect(api.features[901]).toEqual({ productId: 901, volumeMl: 750, description: '직접 작성한 기술 검증 설명', tasteTags: [], aromaTags: ['floral', 'sweet'], sourceName: '자체 작성 검증 표본', sourceUrl: 'https://example.com/fixture', sourceNote: '기술 검증값이며 실제 주류 속성 아님' })
   expect(api.catalog).toEqual(products)
   const writes = api.calls.filter((call) => call.method === 'PUT')
@@ -727,6 +732,46 @@ test('특성 조회 중 다른 상품을 열면 이전 오류가 새 초안을 �
   } finally {
     release()
   }
+})
+
+test('편집 중 네트워크가 다시 연결돼도 상품 특성 초안을 유지', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let featureReads = 0
+  await page.route('**/api/products/901/features', async (route) => {
+    featureReads += 1
+    if (featureReads > 1) await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/admin')
+    await page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '특성 편집', exact: true }).click()
+    const form = page.getByRole('form', { name: '시험 탁주 상품 특성' })
+    await form.getByLabel('상품 설명', { exact: true }).fill('연결이 바뀌어도 남을 초안')
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+    const listResponse = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/products' && result.request().method() === 'GET')
+    await page.evaluate(() => window.dispatchEvent(new Event('online')))
+    await (await listResponse).finished()
+    await expect(form.getByLabel('상품 설명', { exact: true })).toHaveValue('연결이 바뀌어도 남을 초안')
+    expect(featureReads).toBe(1)
+    expect(api.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
+  } finally {
+    release()
+  }
+})
+
+test('기존 단일 태그의 내부 개행은 설명만 수정해도 그대로 보존', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.features[901] = { ...unknownFeatures(901), tasteTags: ['owned\nfixture'], aromaTags: [], sourceName: '직접 작성한 검증 표본' }
+  await page.goto('/admin')
+  await page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '특성 편집', exact: true }).click()
+  const form = page.getByRole('form', { name: '시험 탁주 상품 특성' })
+  await form.getByLabel('상품 설명', { exact: true }).fill('태그를 바꾸지 않고 설명만 수정')
+  await form.getByRole('button', { name: '특성 저장', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('시험 탁주 특성이 저장되었습니다.')
+  expect(api.features[901].tasteTags).toEqual(['owned\nfixture'])
+  expect(api.features[901].aromaTags).toEqual([])
 })
 
 for (const switchProduct of [false, true]) {

@@ -28,6 +28,7 @@ export function ProductFeatureEditor({
   const query = useQuery({
     queryKey: featureQueryKey(userId, product.id),
     queryFn: () => api.productFeatures(product.id),
+    refetchOnReconnect: false,
   })
   useEffect(() => {
     title.current?.focus()
@@ -44,7 +45,8 @@ export function ProductFeatureEditor({
       </div>
       <p className="muted">
         확인하지 않은 값은 미확인으로 남겨 주세요. 저장하면 이 화면의 내용으로
-        기존 특성을 모두 교체합니다.
+        기존 특성을 모두 교체합니다. 최신 서버 값은 편집을 닫고 다시 열어 확인할
+        수 있습니다.
       </p>
       {query.isPending || query.isFetching ? (
         <Loading label="상품 특성을 불러오는 중입니다." />
@@ -123,7 +125,14 @@ function FeatureForm({
             aria-label={`${label} 확인 상태`}
             value={value.status}
             onChange={(e) =>
-              update({ ...value, status: e.target.value as TagStatus })
+              update({
+                ...value,
+                status: e.target.value as TagStatus,
+                values:
+                  e.target.value === 'tags' && !value.values.length
+                    ? ['']
+                    : value.values,
+              })
             }
           >
             <option value="unknown">미확인</option>
@@ -132,20 +141,60 @@ function FeatureForm({
           </select>
         </label>
         {value.status === 'tags' && (
-          <label className="field-group">
-            <span>{label}</span>
-            <textarea
-              className="form-control"
-              aria-label={label}
-              required
-              value={value.text}
-              onChange={(e) => update({ ...value, text: e.target.value })}
-            />
+          <div className="feature-tag-items">
+            {value.values.map((tag, index) => (
+              <div className="feature-tag-item" key={index}>
+                <label className="field-group">
+                  <span>
+                    {label} {index + 1}
+                  </span>
+                  <textarea
+                    className="form-control"
+                    aria-label={`${label} ${index + 1}`}
+                    required
+                    maxLength={40}
+                    rows={1}
+                    value={tag}
+                    onChange={(e) =>
+                      update({
+                        ...value,
+                        values: value.values.map((current, i) =>
+                          i === index ? e.target.value : current,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  aria-label={`${label} ${index + 1} 삭제`}
+                  onClick={() =>
+                    update({
+                      ...value,
+                      values: value.values.filter((_, i) => i !== index),
+                    })
+                  }
+                >
+                  삭제
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-dark"
+              disabled={value.values.length >= 20}
+              onClick={() =>
+                update({ ...value, values: [...value.values, ''] })
+              }
+            >
+              {label} 추가
+            </button>
             <small>
-              한 줄에 한 개, 최대 20개·각 40자. 대소문자만 다른 중복도 사용할 수
+              항목별로 최대 20개·각 40자. 대소문자만 다른 중복도 사용할 수
               없습니다.
             </small>
-          </label>
+          </div>
         )}
       </fieldset>
     )
