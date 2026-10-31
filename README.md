@@ -345,7 +345,7 @@ npm run check
 
 main은 PR·frontend-ci 성공·최신 main 반영·대화 해결을 요구합니다. 필수 승인은 0명이고 관리자에게도 적용합니다. Squash merge 뒤 작업 브랜치를 정리합니다.
 
-자동화 PR은 최신 커밋의 Codex 리뷰와 관련 검증까지 통과해야 병합합니다. [개발·운영 기준](https://github.com/Pubburi/Backend/blob/main/docs/DELIVERY-PLAN.md)을 함께 적용합니다.
+자동화 PR은 최신 커밋의 Codex 리뷰와 관련 검증까지 통과해야 병합합니다. [프론트 개발·운영 기준](AGENTS.md)을 함께 적용합니다.
 
 <a id="roadmap"></a>
 
@@ -359,4 +359,4 @@ main은 PR·frontend-ci 성공·최신 main 반영·대화 해결을 요구합�
 - [ ] 주요 고객·관리자 흐름의 기능 동등성 확인
 - [ ] 취향 입력·맞춤 추천·추천 이유·피드백·검색 필터·찜 화면 구현
 
-기한은 **2027년 2월 5일**이며 P1·P2 모두 필수 목표입니다. [전체 기능·일정](https://github.com/Pubburi/Backend/blob/main/docs/DELIVERY-PLAN.md)에 따라 진행하고, 실제 완성 화면을 검증한 뒤 이미지를 추가합니다.
+기한은 **2027년 2월 5일**이며 P1·P2 모두 필수 목표입니다. 승인된 기획과 [프론트 작업 기준](AGENTS.md)에 따라 진행하고, 실제 완성 화면을 검증한 뒤 이미지를 추가합니다.
