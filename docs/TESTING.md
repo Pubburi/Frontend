@@ -44,6 +44,10 @@ Playwright는 자신이 시작한 서버만 실행 종료 시 정리한다.
 Vitest는 브라우저 spec을 수집하지 않는다. 기존 유틸·상태·API 단위 검증과 production browser
 검증을 모두 `frontend-ci` 필수 검사 안에서 실행한다. 기존 Pinia/Vue Router 테스트를 Zustand·세션 query·관리자 API 선택과 React 브라우저 검증으로 옮겼다. 테스트 개수의 일치를 기능 동등성으로 간주하지 않고 사용자 결과·오류/권한 경계를 추적한다.
 
+## F01 별도 실제 연동 확인
+
+[F01 작업 계획](plans/2026-11-01-account-favorites-ui.md)의 실제 서버 검증은 위 Chromium API fixture와 별도로 수행했다. 단건 상태 GET 포함 Backend jar·전용 MySQL 8.4·동결한 프로덕션 웹을 사용해 실제 로그인, 상세 저장/조회, 새로고침과 현재 상품 목록, 두 계정의 독립 저장/해제, 첫 계정 저장 보존, 390px 웹과 오류 수집을 확인했다. API route mocking은 사용하지 않았다. 이 수동 통합 결과가 CI의 fixture를 실제 Backend E2E로 바꾸거나 전체 FE03/C04 최종 인수를 완료한 것은 아니다.
+
 ## 결과 보관
 
 단위 JUnit은 `reports/unit.xml`, 브라우저 JUnit은 `reports/browser.xml`, HTML은
