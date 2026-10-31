@@ -26,7 +26,3 @@ export const orderTypeLabels = {
 export function orderType(value) {
   return orderTypeLabels[value] || value || '-'
 }
-
-export function orderTotal(order) {
-  return (order?.details || []).reduce((sum, detail) => sum + Number(detail.sumPrice || detail.unitPrice * detail.quantity || 0), 0)
-}

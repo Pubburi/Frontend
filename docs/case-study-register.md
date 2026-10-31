@@ -4,21 +4,22 @@ README는 실제 구현에서 독립적으로 설명할 수 있는 사례 4개�
 
 | ID | 현재 선정 사례 | 근거 | 확인 범위·제약 | 선정 이유 |
 |---|---|---|---|---|
-| FE-CS01 | 장바구니 저장값 정규화와 성공 뒤 초기화 | src/stores/cart.js, src/stores/cart.test.js, src/views/CartView.vue | 저장값 필터·수량 제한·성공 뒤 초기화의 코드 순서와 기존 회귀 근거. 실패 응답 뒤 서버 주문이 실제로 생성됐는지 확인하는 멱등성 문제·계정 병합은 미완료. | 브라우저 저장 경계와 서버 요청 결과에 따른 상태 보존을 함께 설명한다. |
-| FE-CS02 | 빠른 검색·상세 이동의 최신 요청 보존 | src/stores/ui.js, src/stores/catalog.js, src/views/ProductsView.vue, src/views/ProductDetailView.vue, docs/plans/2026-10-31-latest-product-requests.md | 실제 브라우저에서 누락된 최신 요청을 재현한 뒤 버전 검사·화면 이탈 무효화로 조회 데이터/알림/로딩을 보호했다. 상세한 수정 전후 오류 n/N은 작업 계획에 기록한다. 전송 취소·관리자 조회·후기 쓰기 후 재조회는 포함하지 않는다. | 기존 관리자 탭 선택 사례보다 구체적인 사용자 결함·응답 순서 원인·수명주기 경계·실행 증거와 대안 판단이 있어 교체했다. |
-| FE-CS03 | 공통 API client의 오류 계약 | src/services/api.js, src/services/api.test.js, src/stores/ui.js | 성공 envelope 해제·업무 오류 필드·비JSON 실패·네트워크 실패의 client 경계. auth.ensureSession의 catch-all 처리는 미해결이다. | 통신·프로토콜·UI 오류의 경계를 분리한 판단을 설명한다. |
-| FE-CS04 | 호환 범위 내 보안 업데이트 | docs/DEPENDENCIES.md, docs/plans/2026-10-31-fe01-dependencies.md, package.json, package-lock.json, scripts/check-images.mjs | [PR #3](https://github.com/Pubburi/Frontend/pull/3), main a0313d2, [main CI](https://github.com/Pubburi/Frontend/actions/runs/41198276439). 기존 테스트 20개·native 이미지 변환·빌드·실제 브라우저 확인은 FE01 기록에 있다. audit는 점검 시점 결과이며 성능·침해 부재 증거가 아니다. | 패키지 권고와 실제 사용 경로·호환성·재현 가능한 설치를 함께 판단한 최근 수정이다. |
+| FE-CS01 | 프레임워크 전환 중 장바구니 저장 계약 보존 | src/state/cart.ts, src/state/cart.test.ts, src/pages/AccountPages.tsx | Vue raw 배열을 같은 pubburi-cart 키에서 복원·검증하며 실패 보존/성공 후 초기화를 React에서 확인. 저장소 getter/읽기/쓰기 차단에도 메모리와 성공 주문 결과를 유지하고 보관 제약을 분리 안내. 서버 멱등성·계정 병합·보관 차단 중 새로고침 복원은 후속. | 기존 브라우저 저장 경계 소재를 유지하며 라이브러리 변경의 실제 호환 문제와 구현을 보완했다. |
+| FE-CS02 | 경로별 서버 상태와 최신 응답 격리 | src/pages/CatalogPages.tsx, tests/browser/smoke.spec.js, docs/plans/2026-10-31-latest-product-requests.md | 과거 Vue의 2/2→0/2 재현 기록을 보존하고 React에서도 같은 게이트 시나리오를 검증. Query key에 조건/상품/페이지를 포함하고 이전 응답/오류를 분리. 전송 취소·시간 성능 개선은 아님. | 기존 요청 경쟁 소재를 실제 React 소스로 갱신하고 수명주기/상태 소유와 대안을 설명한다. |
+| FE-CS03 | 공통 API client의 오류 계약 | src/services/api.js, src/services/api.test.js, src/state/ui.ts, src/queries.ts | envelope·업무 필드·비JSON·통신 실패 계약을 유지. 새 세션 query는 401만 null로 바꾸고 503/통신 장애는 재시도 상태로 전달. | 공통 전송 계층의 기존 판단을 보존하며 React 소비 경계를 연결했다. |
+| FE-CS04 | 세션·개인 캐시·보호 경로를 유지한 React 이전 | src/App.tsx, src/queries.ts, src/pages/AccountPages.tsx, docs/plans/2026-10-31-react-migration.md | 전 라우트 React·관리자 lazy/Suspense·계정 ID key·로그인/logout 캐시 초기화, 가입/계정 전환·권한·장애 fixture 검증. 실제 Backend/MySQL의 선택한 가입·후기·주문·세션·관리자 읽기를 추가 확인했고 전체 C04·최종 인수는 별도. | 단순 보안 패키지 갱신보다 실제 계정/저장/수명주기 경계·브리지 대안·호환 검증이 드러나 네 번째를 교체했다. |
 
 ## 선정에서 제외한 주장
 
-- 모든 조회·쓰기의 응답 경쟁을 해결했다는 주장: 이번 최신 요청 보호는 고객 상품 목록·상세·후기 페이지 읽기에 한정한다. 관리자 조회·세션 초기화·후기 쓰기 후 재조회 경계는 별도 과제다.
-- 세션 초기화의 네트워크 오류와 비로그인 구분을 해결했다는 주장: auth.ensureSession은 아직 모든 조회 오류를 null로 처리한다.
-- React 전환·개인 맞춤 추천이 완료됐다는 주장: 현재 Vue이며 해당 기능은 계획 단계다.
-- 관리자 코드 분할·앱 성능 개선율: 현재 router는 화면을 정적으로 import하며 동일 조건의 전후 성능 자료가 없다.
+- 모든 비동기/권한/저장 문제의 완료 주장: 전체 Backend 통합·런타임 세션 회수·저장 불가 시 새로고침 복원·서버 멱등성과 전체 인수 조합은 별도다.
+- React 전환을 실제 추천 기능 구현·전체 FE03/C04 완료로 바꾸는 주장: 현재 실제 라우트의 React 코드 이전과 로컬 검증이며 추천/최종 인수는 별도다.
+- 관리자 lazy 분리·audit/테스트 수·번들 크기를 앱 성능 개선으로 해석하는 주장: 같은 조건의 전후 성능 자료가 없다.
 
 ## 더 강한 사례의 확보·교체
 
 2026-10-31에는 FE-CS02의 관리자 활성 탭 조회 사례를 최신 요청 보존 사례로 교체했다. 이전 사례의 관리자 상태 분리는 코드에 유지한다. 최신 사례는 실제 URL/화면 의도와 요청 누락을 재현하고, 단순 중복 차단 해제·키 분리·전송 취소와 상태 적용 버전 검사의 차이를 설명한다. 기존 FE-CS01·03·04보다 무조건 새롭다는 이유로 교체하지 않았으며 나머지 세 사례와 순서는 보존했다.
+
+같은 날 React 전환에서 FE-CS01/02/03의 주제는 유지하고 현재 소스·소유 경계로 갱신했다. FE-CS04만 세션/개인 캐시/보호 경로 보존으로 교체했다. 이전 보안 수정의 실제 근거는 [DEPENDENCIES](DEPENDENCIES.md)·[FE01 기록](plans/2026-10-31-fe01-dependencies.md)·PR #3에 보존한다. 교체는 React라는 이름이나 최신성 때문이 아니라 실제 호환 계약·계정 전환·실패 복구·대안 판단의 근거가 더 강해졌기 때문이다.
 
 - React 전환의 세션·상태·라우팅 동등성, 최신 요청 우선 처리, 계정 장바구니 병합처럼 실제 사용자 경계를 다루는 구현이 완료되면 현재 4개와 비교한다.
 - 새 사례의 영향·재현 조건·원인 증거·대안·선택 이유·구현 기여·재현 결과가 어느 기존 사례보다 설득력 있는지 기록한다. 단순 최신성·코드량·테스트 총수로 교체하지 않는다.

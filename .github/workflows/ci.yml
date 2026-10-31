@@ -34,6 +34,8 @@ jobs:
         run: npm run audit:deps
       - name: Verify native image tooling
         run: npm run check:images
+      - name: Typecheck React application
+        run: npm run typecheck
       - name: Test
         run: npm run test
       - name: Build

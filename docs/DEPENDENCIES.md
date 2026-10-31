@@ -1,5 +1,15 @@
 # 의존성 보안 점검
 
+## 현재 React 그래프
+
+React 전환에서 React/React DOM 19.3.1·React Router 7.18.5·TanStack Query 5.105.0·Zustand 5.0.16·TypeScript 7.0.2·React 타입 19.3.0을 고정했다. Vite 6을 유지하고 해당 peer 범위를 지원하는 `@vitejs/plugin-react` 4.7.0을 선택했다. Vue·Pinia·Vue Router·plugin-vue는 제거했다. API client·기존 CSS/WebP·sharp 도구는 유지한다.
+
+공식 npm registry의 버전/peer 확인과 Node 24의 locked 설치·audit·typecheck·테스트/빌드로 검증한다. 새 UI 스택의 audit 결과를 이전 Vue 권고 수정의 새 성과로 중복 계산하지 않는다. API와 순수 유틸의 기존 JavaScript 계약은 테스트로 보존하며 새 앱/상태/화면은 strict TypeScript로 검사한다. 자세한 이전 근거는 [React 실행 계획](plans/2026-10-31-react-migration.md)을 따른다.
+
+## Vue 유지 단계의 보안 수정 기록
+
+아래 버전표·검증은 React 전환 전 FE01의 역사 기록이며 현재 Vue를 사용한다는 뜻이 아니다.
+
 점검일: **2026-10-31**. 기준 main은 `82c78b9`이며 Node 24를 사용했다.
 변경 전 `npm audit`는 높음 8·보통 6, 총 14개 항목을 보고했다.
 갱신한 lockfile의 **전체 및 운영 의존성 audit는 모두 0개**다.

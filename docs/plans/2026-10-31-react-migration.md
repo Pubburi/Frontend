@@ -1,0 +1,107 @@
+# FE02 React 실제 라우트 이전과 FE03 검증
+
+## 범위·현재 상태
+
+- 기준 main: `4d935d6`. 기존 8개 라우트(고객·관리자·404)와 관리자 5개 탭을 React로 이전한다. Vue 미리보기·별도 미사용 scaffold·이중 프레임워크 브리지는 두지 않는다.
+- 런타임은 Vite·React·TypeScript·React Router·TanStack Query·Zustand다. 기존 `/api`·ApiResponse·쿠키 세션·5173→9987 개발 프록시·CSS·모든 정적 자산을 유지한다.
+- 코드 이전(FE02), 브라우저 fixture 동등성, 실제 Backend 통합/C04와 최종 기능 인수(FE03)는 구분한다. 코드 작성/로컬 검증을 main 병합이나 전체 기능 완료로 기록하지 않는다.
+- 이번 작업에는 실제 PG·배송·AWS·모바일 구현이나 새 추천 기능을 포함하지 않는다.
+
+## 선택·상태 소유
+
+현재 Vue 화면/관리자 구현이 약 1,440줄인 규모에서 브리지의 중복 라우팅·세션·저장 상태·제거 비용보다 전체 실제 라우트 이전이 단순하다고 판단했다. 화면과 데이터 경계를 먼저 대응시키고 기존 Chromium 사용자 결과를 유지한다. 빠르게 비교할 수 있는 fixture를 실제 Backend 검증으로 확대 해석하지 않는다.
+
+| 대상 | React 구조와 보존 계약 |
+|---|---|
+| 진입·공통 레이아웃 | createRoot/StrictMode·기존 CSS/WebP, 배너/메뉴/반응형 클래스·이미지 대체·notice·404 |
+| 라우팅 | BrowserRouter·기존 URL/검색 query·로그인 복귀·보호 경로, 관리자 lazy/Suspense |
+| 서버 데이터 | TanStack Query. 검색 조건 전체/상품 ID/후기 페이지/관리자 탭/개인 계정 ID를 key에 포함 |
+| 세션 | 한 query로 공유. 401만 null, 네트워크/503은 재시도 상태. 로그인/로그아웃 시 개인 query 캐시 제거 후 새 세션 설정 |
+| 장바구니 | Zustand. 기존 pubburi-cart raw 배열을 그대로 복원·정규화·저장. 주문 성공 뒤 초기화, 실패 시 보존 |
+| UI/쓰기 | Zustand notice·동기 pending 키. 쓰기 중복은 차단하고 읽기는 query key로 격리 |
+| 공통 API·유틸 | 기존 JS client/순수 유틸 계약 테스트 유지. 새 앱/상태/화면은 strict TS. 전부 TS로 전환했다고 표시하지 않음 |
+
+이전 GET 전송 자체를 취소하지 않아도 늦은 응답은 이전 key의 캐시에만 남는다. 전송량/응답 시간의 최적화 완료를 뜻하지 않는다. 고정된 자동 재시도 없음과 명시적 재시도 UI를 유지해 오류를 숨기지 않는다.
+
+## 화면·API 대응과 검증
+
+| 기존 기능 | 이전 대상 | 로컬 검증 범위 |
+|---|---|---|
+| 홈 배너·주종·인기·매장 | CatalogPages HomePage | 실제 정적 자산·홈 조회/카테고리 라우팅 보존, 브라우저 렌더링 |
+| 목록/검색/주종/정렬/페이지/해제 | ProductsPage | URL·API query·새 조건 제출·보류 응답 뒤 최신 결과 |
+| 상세/수량/담기/후기 | ProductDetailPage | 상품 ID별 상태·404·늦은 이전 오류·후기 등록/편집/삭제 |
+| 가입/중복확인/로그인/복귀/logout | AccountPage·Guard·App | 401/장애 구분·가입/로그인/계정 전환·비회원/일반회원 권한 경계 |
+| 장바구니/주문 유형·요청·데모 주문 | CartPage·cart store | 기존 저장 배열 복원·수량·새로고침·요청 payload·실패 보존·성공 후 내역 |
+| 내 정보·등급·스탬프·주문 | ProfilePage | 소유 계정 query·스냅샷/추정/미확인 금액·삭제 상품 표시 |
+| 관리자 상품·매장 | lazy AdminPage | 목록/등록/편집/삭제·활성 탭 재조회, 고객 필터와 key 분리 |
+| 관리자 회원·후기·주문 | lazy AdminPage | 회원 편집/삭제·자기 삭제 차단·후기 삭제·주문 상세/완료/삭제 |
+
+기존 Pinia store/Vue Router 내부 구조 테스트는 제거하고 Zustand 저장/쓰기 실패·동시 중복 차단·세션 요청 공유/오류 계약·안전 복귀·관리자 API 선택·주문 표시 단위 검증으로 옮겼다. 기존 API client와 이미지/필터 유틸은 계속 검증한다. 기존 Chromium 7개는 React에서 먼저 통과시켰고 가입/계정 전환·실패 후 주문·후기·관리자 CRUD·금액 출처를 추가했다.
+
+확장 검증에서 폼 안내문/입력값이 label 검색에 섞이는 문제를 확인해 핵심 컨트롤에 시각 라벨과 같은 명시적 접근 이름을 부여했다. 테스트의 기다림을 늘려 숨기지 않았다. 공통 로딩·빈 상태·프로필·관리자 표의 기존 CSS 클래스도 유지했다.
+
+## FE08 주문 금액/보존 계약
+
+Backend의 `totalPrice`를 사용하며 현재 상품 가격으로 과거 금액을 다시 계산하지 않는다. `priceBasis=ORDER_SNAPSHOT`은 주문 당시 금액, `LEGACY_ESTIMATE`는 과거 주문 추정 금액, null/미인식 값은 출처 미확인으로 표시한다. totalPrice/sumPrice null은 금액 미확인이고 실제 0과 구분한다.
+
+보존 이력의 `order.userId:null`은 관리자에게 탈퇴한 회원, `detail.productId:null`은 삭제된 상품으로 표시한다. 삭제 상품을 현재 상품 링크/재주문 대상으로 만들지 않는다. 주문의 표시/상태 처리와 실제 PG 결제를 구분한다. API 제공자인 Backend의 ORDER-PRICE-SNAPSHOT/API-MAP 문서가 정본이며 여기에는 소비 규칙만 둔다.
+
+Backend의 삭제 보존 응답에 맞춰 orderTable도 nullable로 정의하고, 데모 주문 요청 사항은 서버 DTO와 같은 최대 20자로 입력을 제한한다.
+
+## 버전·검증 명령
+
+공식 문서와 npm registry에서 React/DOM 19.3.1·React Router 7.18.5·Query 5.105.0·Zustand 5.0.16·TypeScript 7.0.2·타입 19.3.0을 확인했다. plugin-react 4.7.0은 기존 Vite6 peer 범위를 지원한다. Node24에서 새 lockfile과 npm ci를 검증하며 peer 검사 생략이나 강제 audit fix는 하지 않는다.
+
+```bash
+npm ci
+npx playwright install chromium
+npm run check
+```
+
+필수 frontend-ci 이름·읽기 권한·문서 변경 포함·PR/main/manual 실행·artifact 7일 보관을 유지하고 strict typecheck를 성공 조건에 추가한다. 실제 결과/변경 head·PR·리뷰·CI는 조정자의 체크포인트와 GitHub 기록을 따른다. 테스트 수/CI 시간/번들 크기를 앱 성능 개선 수치로 사용하지 않는다.
+
+초기 React 이전 검증에서 저장소 검사·npm ci·audit 0·PNG/방향 JPEG 변환·strict typecheck·Vitest 21개·프로덕션 빌드·Chromium 15개가 통과했다. 브라우저는 기존 7개와 새 인증/CRUD/가격 출처 흐름을 포함하며 모두 fixture API다. 그 뒤 사용하지 않는 과거 `orderTotal` 재계산 유틸을 제거해 가격 fallback 오용 여지를 없앴고 타입/단위 검사를 다시 통과했다. 아래 독립 검토의 추가 회귀를 수정한 최종 전체 검증은 Vitest 25개·Chromium 18개를 포함해 통과했다. PR·원격 필수 CI·리뷰·main 인계는 아직 조정자 확인 단계다.
+
+## 독립 검토 회귀와 보관 실패 경계
+
+- `/products?sort=popular&page=1`에서 제출하지 않은 검색어를 입력하고 전체 해제하면, 같은 URL로 이동한 effect가 실행되지 않아 입력/칩이 남았다. 수정 전 브라우저 1/1 실패를 확인하고 reset에서 입력 form도 기본값으로 직접 초기화했다. 같은 흐름의 수정 후 실패는 0/1이다.
+- 장바구니 저장이 storage.setItem 뒤 메모리를 변경하던 순서여서 저장 거부가 담기 자체를 막고, 실제 주문 승인 뒤 비우기 저장 실패도 주문 실패로 반환했다. throwingStorage로 메모리 담기와 성공 주문의 오류를 수정 전 2/2 재현했고, 메모리 변경을 먼저 적용하고 브라우저 보관 예외를 분리한 뒤 같은 실패는 0/2가 됐다.
+- 저장 실패는 현재 메모리의 담기/수량/삭제를 막지 않는다. 서버 주문 거절 시에는 장바구니를 그대로 보존하고 저장 비우기를 시도하지 않으며, 서버 주문 성공 시에는 보관 실패와 무관하게 메모리를 비우고 성공 결과를 반환한다. 보관 오류 때문에 주문 API를 다시 호출하지 않는다.
+- localStorage 접근자 자체나 읽기가 차단된 환경도 빈 메모리 상태로 앱을 기동한다. 보관 제약은 독립 status로 안내하고 주문 성공/실패 notice와 섞지 않는다. 새로고침 시 이전 값이 다시 보이거나 미저장 상품이 사라질 수 있다는 한계는 남으며, 실제 주문 결과는 주문 내역으로 확인하도록 안내한다. 이후 저장이 성공하면 보관 경고를 해제한다.
+- 단위 회귀는 저장 거부/복구·메모리 편집·승인 성공/서버 거절·저장 시도 횟수와 주문 호출 횟수·읽기/접근 불가를 검사한다. Chromium에는 동일 URL 해제, 저장 거부 상태의 담기→성공 주문→빈 장바구니, localStorage 접근 자체 차단의 실제 앱 흐름을 추가했다.
+
+최종 `npm run check`는 audit 0·이미지 변환·strict TypeScript·단위 25개·빌드·Chromium 18개를 통과했다. 위 n/N은 명시한 회귀 시나리오의 정확성 결과이며 실제 사용자 오류율이나 시간 성능 개선 수치가 아니다. 이 빌드의 dist 해시는 ignored 인계에 남기고 조정자가 실제 Backend 통합을 별도로 재확인한다.
+
+## 남은 인수 경계
+
+- 아래 선택한 실제 DB/쿠키 흐름은 통과했으며, 전체 관리 CRUD·삭제 UI·권한 회수·페이지/배너·접근성/시각 동등성 등 모든 인수 조합은 C04/BE03/FE03에서 계속 확인한다.
+- 홈 배너 직접 선택·페이지 경계·모바일 반응형/키보드/스크린리더와 시각 동등성은 기능별 인수 체크리스트를 확장한다. 모든 브라우저·모든 오류 조합을 완료했다고 주장하지 않는다.
+- 계정 장바구니 병합·실제 추천 기능과 PG는 별도 승인 범위이며 이 전환으로 완료되지 않는다.
+- 시간 성능은 동일 조건의 전후 실측을 하지 않았다. React 채택/코드 분할을 로딩 개선 수치로 표현하지 않는다.
+
+## 대표 사례 판단
+
+장바구니 저장/최신 요청/공통 API라는 기존 세 소재는 실제 React 소스와 경계로 갱신했다. 보안 업데이트의 과거 근거는 DEPENDENCIES/FE01 기록에 보존하고, 네 번째 대표 사례를 세션·개인 캐시·보호 경로를 유지한 전체 React 이전으로 교체했다. 단순 새 프레임워크라는 이유가 아니라 실제 계정/수명주기/저장 계약·대안/검증이 드러나 더 강하다고 판단했다. 총 네 개와 나머지 소재를 유지하고 README에 테스트 수/CI 집계를 넣지 않는다.
+
+공식 근거: [React createRoot](https://react.dev/reference/react-dom/client/createRoot), [StrictMode](https://react.dev/reference/react/StrictMode), [React Router](https://reactrouter.com/start/declarative/installation), [Query keys](https://tanstack.com/query/latest/docs/framework/react/guides/query-keys), [Zustand 저장/검증 경계](https://zustand.docs.pmnd.rs/reference/middlewares/persist.html).
+
+## 선택한 실제 로컬 통합 확인
+
+독립 검토 회귀 두 건을 수정한 최종 production dist를 파일별 해시로 확인해 별도 불변 디렉터리에 복사했다. Backend BE02 소스 `2070b39`의 최종 jar(SHA-256 `12f68b4eae1f152a54b83c968bf86231d498ed716ae4b0488161040a36c8715a`), 새 폐기 MySQL 8.4 스키마와 localhost 동적 포트의 Vite preview를 연결했다. 기존 사용자 DB/볼륨·5173/9987의 사용자 프로세스는 사용하지 않았고 외부 서비스·PG·API 대역은 없었다.
+
+Chromium의 새 브라우저 컨텍스트에서 다음 선택 흐름을 확인했다.
+
+- 홈의 실제 상품·정적 이미지 로딩.
+- 아이디 중복 확인·실제 회원가입/로그인·세션 쿠키와 마이페이지.
+- 상품 목록/상세·실제 후기 생성.
+- Zustand 장바구니의 새로고침 보존·실제 데모 주문 HTTP 201·주문 당시 금액 출처와 생성 주문 표시.
+- 세션 새로고침 복원·로그아웃·보호 경로의 로그인 복귀.
+- 폐기 fixture 관리자 계정의 lazy 관리 화면·실제 주문 목록 조회.
+
+선택 흐름은 통과했고 브라우저 pageerror는 없었다. 새로 생성한 테스트 계정·데모 주문은 폐기 DB에만 남겼다. 처음 검증 도구에서 지원하지 않는 property matcher를 쓴 시도는 준비 오류로 분리해 수정했고 앱 오류/개선 수치에 넣지 않았다. 최종 결과는 수정한 도구와 불변 배포 파일의 재실행 기준이다.
+
+이는 모든 CRUD·고객/관리자 오류 조합과 최종 FE03/C04 인수, 신규 R/F 기능의 전체 완료가 아니다. 전체 인수는 위 남은 경계를 따르며 시간 성능 수치를 산출하지 않았다. 실제 실행·원격 PR/CI와 정리 근거는 조정자 인계와 GitHub 기록에 연결한다.
+
+원래 시드의 orderCount는 실제 고유 고객 수가 아니므로 카드의 “명이 선택” 문구를 시연 주문 수량(개)으로 바로잡고 정렬 근거를 표시했다. 숫자와 API/정렬 동작은 유지하며 실제 인기·선호 성과로 해석하지 않는다.
+
+게시 직후 textarea에 남은 입력과 새 후기 본문이 잠시 함께 존재해 전역 텍스트 selector가 두 요소를 잡는 회귀 검증의 모호성도 발견했다. 게시된 comment-row 본문을 검증하도록 범위를 좁혔으며 기다림/자동 재시도로 실패를 숨기거나 앱의 정상 순서를 강제하지 않았다.
