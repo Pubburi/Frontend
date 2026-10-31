@@ -2,7 +2,7 @@
   <img src="docs/brand/pubburi.webp" alt="주점부리" width="96" />
   <h1>주점부리 · Frontend</h1>
   <p><strong>취향에 맞는 한 잔을 발견하고 기록하는 주류 큐레이션</strong></p>
-  <p>현재 Vue 3 웹을 유지하며, React 전환은 별도 후속 과제로 진행합니다.</p>
+  <p>상품 탐색·후기·데모 주문과 관리자 웹</p>
   <a href="https://github.com/Pubburi/Frontend/actions/workflows/ci.yml"><img src="https://github.com/Pubburi/Frontend/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/Vue-3-4FC08D" alt="Vue 3" /> <img src="https://img.shields.io/badge/Vite-6-646CFF" alt="Vite 6" /> <img src="https://img.shields.io/badge/Node.js-24-5FA04E" alt="Node.js 24" />
 </div>
@@ -26,7 +26,7 @@
 
 ## ✍ 프로젝트 개요
 
-상품을 탐색하고 후기를 확인하며 데모 주문을 생성하는 주점부리 웹입니다. 기존 화면과 동작을 유지한 채 독립 레포로 이전했습니다. 현재 구현 기술은 Vue이며 React 기능이 구현된 상태를 뜻하지 않습니다.
+상품을 탐색하고 후기를 확인하며 데모 주문을 생성하는 주점부리 웹입니다. 현재 Vue 3·Vite·Pinia·Vue Router를 사용합니다.
 
 <a id="features"></a>
 
@@ -39,8 +39,6 @@
 | 회원·후기 | 회원가입·로그인, 평점과 후기 작성·수정·삭제 |
 | 장바구니·주문 | 기기 내 장바구니 저장, 수량 수정, 데모 주문 접수 |
 | 마이·관리자 | 주문 내역·스탬프·등급과 관리자 관리 화면 |
-
-스크린샷은 준비 중입니다. 새 화면을 검증한 뒤 추가합니다.
 
 <a id="technology"></a>
 
@@ -73,6 +71,8 @@ flowchart LR
 
 Node.js 24와 실행 중인 Backend가 필요합니다. 레포 루트에서 실행합니다.
 
+세 서버와 DB를 함께 실행하는 방법은 [로컬 통합 실행](https://github.com/Pubburi/Backend/blob/main/docs/LOCAL-DEVELOPMENT.md)을 참고하세요.
+
 ~~~bash
 cp .env.example .env
 npm ci
@@ -80,7 +80,8 @@ npm ci
 ~~~
 
 - 웹: http://localhost:5173
-- VITE_API_BASE_URL이 비어 있으면 기존 /api를 사용합니다. 개발 프록시는 http://localhost:9987로 전달합니다.
+- VITE_API_BASE_URL이 비어 있으면 /api를 사용합니다. 개발 프록시는 VITE_API_PROXY_TARGET(기본 http://127.0.0.1:9987)로 전달합니다.
+- 개발 포트는 PUBBURI_FRONTEND_PORT(기본 5173)이며, 사용 중이면 다른 포트로 바꾸지 않고 종료합니다.
 - 세션 인증을 위해 API client의 credentials: include를 유지합니다.
 - 환경변수에 비밀키를 넣지 않습니다. VITE_ 값은 브라우저에 포함됩니다.
 
@@ -102,17 +103,21 @@ npm run check
 
 main은 PR·frontend-ci 성공·최신 main 반영·대화 해결을 요구합니다. 필수 승인은 0명이고 관리자에게도 적용합니다. Squash merge 뒤 작업 브랜치를 정리합니다.
 
+자동화 PR은 최신 커밋의 Codex 리뷰와 관련 검증까지 통과해야 병합합니다. [개발·운영 기준](https://github.com/Pubburi/Backend/blob/main/docs/DELIVERY-PLAN.md)을 함께 적용합니다.
+
 <a id="roadmap"></a>
 
 ## 🗺️ 개발 계획
 
 - [ ] [이전한 의존성의 보안 경고 검토·업데이트](docs/DEPENDENCIES.md)
-- [ ] Vue → React 전환 범위·순서와 React 기술 구성 결정
+- [ ] Vite·React·TypeScript·React Router·TanStack Query·Zustand로 전환
 - [ ] 기존 화면·라우팅·Pinia 상태·API 호출을 React 구조로 이전
 - [ ] 기존 API 계약·세션 로그인·정적 자산·고객/관리자 기능 유지
 - [ ] Vue 전용 테스트를 React에 맞게 전환하고 CI·문서 갱신
 - [ ] 주요 고객·관리자 흐름의 기능 동등성 확인
 - [ ] 취향 입력·맞춤 추천·추천 이유·피드백·검색 필터·찜 화면 구현
+
+기한은 **2027년 2월 5일**이며 P1·P2 모두 필수 목표입니다. [전체 기능·일정](https://github.com/Pubburi/Backend/blob/main/docs/DELIVERY-PLAN.md)에 따라 진행하고, 실제 완성 화면을 검증한 뒤 이미지를 추가합니다.
 
 <a id="links"></a>
 
@@ -130,6 +135,5 @@ main은 PR·frontend-ci 성공·최신 main 반영·대화 해결을 요구합�
 |---|---|
 | [오인성](https://github.com/ois0886) | 웹 UI·상태·API 연동·React 전환 |
 
-초기 웹·백엔드는 SSAFY 13기 주점부리 프로젝트(오인성·박상윤)를 기반으로 합니다.
-[이전 기준 소스](https://github.com/ois0886/Pubburi-Refactor/tree/b993b4c8f3ba8e5d11e98a3cc76c98b3e661bfdf)를 기록하고 각 신규 레포의 기존 이력 위에 초기 세팅을 추가했습니다.
+[소스 출처](docs/PROVENANCE.md)
 프로젝트에는 별도 담당자의 모바일 앱도 포함되며, 이 레포는 공통 API 연동 범위를 다룹니다.
