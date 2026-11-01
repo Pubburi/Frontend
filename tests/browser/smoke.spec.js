@@ -16,7 +16,7 @@ const emptyPreference = (surveyStatus = 'NOT_STARTED') => ({ surveyStatus, softP
 const test = base.extend({
   api: [async ({ page }, use) => {
     const state = {
-      user: null, catalogFailures: 0, sessionFailures: 0, orderFailures: 0,
+      user: null, catalogFailures: 0, sessionFailures: 0, orderFailures: 0, defaultSource: 'BASELINE', defaultFailures: 0,
       catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {}, preferences: {}, favorites: {},
       users: [
         { id: 'member', name: '시험회원', role: 'USER', stamps: 3 },
@@ -107,6 +107,15 @@ const test = base.extend({
         const type = url.searchParams.get('type') || ''
         const items = state.catalog.filter((item) => (!type || item.type === type) && item.name.includes(q))
         await route.fulfill({ json: success(pageOf(items)) })
+        return
+      }
+      if (method === 'GET' && path === '/recommendations/default') {
+        if (state.defaultFailures > 0) {
+          state.defaultFailures -= 1
+          await route.fulfill({ status: 500, json: failure('INTERNAL_ERROR') })
+          return
+        }
+        await route.fulfill({ json: success({ items: state.catalog.toSorted((a, b) => a.id - b.id).slice(0, Number(url.searchParams.get('size') || 4)), source: state.defaultSource }) })
         return
       }
       if (request.method() === 'GET' && path === '/products/popular') {
@@ -1701,4 +1710,166 @@ test('목록 아래에서 찜 해제를 시작해도 임시 포커스가 화면�
     release()
     await expect(page.getByRole('button', { name: '스크롤 시연 10 찜 해제', exact: true })).toBeFocused()
   } finally { release() }
+})
+
+for (const source of ['BASELINE', 'FALLBACK']) {
+  test(`공개 기본 목록은 ${source} 성공에서 현재 상품을 보여주며 출처 코드를 제품화하지 않음`, async ({ page, api }) => {
+    api.defaultSource = source
+    await page.goto('/discover')
+    await expect(page.getByRole('heading', { name: '기본 주류 둘러보기', exact: true })).toBeVisible()
+    await expect(page.locator('.product-card h2')).toHaveText(['시험 탁주', '시험 사케'])
+    await expect(page.getByText('취향 설정과 관계없이 둘러볼 수 있는 주류예요.', { exact: false })).toBeVisible()
+    await expect(page.getByText(source, { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    expect(api.calls.filter((call) => call.path === '/recommendations/default')).toEqual([expect.objectContaining({ method: 'GET', query: { size: '4' }, body: null })])
+    expect(api.calls.some((call) => call.path === '/users/me/preferences' || call.path.startsWith('/users/me/favorites'))).toBe(false)
+    await page.getByRole('heading', { name: '시험 탁주', exact: true }).getByRole('link').click()
+    await expect(page).toHaveURL('/products/901')
+    await expect(page.getByRole('heading', { name: '시험 탁주', level: 1 })).toBeVisible()
+  })
+}
+
+test('설문 건너뛰기 저장 후 기본 목록에 도달하고 SKIPPED 값을 유지', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.goto('/preferences')
+  await page.getByLabel('선호 도수 (%)', { exact: true }).fill('12.5')
+  await page.getByRole('button', { name: '이번에는 건너뛰기', exact: true }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: '건너뛰기', exact: true }).click()
+  await expect(page.getByText('건너뜀', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: '기본 주류 둘러보기', exact: true }).click()
+  await expect(page).toHaveURL('/discover')
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  expect(api.preferences.member).toEqual(emptyPreference('SKIPPED'))
+  expect(api.calls.filter((call) => call.method === 'PUT' && call.path === '/users/me/preferences')).toHaveLength(1)
+  await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '마이', exact: true }).click()
+  await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+  await expect(page.getByText('건너뜀', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('')
+})
+
+test('아직 입력하지 않은 신규 계정은 취향 쓰기 없이 기본 목록을 둘러볼 수 있음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.goto('/preferences')
+  await expect(page.getByText('아직 입력하지 않음', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: '기본 주류 둘러보기', exact: true }).click()
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  expect(api.preferences.member).toBeUndefined()
+  expect(api.calls.some((call) => call.path === '/users/me/preferences' && call.method === 'PUT')).toBe(false)
+})
+
+test('저장 완료한 취향과 필수 조건은 프로필의 기본 목록을 보고 돌아와도 보존', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  const stored = emptyPreference('COMPLETED')
+  stored.softPreferences.tasteTags = ['owned\nfixture']
+  stored.softPreferences.targetAbvPercent = 80.25
+  stored.hardConstraints.maxPriceKrw = 0
+  stored.hardConstraints.maxAbvPercent = 10
+  api.preferences.member = stored
+  await page.goto('/profile')
+  await page.getByRole('link', { name: '기본 주류 둘러보기', exact: true }).click()
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '마이', exact: true }).click()
+  await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+  await expect(page.getByText('입력 완료', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('맛 태그 1', { exact: true })).toHaveValue('owned\nfixture')
+  await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('80.25')
+  await expect(page.getByLabel('최대 가격 (원)', { exact: true })).toHaveValue('0')
+  expect(api.preferences.member).toEqual(stored)
+  expect(api.calls.some((call) => call.path === '/users/me/preferences' && call.method === 'PUT')).toBe(false)
+})
+
+test('기본 목록의 조회 실패와 빈 목록을 구분하고 명시적 재조회로 복구', async ({ page, api }) => {
+  api.defaultFailures = 1
+  await page.goto('/discover')
+  await expect(page.getByRole('heading', { name: '기본 주류를 불러오지 못했습니다', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '지금 둘러볼 기본 주류가 없습니다', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '기본 목록 다시 불러오기', exact: true }).click()
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  api.catalog = []
+  api.defaultSource = 'FALLBACK'
+  await page.getByRole('button', { name: '기본 목록 새로고침', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '지금 둘러볼 기본 주류가 없습니다', exact: true })).toBeVisible()
+  api.catalog = products.map((item) => ({ ...item, price: item.price + 1000 }))
+  await page.getByRole('button', { name: '기본 목록 새로고침', exact: true }).click()
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  await expect(page.locator('.product-card').first()).toContainText('7,000원')
+})
+
+for (const status of [200, 500]) {
+  test(`기본 목록 대기·이탈 뒤 늦은 ${status} 결과가 새 취향 초안을 덮지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    let held = false
+    await page.route('**/api/recommendations/default?*', async (route) => {
+      held = true
+      await gate
+      await route.fulfill({ status, json: status === 200 ? success({ items: products, source: 'BASELINE' }) : failure('INTERNAL_ERROR') })
+    })
+    try {
+      await page.goto('/discover')
+      await expect.poll(() => held).toBe(true)
+      await expect(page.getByRole('status', { name: '기본 주류를 불러오는 중입니다.' })).toBeVisible()
+      await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '마이', exact: true }).click()
+      await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+      await page.getByLabel('선호 도수 (%)', { exact: true }).fill('25')
+      const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/recommendations/default')
+      release()
+      await (await response).finished()
+      await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('25')
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      expect(api.preferences.member).toBeUndefined()
+      expect(api.calls.some((call) => call.path === '/users/me/preferences' && call.method === 'PUT')).toBe(false)
+    } finally { release() }
+  })
+}
+
+test('기본 목록의 늦은 이전 계정 조회는 다른 계정 취향·세션에 영향을 주지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let held = false
+  await page.route('**/api/recommendations/default?*', async (route) => {
+    held = true
+    await gate
+    await route.fulfill({ status: 500, json: failure('INTERNAL_ERROR') })
+  })
+  try {
+    await page.goto('/discover')
+    await expect.poll(() => held).toBe(true)
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+    await page.getByRole('link', { name: '로그인', exact: true }).click()
+    await page.getByLabel('아이디', { exact: true }).fill('other')
+    await page.getByLabel('비밀번호', { exact: true }).fill('fixture-password')
+    await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+    await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+    await page.getByLabel('선호 도수 (%)', { exact: true }).fill('30')
+    const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/recommendations/default')
+    release()
+    await (await response).finished()
+    await expect(page.getByText('다른회원님', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('30')
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    expect(api.preferences.other).toBeUndefined()
+  } finally { release() }
+})
+
+test('390px 기본 주류 목록의 카드·재조회·전체 목록 링크에 가로 넘침이 없음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.defaultSource = 'FALLBACK'
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/profile')
+  await expect(page.getByRole('link', { name: '기본 주류 둘러보기', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
+  await expect(page.getByRole('form', { name: '내 취향 설정' })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.getByRole('link', { name: '기본 주류 둘러보기', exact: true }).click()
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.getByRole('button', { name: '기본 목록 새로고침', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  await page.getByRole('link', { name: '전체 주류 보기', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '전체 주류 둘러보기' })).toBeVisible()
 })

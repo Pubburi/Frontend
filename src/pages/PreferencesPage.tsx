@@ -310,6 +310,10 @@ function PreferenceForm({
           </button>
         </div>
       </form>
+      <div className="button-row">
+        <Link className="btn btn-outline-dark" to="/discover">기본 주류 둘러보기</Link>
+        <p className="muted">취향을 아직 정하지 않았거나 이번에 건너뛰어도 둘러볼 수 있어요.</p>
+      </div>
       {confirm && (
         <Confirm
           confirmLabel={confirm === 'SKIPPED' ? '건너뛰기' : '초기화'}

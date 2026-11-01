@@ -1,0 +1,36 @@
+# R01 — 설문 없이 기본 상품 둘러보기 연결
+
+## 범위와 상태
+
+- 기준 main: `742f9c9`. Frontend는 공개 `/discover` 화면과 프로필·설문 하단의 진입을 제공한다. Backend/Recommendation은 각 저장소에서 기본 목록 계산·호출/대체를 소유한다.
+- 제공자 정본: [DEFAULT-RECOMMENDATIONS](https://github.com/Pubburi/Backend/blob/main/docs/DEFAULT-RECOMMENDATIONS.md), [OpenAPI](https://github.com/Pubburi/Backend/blob/main/docs/openapi/default-recommendations.json).
+- 이번 증분은 건너뛴/신규 사용자가 실제 기본 상품에 도달하는 R01의 마지막 연결 과제다. 코드·API fixture 확인과 실제 세 서버 통합·리뷰/CI·병합을 구분하며 전체 R01 완료는 조정자가 최종 판정한다.
+
+## 사용자 흐름과 계약
+
+`GET /api/recommendations/default?size=4`는 공개·비개인 조회다. 응답은 `{items: Product7[], source: 'BASELINE' | 'FALLBACK'}`이며 페이지/점수/이유는 없다. 4개를 요청하고 서버 순서대로 현재 상품 정보를 표시한다. 별도의 전체 카탈로그 수집·상품별 부가 조회는 하지 않는다.
+
+1. 프로필의 기본 주류 둘러보기 또는 설문 아래의 같은 링크로 `/discover`에 도달한다. 건너뛰기 확인/저장 뒤에도 바로 선택할 수 있으며, 아직 입력하지 않은 사람도 저장 없이 둘러볼 수 있다.
+2. 화면은 취향 설정과 관계없는 기본 주류임을 안내한다. source 코드는 제품 문구로 표시하지 않으며 개인 맞춤·학습된 추천·실제 인기·판매 가능 여부로 표현하지 않는다.
+3. BASELINE과 FALLBACK의 유효한 상품 목록은 같은 화면으로 보여준다. 응답 실패는 별도 실패/명시적 다시 불러오기, 빈 성공은 빈 목록/전체 주류 이동으로 구분한다. 새로고침은 기본 목록만 다시 읽는다.
+4. 항목은 기존 ProductCard의 현재 가격·도수·이미지와 상세 링크를 사용한다. 공개 목록을 보는 행위는 개인 취향이나 설문 상태를 바꾸지 않는다.
+
+## 공개 목록과 개인 입력 소유
+
+공개 query는 `catalog/default-products/4` 키를 사용하고 계정·설문·찜을 요청에 넣지 않는다. 개인 취향 GET/PUT·초안·NOT_STARTED/SKIPPED/COMPLETED·null/[]/0·저장 중 새 초안·같은 계정 재로그인 HTTP 수명은 변경하지 않는다. 기존 로그인/로그아웃의 캐시 초기화도 유지한다.
+
+목록에서 떠난 뒤 늦은 공개 GET 성공/실패는 그 query의 결과일 뿐, 현재 개인 폼·세션·global notice를 갱신하지 않는다. 저장된 COMPLETED의 필수 범위가 있어도 이 공개 목록이 이를 적용했다고 표시하지 않는다. 미저장 초안의 경로 이탈 보관은 기존 정책처럼 보장하지 않으며, 기본 목록 진입이 자동 저장·초기화·건너뛰기를 수행하지 않는다.
+
+## 검증과 완료 구분
+
+- API 계약 단위: size 기본 4/유한 요청, 계정 선택자와 body 없음, Product7/source의 원형 응답.
+- 프로덕션 Chromium fixture: BASELINE/FALLBACK 성공·현재 상세 링크·비회원 공개 접근, SKIPPED 저장 후 목록·신규 NOT_STARTED의 무쓰기 진입·COMPLETED/실제 0/범위 밖 목표 보존, 실패/빈/명시적 재조회·로딩·늦은 공개 응답과 개인 초안/다른 계정 격리·390px 웹.
+- 기존 R01의 건너뛰기 취소/초안·저장/초기화·계정 전환/ABA·이상 응답과 F01/포커스·관리자/후기·장바구니 회귀는 전체 검사에서 유지한다.
+- 실제 Backend/MySQL/Recommendation 통합은 조정자가 동결한 앱과 제공자 jar로 실행한다. 서버 없는 FALLBACK 모드의 실행은 실제 관측한 모드만 기록하며, fixture의 FALLBACK 응답을 실제 서버 중단 검증으로 바꾸지 않는다.
+- FE03/C04 최종 기능 동등성은 [React 계획의 남은 인수](2026-10-31-react-migration.md#남은-인수-경계) 체크리스트로 계속 남긴다. 이 기본 목록 연결만으로 전체 인수를 완료하지 않는다.
+
+Node 24.22.1의 전체 `npm run check`가 통과했다. 저장소 검사·locked npm ci·audit(취약점 0)·이미지 도구·strict TypeScript·단위 48개·프로덕션 빌드·Chromium 80개를 확인했다. 새 기본 목록 흐름은 10개이며, 이후 좁은 웹의 프로필/설문 진입 검증을 같은 390px 조건에 보강해 별도로 통과했다. 테스트 수는 검증 범위이며 서비스 성능이 아니다. 실제 서버 harness는 작성·구문검사만 했고 실행은 조정자에게 인계한다. 최신 head CI·Codex 리뷰·각 제공자 main·Frontend 병합/main CI는 별도 게이트다.
+
+## 대표 사례 판단
+
+기존 네 README 사례를 보존한다. 이번 작업은 작은 공개 API/사용자 경로 연결이며 기존 데이터 보존·비동기 요청·모달 포커스·인증 캐시/HTTP 수명 사례보다 더 강한 독립 문제 해결 근거를 확보한 것은 아니다. 회귀 횟수·테스트/CI 집계나 없는 성능 수치를 README에 추가하지 않는다.
