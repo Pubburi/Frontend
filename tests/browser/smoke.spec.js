@@ -2556,3 +2556,140 @@ test('가입 후 로그인 복구에서 다른 계정을 선택하면 그 계정
   expect(api.calls.filter((call) => call.method === 'POST' && call.path === '/users')).toHaveLength(1)
   expect(api.user.id).toBe('other')
 })
+
+for (const rating of [0.5, 4.5]) {
+  test(`기존 ${rating}점 후기를 열면 편집 평점도 저장된 값과 일치`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    api.reviews = [{ id: 31, userId: 'member', productId: 901, rating, comment: '소수 평점 시연 후기' }]
+    await page.goto('/products/901')
+    const row = page.locator('.comment-row').filter({ hasText: '소수 평점 시연 후기' })
+    await row.getByRole('button', { name: '수정', exact: true }).click()
+    const select = row.locator('.comment-edit-form').getByRole('combobox', { name: '평점', exact: true })
+    expect(api.reviews[0].rating).toBe(rating)
+    expect(api.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
+    await test.info().attach('selected-rating', { body: JSON.stringify({ stored: rating, selected: await select.inputValue(), option: await select.locator('option:checked').textContent() }), contentType: 'application/json' })
+    await expect(select).toHaveValue(String(rating))
+    await expect(select.locator('option:checked')).toHaveText(`${rating}점`)
+  })
+}
+
+for (const rating of [0.5, 4.5, 2.25]) {
+  test(`${rating}점 후기의 본문만 수정하고 정수 평점 뒤 원래 값을 다시 선택`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    api.reviews = [{ id: 41, userId: 'member', productId: 901, rating, comment: '원래 소수 후기' }]
+    await page.goto('/products/901')
+    const row = page.locator('.comment-row')
+    await row.getByRole('button', { name: '수정', exact: true }).click()
+    const form = row.locator('.comment-edit-form')
+    await form.getByRole('textbox', { name: '후기 내용', exact: true }).fill('본문만 수정한 소수 후기')
+    await form.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(form).toHaveCount(0)
+    expect(api.reviews[0].rating).toBe(rating)
+    expect(api.calls.filter((call) => call.method === 'PUT' && call.path === '/comments/41')[0].body).toEqual({ rating, comment: '본문만 수정한 소수 후기' })
+    await row.getByRole('button', { name: '수정', exact: true }).click()
+    const select = form.getByRole('combobox', { name: '평점', exact: true })
+    await select.selectOption('3')
+    await expect(select).toHaveValue('3')
+    await select.selectOption(String(rating))
+    await expect(select).toHaveValue(String(rating))
+    await form.getByRole('button', { name: '저장', exact: true }).click()
+    await expect(form).toHaveCount(0)
+    expect(api.reviews[0].rating).toBe(rating)
+    expect(api.calls.filter((call) => call.method === 'PUT' && call.path === '/comments/41').map((call) => call.body.rating)).toEqual([rating, rating])
+  })
+}
+
+test('후기 편집 중 재연결로 원본 평점이 바뀌어도 시작값과 현재 선택을 유지', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.reviews = [{ id: 42, userId: 'member', productId: 901, rating: 4.5, comment: '재연결 전 후기' }]
+  await page.goto('/products/901')
+  const row = page.locator('.comment-row')
+  await row.getByRole('button', { name: '수정', exact: true }).click()
+  const form = row.locator('.comment-edit-form')
+  const select = form.getByRole('combobox', { name: '평점', exact: true })
+  await form.getByRole('textbox', { name: '후기 내용', exact: true }).fill('저장 전 내 초안')
+  const reads = api.calls.filter((call) => call.path === '/products/901/comments').length
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+  api.reviews[0] = { ...api.reviews[0], rating: 2.25, comment: '서버에서 바뀐 후기' }
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect.poll(() => api.calls.filter((call) => call.path === '/products/901/comments').length).toBeGreaterThan(reads)
+  await expect(row.locator('.badge')).toHaveText('2.3점')
+  await expect(select).toHaveValue('4.5')
+  await expect(form.getByRole('textbox', { name: '후기 내용', exact: true })).toHaveValue('저장 전 내 초안')
+  await select.selectOption('3')
+  await select.selectOption('4.5')
+  await expect(select).toHaveValue('4.5')
+  await expect(select.locator('option[value="2.25"]')).toHaveCount(1)
+  await expect(select.locator('option[value="4.5"]')).toHaveCount(1)
+  await form.getByRole('button', { name: '취소', exact: true }).click()
+  expect(api.reviews[0].rating).toBe(2.25)
+  expect(api.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
+})
+
+test('소수 후기 저장 거절은 선택과 본문을 유지하고 명시적 재시도만 저장', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.reviews = [{ id: 43, userId: 'member', productId: 901, rating: 0.5, comment: '거절 전 후기' }]
+  let attempts = 0
+  await page.route('**/api/comments/43', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    attempts += 1
+    if (attempts === 1) return route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+    await route.fallback()
+  })
+  await page.goto('/products/901')
+  const row = page.locator('.comment-row')
+  await row.getByRole('button', { name: '수정', exact: true }).click()
+  const form = row.locator('.comment-edit-form')
+  await form.getByRole('textbox', { name: '후기 내용', exact: true }).fill('다시 저장할 본문')
+  await form.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(form.getByRole('button', { name: '저장', exact: true })).toBeEnabled()
+  await expect(form.getByRole('combobox', { name: '평점', exact: true })).toHaveValue('0.5')
+  await expect(form.getByRole('textbox', { name: '후기 내용', exact: true })).toHaveValue('다시 저장할 본문')
+  expect(api.reviews[0].comment).toBe('거절 전 후기')
+  expect(attempts).toBe(1)
+  await form.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(form).toHaveCount(0)
+  expect(api.reviews[0]).toMatchObject({ rating: 0.5, comment: '다시 저장할 본문' })
+  expect(attempts).toBe(2)
+})
+
+test('다른 회원은 소수 후기의 편집 조작을 볼 수 없고 관리자 편집은 저장값을 선택', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'other')
+  api.reviews = [{ id: 44, userId: 'member', productId: 901, rating: 4.5, comment: '권한 소수 후기' }]
+  await page.goto('/products/901')
+  await expect(page.locator('.comment-row').getByRole('button', { name: '수정', exact: true })).toHaveCount(0)
+  api.user = api.users.find((user) => user.id === 'admin')
+  await page.reload()
+  await page.locator('.comment-row').getByRole('button', { name: '수정', exact: true }).click()
+  await expect(page.locator('.comment-edit-form').getByRole('combobox', { name: '평점', exact: true })).toHaveValue('4.5')
+  expect(api.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
+})
+
+test('390px 웹에서 소수 평점을 보존하고 Tab과 Enter로 후기 폼을 저장', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.reviews = [{ id: 45, userId: 'member', productId: 901, rating: 4.5, comment: '키보드 소수 후기' }]
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/products/901')
+  await page.locator('.comment-row').getByRole('button', { name: '수정', exact: true }).click()
+  const form = page.locator('.comment-edit-form')
+  const select = form.getByRole('combobox', { name: '평점', exact: true })
+  await select.selectOption('4')
+  await select.selectOption('4.5')
+  await select.focus()
+  await expect(select).toBeFocused()
+  await select.press('Tab')
+  const text = form.getByRole('textbox', { name: '후기 내용', exact: true })
+  await expect(text).toBeFocused()
+  await text.fill('키보드로 보존한 후기')
+  await text.press('Tab')
+  const cancel = form.getByRole('button', { name: '취소', exact: true })
+  await expect(cancel).toBeFocused()
+  await cancel.press('Tab')
+  const save = form.getByRole('button', { name: '저장', exact: true })
+  await expect(save).toBeFocused()
+  await save.press('Enter')
+  await expect(form).toHaveCount(0)
+  expect(api.reviews[0].rating).toBe(4.5)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})

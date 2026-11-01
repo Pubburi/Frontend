@@ -338,6 +338,7 @@ export function ProductDetailPage() {
   const { id = '' } = useParams()
   return <ProductDetail key={id} id={id} />
 }
+type ReviewEdit = Review & { initialRating: number }
 function ProductDetail({ id }: { id: string }) {
   const session = useSession()
   const ui = useUi()
@@ -347,7 +348,7 @@ function ProductDetail({ id }: { id: string }) {
   const [quantity, setQuantity] = useState(1)
   const [page, setPage] = useState(1)
   const [draft, setDraft] = useState({ rating: 5, comment: '' })
-  const [editing, setEditing] = useState<Review | null>(null)
+  const [editing, setEditing] = useState<ReviewEdit | null>(null)
   const [deleting, setDeleting] = useState<Review | null>(null)
   const product = useQuery<Product>({
     queryKey: ['catalog', 'product', id],
@@ -574,11 +575,20 @@ function ProductDetail({ id }: { id: string }) {
                               })
                             }
                           >
-                            {[5, 4, 3, 2, 1].map((value) => (
-                              <option key={value} value={value}>
-                                {value}점
-                              </option>
-                            ))}
+                            {Array.from(
+                              new Set([
+                                5, 4, 3, 2, 1,
+                                comment.rating,
+                                editing.initialRating,
+                                editing.rating,
+                              ]),
+                            )
+                              .sort((a, b) => b - a)
+                              .map((value) => (
+                                <option key={value} value={value}>
+                                  {value}점
+                                </option>
+                              ))}
                           </select>
                         </label>
                         <label className="field-group">
@@ -621,7 +631,10 @@ function ProductDetail({ id }: { id: string }) {
                           <div className="button-row">
                             <button
                               className="text-button"
-                              onClick={() => setEditing({ ...comment })}
+                              onClick={() => setEditing({
+                                ...comment,
+                                initialRating: comment.rating,
+                              })}
                             >
                               수정
                             </button>
