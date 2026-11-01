@@ -341,6 +341,14 @@ export function ProfilePage() {
 }
 
 export function AccountPage() {
+  const location = useLocation()
+  const currentLocation = useRef(location.key)
+  currentLocation.current = location.key
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const [mode, setMode] = useState<'login' | 'join'>('login')
   const [login, setLogin] = useState({ id: '', pass: '' })
   const [join, setJoin] = useState({ id: '', name: '', pass: '' })
@@ -354,6 +362,8 @@ export function AccountPage() {
   const authenticating = Boolean(ui.pending.login || ui.pending.join)
   async function authenticate(event: FormEvent) {
     event.preventDefault()
+    const submittedLocation = location.key
+    const target = safeRedirect(search.get('redirect'))
     if (mode === 'join' && (!check.available || check.id !== join.id.trim())) {
       ui.error(new Error('아이디 중복 확인이 필요합니다.'))
       return
@@ -382,14 +392,18 @@ export function AccountPage() {
       mode === 'join' ? '가입되었습니다.' : '로그인되었습니다.',
     )
     if (result.ok) {
-      setLogin({ id: '', pass: '' })
-      setJoin({ id: '', name: '', pass: '' })
-      navigate(safeRedirect(search.get('redirect')), { replace: true })
+      if (mounted.current && currentLocation.current === submittedLocation) {
+        setLogin({ id: '', pass: '' })
+        setJoin({ id: '', name: '', pass: '' })
+        navigate(target, { replace: true })
+      }
     } else if (accountCreated) {
-      setMode('login')
-      setLogin({ id: credentials.id, pass: '' })
-      setJoin({ id: '', name: '', pass: '' })
-      setCheck({ id: '', available: false, message: '' })
+      if (mounted.current) {
+        setMode('login')
+        setLogin({ id: credentials.id, pass: '' })
+        setJoin({ id: '', name: '', pass: '' })
+        setCheck({ id: '', available: false, message: '' })
+      }
       ui.error(
         new Error('회원가입은 완료되었지만 로그인하지 못했습니다. 비밀번호를 입력해 다시 로그인해 주세요.'),
       )
