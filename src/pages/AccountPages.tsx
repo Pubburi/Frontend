@@ -1,5 +1,5 @@
-import { useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
 import { safeRedirect, useSession } from '../queries'
@@ -17,6 +17,14 @@ export function CartPage() {
   const session = useSession()
   const navigate = useNavigate()
   const client = useQueryClient()
+  const location = useLocation()
+  const currentLocation = useRef(location.key)
+  currentLocation.current = location.key
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   async function checkout(event: FormEvent) {
     event.preventDefault()
     if (!session.data) {
@@ -25,6 +33,7 @@ export function CartPage() {
       return
     }
     const userId = session.data.id
+    const submittedLocation = location.key
     const result = await ui.run(
       'checkout',
       () => cart.checkout(userId),
@@ -34,7 +43,8 @@ export function CartPage() {
       // The order succeeded. A later profile/list refresh must not turn it into a failed order.
       void client.invalidateQueries({ queryKey: ['account', userId] })
       void client.invalidateQueries({ queryKey: ['catalog', 'popular'] })
-      navigate('/profile')
+      if (mounted.current && currentLocation.current === submittedLocation)
+        navigate('/profile')
     }
   }
   const help = {
@@ -56,6 +66,12 @@ export function CartPage() {
           </span>
         )}
       </div>
+      {ui.pending.checkout && (
+        <p className="muted" role="status">
+          주문 접수 중입니다. 이미 전송한 상품과 수량은 변경되지 않습니다.
+          추가로 담은 수량과 새 요청 사항은 다음 주문에 남습니다.
+        </p>
+      )}
       {cart.items.length ? (
         <div className="cart-layout">
           <div className="cart-list">

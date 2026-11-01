@@ -47,94 +47,135 @@
 
 ## 🧩 대표 문제 해결
 
-### 1. 저장된 장바구니를 보존하며 상태 관리 교체하기
+### 1. 주문 완료와 다음 장바구니 입력 분리하기
 
 **문제**
 
-Pinia에서 Zustand로 바꾸면서 기존 브라우저 장바구니까지 버리면 프레임워크 전환이 사용자 선택 상태의 손실로 이어진다. 손상된 JSON·잘못된 수량과 주문 실패 뒤 상태 보존도 함께 다뤄야 했다.
+데모 주문을 전송한 뒤 다른 상품을 담거나 다음 요청사항을 작성하면, 이전 주문의 성공 처리가 아직 보내지 않은 입력까지 지웠다. 다른 화면으로 이동했어도 늦은 성공이 주문 내역으로 강제 이동시켰다. 서버에 접수된 주문과 이후 사용자의 선택을 함께 보존해야 했다.
 
 **원인**
 
-기존 `pubburi-cart`에는 상품·수량의 원시 배열이 저장돼 있다. 새로운 저장 미들웨어의 기본 envelope를 그대로 적용하면 기존 값과 구조가 달라지고, 주문 요청 전에 초기화하면 실패 시 복구할 선택 상태가 사라진다.
+API에는 제출 시점의 상품·수량·요청을 올바르게 보냈지만, 완료 시점에는 현재 장바구니 전체와 현재 요청사항을 무조건 초기화했다. 상품 ID만 비교해서 제출량을 빼면 삭제 후 다시 담은 같은 상품을 새 선택으로 구분할 수 없고, 입력값만 비교하면 같은 값으로 다시 작성한 새 폼도 지운다.
 
 **해결**
 
-Zustand store에 같은 키·원시 배열 형식의 저장 어댑터를 두고 복원 경계의 정규화를 유지했다. 수량은 1–99로 제한하며 잘못된 저장값은 빈 목록으로 복원한다. 주문에는 상품 ID·수량을 보내고 서버 성공 뒤 메모리 장바구니를 비운다. 브라우저 보관 실패는 별도로 처리해 편집과 성공한 주문의 결과를 중단하지 않고, 보관 제약을 독립 안내한다.
+상품 행에 저장하지 않는 메모리 소유 토큰을 두고 제출할 때 수량·토큰·폼 객체를 캡처했다. 성공 뒤 같은 행에서 제출한 수량만 차감하며, 새 상품과 삭제 후 다시 담은 행은 남긴다. 요청사항은 여전히 제출 폼일 때만 비운다. 원래 장바구니 화면과 경로가 유지된 경우에만 주문 내역으로 이동하고, 접수 중 추가 수량과 새 요청은 다음 주문에 남는다는 의미를 안내한다. 기존 저장 키·배열 형식과 보관 실패의 분리는 유지했다.
 
 **결과**
 
-이전 Vue가 저장한 배열을 React에서 그대로 복원하고 새로고침 뒤에도 선택 상품·수량을 유지한다. 주문 거절 시 장바구니와 요청 사항을 보존하며 성공 후 서버 주문 금액을 주문 내역에서 확인한다. 브라우저의 가격은 표시용이고 서버 금액 검증을 대신하지 않는다.
+접수된 원래 주문을 바꾸지 않으면서 추가 상품·수량과 새 요청사항으로 다음 주문을 이어갈 수 있다. 로컬 실제 서버 연동에서도 원래 제출 내용과 다음 입력을 함께 보존했고, 다른 화면이나 다시 연 장바구니를 이전 성공이 이동시키지 않는다. 변경하지 않은 정상 주문은 정리하고 거절된 주문의 현재 입력은 남긴다. [적용 조건과 한계](docs/plans/2026-11-01-checkout-submission-ownership.md)는 작업 기록으로 구분했다.
 
 **대체안/회고**
 
-버전 envelope를 새로 도입하기보다 이미 사용하는 저장 계약을 유지했다. 저장소 접근·읽기·쓰기 차단에도 메모리 편집과 서버가 성공시킨 주문을 유지한다. 보관이 불가능한 동안 새로고침·다른 기기로 상태가 이어지는 것은 보장하지 않는다. 계정 장바구니·로그인 병합·서버 중복 주문 방지는 후속 기능이다.
+주문 중 모든 담기·편집·이동을 막는 대신 이미 보낸 주문과 다음 선택의 소유를 나눴다. 값 비교나 전체 초기화로는 수량 추가·삭제 후 재추가·새 폼을 함께 다루지 못한다. 전송 후 수량을 줄여도 접수된 주문을 취소하는 것은 아니며 잔여량을 음수로 만들지 않는다. 전체 새로고침·여러 창의 주문 조정, 서버 멱등성과 계정 장바구니 병합은 별도 과제다. 브라우저 보관이 막힌 동안 새로고침 복원을 보장하지 않는다.
 
 **코드**
 
-[Zustand 장바구니·저장 경계](https://github.com/Pubburi/Frontend/blob/main/src/state/cart.ts)
+[상품 행·전송 수량·폼 소유 처리](src/state/cart.ts)
+
+행을 새로 담을 때 소유를 만들고 삭제할 때 끝낸다. 토큰은 기존 저장 배열이나 API에 추가하지 않는다.
 
 ```ts
-export function normalizeQuantity(value: unknown) {
-  const quantity = Math.trunc(Number(value))
-  return Number.isFinite(quantity)
-    ? Math.min(MAX_CART_QUANTITY, Math.max(1, quantity))
-    : 1
-}
-export function normalizeCart(value: unknown): CartItem[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .filter(
-      (item) =>
-        item?.product &&
-        Number.isInteger(Number(item.product.id)) &&
-        Number(item.product.price) >= 0,
-    )
-    .map((item) => ({
-      product: item.product,
-      quantity: normalizeQuantity(item.quantity),
-    }))
-}
+const lineOwners = new Map(restored.map((item) => [item.product.id, Symbol()]))
 ```
 
-메모리 반영을 먼저 하고 보관 예외가 주문 결과를 바꾸지 않게 한다.
+```ts
+add(product, quantity = 1) {
+  const amount = normalizeQuantity(quantity)
+  const items = get().items
+  if (!items.some((item) => item.product.id === product.id))
+    lineOwners.set(product.id, Symbol())
+  save(
+    items.some((item) => item.product.id === product.id)
+      ? items.map((item) =>
+          item.product.id === product.id
+            ? { ...item, quantity: Math.min(99, item.quantity + amount) }
+            : item,
+        )
+      : [...items, { product, quantity: amount }],
+  )
+},
+```
 
 ```ts
-function save(items: CartItem[]) {
-  const normalized = normalizeCart(items)
-  set({ items: normalized })
-  try {
-    if (!storage) {
-      set({ storageWarning: true })
-      return
-    }
-    storage.setItem(CART_KEY, JSON.stringify(normalized))
-    set({ storageWarning: false })
-  } catch {
-    // Browser persistence is optional; it cannot reject a completed server order.
-    set({ storageWarning: true })
+remove(id) {
+  lineOwners.delete(id)
+  save(get().items.filter((item) => item.product.id !== id))
+},
+```
+
+전송 후에는 같은 행의 제출량만 정리하고 다음 폼은 남긴다.
+
+```ts
+async checkout(userId) {
+  const { items, orderForm } = get()
+  const submitted = new Map(
+    items.map((item) => [
+      item.product.id,
+      { quantity: item.quantity, owner: lineOwners.get(item.product.id) },
+    ]),
+  )
+  const order = await api.createOrder({
+    userId,
+    orderType: orderForm.orderType,
+    orderTable: orderForm.orderTable.trim(),
+    details: items.map((item) => ({
+      productId: item.product.id,
+      quantity: item.quantity,
+    })),
+  })
+  save(
+    get().items.flatMap((item) => {
+      const original = submitted.get(item.product.id)
+      if (!original || lineOwners.get(item.product.id) !== original.owner)
+        return [item]
+      const quantity = Math.max(0, item.quantity - original.quantity)
+      if (quantity > 0) return [{ ...item, quantity }]
+      lineOwners.delete(item.product.id)
+      return []
+    }),
+  )
+  if (get().orderForm === orderForm)
+    set({ orderForm: { ...orderForm, orderTable: '' } })
+  return order
+},
+```
+
+[원래 화면의 성공 후 이동 경계](src/pages/AccountPages.tsx)
+
+```tsx
+const location = useLocation()
+const currentLocation = useRef(location.key)
+currentLocation.current = location.key
+const mounted = useRef(false)
+useEffect(() => {
+  mounted.current = true
+  return () => { mounted.current = false }
+}, [])
+async function checkout(event: FormEvent) {
+  event.preventDefault()
+  if (!session.data) {
+    ui.error(new Error('주문하려면 먼저 로그인해 주세요.'))
+    navigate('/account?redirect=/cart')
+    return
+  }
+  const userId = session.data.id
+  const submittedLocation = location.key
+  const result = await ui.run(
+    'checkout',
+    () => cart.checkout(userId),
+    '주문이 접수되었습니다.',
+  )
+  if (result.ok) {
+    // The order succeeded. A later profile/list refresh must not turn it into a failed order.
+    void client.invalidateQueries({ queryKey: ['account', userId] })
+    void client.invalidateQueries({ queryKey: ['catalog', 'popular'] })
+    if (mounted.current && currentLocation.current === submittedLocation)
+      navigate('/profile')
   }
 }
 ```
 
-주문 action은 API 성공 응답 이후 저장 상태를 변경한다.
-
-```ts
-async checkout(userId) {
-        const { items, orderForm } = get()
-        const order = await api.createOrder({
-          userId,
-          orderType: orderForm.orderType,
-          orderTable: orderForm.orderTable.trim(),
-          details: items.map((item) => ({
-            productId: item.product.id,
-            quantity: item.quantity,
-          })),
-        })
-        save([])
-        set({ orderForm: { ...get().orderForm, orderTable: '' } })
-        return order
-      },
-```
 
 ### 2. 검색·상세 경로별로 서버 상태를 분리해 늦은 응답 보호하기
 
