@@ -303,26 +303,30 @@ export function AccountPage() {
   const navigate = useNavigate()
   const client = useQueryClient()
   const ui = useUi()
+  const authenticating = Boolean(ui.pending.login || ui.pending.join)
   async function authenticate(event: FormEvent) {
     event.preventDefault()
     if (mode === 'join' && (!check.available || check.id !== join.id.trim())) {
       ui.error(new Error('아이디 중복 확인이 필요합니다.'))
       return
     }
+    const credentials =
+      mode === 'join'
+        ? { id: join.id.trim(), pass: join.pass }
+        : { id: login.id.trim(), pass: login.pass }
+    let accountCreated = false
     const result = await ui.run(
       mode,
       async () => {
-        if (mode === 'join')
+        if (mode === 'join') {
           await api.join({
-            id: join.id.trim(),
+            id: credentials.id,
             name: join.name.trim(),
-            pass: join.pass,
+            pass: credentials.pass,
           })
-        const user = await api.login(
-          mode === 'join'
-            ? { id: join.id.trim(), pass: join.pass }
-            : { id: login.id.trim(), pass: login.pass },
-        )
+          accountCreated = true
+        }
+        const user = await api.login(credentials)
         client.clear()
         client.setQueryData(['session'], user)
         return user
@@ -333,6 +337,14 @@ export function AccountPage() {
       setLogin({ id: '', pass: '' })
       setJoin({ id: '', name: '', pass: '' })
       navigate(safeRedirect(search.get('redirect')), { replace: true })
+    } else if (accountCreated) {
+      setMode('login')
+      setLogin({ id: credentials.id, pass: '' })
+      setJoin({ id: '', name: '', pass: '' })
+      setCheck({ id: '', available: false, message: '' })
+      ui.error(
+        new Error('회원가입은 완료되었지만 로그인하지 못했습니다. 비밀번호를 입력해 다시 로그인해 주세요.'),
+      )
     }
   }
   async function checkId() {
@@ -369,12 +381,14 @@ export function AccountPage() {
         <div className="segmented" aria-label="계정 메뉴">
           <button
             className={mode === 'login' ? 'active' : ''}
+            disabled={authenticating}
             onClick={() => setMode('login')}
           >
             로그인
           </button>
           <button
             className={mode === 'join' ? 'active' : ''}
+            disabled={authenticating}
             onClick={() => setMode('join')}
           >
             회원가입
@@ -399,6 +413,7 @@ export function AccountPage() {
                 autoComplete="username"
                 aria-label="아이디"
                 maxLength={100}
+                disabled={authenticating}
                 required
                 value={mode === 'login' ? login.id : join.id}
                 onChange={(e) => {
@@ -414,7 +429,9 @@ export function AccountPage() {
                 <button
                   type="button"
                   className="btn btn-outline-dark"
-                  disabled={!join.id.trim() || ui.pending['id-check']}
+                  disabled={
+                    authenticating || !join.id.trim() || ui.pending['id-check']
+                  }
                   onClick={checkId}
                 >
                   중복 확인
@@ -437,6 +454,7 @@ export function AccountPage() {
                 className="form-control"
                 autoComplete="name"
                 maxLength={100}
+                disabled={authenticating}
                 required
                 value={join.name}
                 onChange={(e) => setJoin({ ...join, name: e.target.value })}
@@ -454,6 +472,7 @@ export function AccountPage() {
               }
               minLength={mode === 'join' ? 4 : undefined}
               maxLength={100}
+              disabled={authenticating}
               required
               value={mode === 'login' ? login.pass : join.pass}
               onChange={(e) =>
@@ -467,8 +486,7 @@ export function AccountPage() {
           <button
             className="btn btn-dark w-100"
             disabled={
-              ui.pending.login ||
-              ui.pending.join ||
+              authenticating ||
               (mode === 'join' &&
                 (!check.available || check.id !== join.id.trim()))
             }
