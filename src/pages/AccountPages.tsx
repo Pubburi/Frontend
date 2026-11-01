@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ApiClientError } from '../services/api'
+import { api } from '../services/api'
 import { safeRedirect, useSession } from '../queries'
 import { useCart, cartTotals } from '../state/cart'
 import { useUi } from '../state/ui'
+import { profilePrivacy } from '../state/profilePrivacy'
 import { Empty, Image, Loading, Pagination, Quantity } from '../components/ui'
 import { OrderCard } from '../components/OrderLines'
 import { money, productImage } from '../utils/format'
@@ -205,26 +206,26 @@ export function ProfilePage() {
     queryFn: () => api.userOrders(user!.id, { page, size: 10 }),
     enabled: Boolean(user),
   })
-  const unauthorizedReads = [
-    { key: profileKey, result: profile },
-    { key: ordersKey, result: orders },
-  ].flatMap(({ key, result }) => {
-    if (!result.isError || !(result.error instanceof ApiClientError) || result.error.status !== 401)
-      return []
-    const query = queryCache.find({ queryKey: key, exact: true })
-    return query ? [{ key, query, error: result.error, fetching: result.isFetching }] : []
-  })
+  const privacy = profilePrivacy(client)
+  const failures = useSyncExternalStore(privacy.subscribe, privacy.snapshot)
+  const currentReads = [
+    { query: queryCache.find({ queryKey: profileKey, exact: true }), fetchStatus: profile.fetchStatus },
+    { query: queryCache.find({ queryKey: ordersKey, exact: true }), fetchStatus: orders.fetchStatus },
+  ]
+  const unauthorizedReads = failures.filter((failure) => failure.auth === authOwner && failure.account === user &&
+    currentReads.some(({ query }) => query === failure.query))
   function loginAgain() {
     const currentAuth = queryCache.find({ queryKey: ['session'], exact: true })
     if (!user || !currentAuth || currentAuth !== authOwner ||
         currentAuth.state.status !== 'success' || currentAuth.state.data !== user ||
         currentAuth.state.fetchStatus !== 'idle')
       return
-    const currentFailure = unauthorizedReads.some(({ key, query, error }) => {
-      const current = queryCache.find({ queryKey: key, exact: true })
-      return current === query && current.state.status === 'error' && current.state.error === error &&
-        current.state.fetchStatus === 'idle'
-    })
+    const currentFailures = privacy.snapshot().filter((failure) => failure.auth === currentAuth &&
+      failure.account === user && currentReads.some(({ query }) => query === failure.query))
+    if (currentFailures.some(({ query }) => query.state.fetchStatus !== 'idle')) return
+    const currentFailure = unauthorizedReads.some((failure) =>
+      currentFailures.includes(failure) && queryCache.get(failure.query.queryHash) === failure.query &&
+      failure.query.state.fetchStatus === 'idle')
     if (!currentFailure) return
     ui.clear()
     client.clear()
@@ -236,7 +237,8 @@ export function ProfilePage() {
       <section className="view profile-view">
         <Empty title="다시 로그인해 주세요" description="로그인 상태가 바뀌어 내 정보를 표시하지 않았습니다.">
           <button className="btn btn-dark" onClick={loginAgain}
-            disabled={session.isFetching || unauthorizedReads.some(({ fetching }) => fetching)}>
+            disabled={session.fetchStatus !== 'idle' || currentReads.some(({ query, fetchStatus }) =>
+              unauthorizedReads.some((failure) => failure.query === query) && fetchStatus !== 'idle')}>
             다시 로그인
           </button>
         </Empty>

@@ -2879,3 +2879,89 @@ test('현재401의 재연결 조회가 진행 중이면 복구 전환을 기다�
     expect(api.calls.filter((call) => call.path === '/auth/logout' || call.path === '/auth/login')).toHaveLength(0)
   } finally { release() }
 })
+
+for (const outcome of ['401', '503', 'success']) {
+  test(`cold401 재검증의 ${outcome}까지 다른 개인 캐시를 차폐하고 성공만 복원`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    let reads = 0, release
+    const gate = new Promise((resolve) => { release = resolve })
+    await page.route('**/api/users/member/profile', async (route) => {
+      reads += 1
+      if (reads === 1) return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+      if (reads === 2) {
+        await gate
+        if (outcome !== 'success') return route.fulfill({ status: Number(outcome), json: failure(outcome === '401' ? 'UNAUTHORIZED' : 'SERVICE_UNAVAILABLE') })
+      }
+      await route.fallback()
+    })
+    try {
+      await page.goto('/profile')
+      const recovery = page.getByRole('button', { name: '다시 로그인', exact: true })
+      await expect(recovery).toBeEnabled()
+      await expect.poll(() => api.calls.filter((call) => call.path === '/users/member/orders').length).toBe(1)
+      await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+      await page.evaluate(() => window.dispatchEvent(new Event('online')))
+      await expect.poll(() => reads).toBe(2)
+      await expect(recovery).toBeDisabled()
+      await expect(page.getByRole('heading', { name: '주문 내역', exact: true })).toHaveCount(0)
+      await expect(page.locator('.profile-hero')).toHaveCount(0)
+      if (outcome === '401') {
+        await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+        await expect(page.locator('.product-card')).toHaveCount(2)
+        await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '마이', exact: true }).click()
+        await expect(recovery).toBeDisabled()
+        await expect(page.getByRole('heading', { name: '주문 내역', exact: true })).toHaveCount(0)
+      }
+      release()
+      if (outcome === 'success') {
+        await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+        await expect(page.getByRole('heading', { name: '주문 내역', exact: true })).toBeVisible()
+        await expect(recovery).toHaveCount(0)
+        expect(api.calls.filter((call) => call.path === '/auth/login' || call.path === '/auth/logout')).toHaveLength(0)
+      } else {
+        await expect(recovery).toBeEnabled()
+        await expect(page.getByRole('heading', { name: '주문 내역', exact: true })).toHaveCount(0)
+        await recovery.click()
+        await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/profile')
+        await page.getByLabel('아이디', { exact: true }).fill('member')
+        await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+        await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+        await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+      }
+    } finally { release() }
+  })
+}
+
+test('cold401 뒤 offline 재진입의 paused 읽기도 개인 내용을 숨기고 online 성공으로 복구', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let reads = 0, release
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/users/member/profile', async (route) => {
+    reads += 1
+    if (reads === 1) return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+    if (reads === 2) await gate
+    await route.fallback()
+  })
+  try {
+    const nav = page.getByRole('navigation', { name: '주요 메뉴' })
+    await page.goto('/products')
+    await expect(page.locator('.product-card')).toHaveCount(2)
+    await nav.getByRole('link', { name: '마이', exact: true }).click()
+    const recovery = page.getByRole('button', { name: '다시 로그인', exact: true })
+    await expect(recovery).toBeEnabled()
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+    await nav.getByRole('link', { name: '전체 주류', exact: true }).click()
+    await expect(page.locator('.product-card')).toHaveCount(2)
+    await nav.getByRole('link', { name: '마이', exact: true }).click()
+    await expect(recovery).toBeDisabled()
+    await expect(page.getByRole('heading', { name: '주문 내역', exact: true })).toHaveCount(0)
+    expect(reads).toBe(1)
+    await page.evaluate(() => window.dispatchEvent(new Event('online')))
+    await expect.poll(() => reads).toBe(2)
+    await expect(recovery).toBeDisabled()
+    release()
+    await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+    await expect(recovery).toHaveCount(0)
+    expect(api.calls.filter((call) => call.path === '/auth/login' || call.path === '/auth/logout')).toHaveLength(0)
+  } finally { release() }
+})
