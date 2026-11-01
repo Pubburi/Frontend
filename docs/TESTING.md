@@ -49,6 +49,8 @@ Vitest는 브라우저 spec을 수집하지 않는다. 기존 유틸·상태·AP
 
 [F01 작업 계획](plans/2026-11-01-account-favorites-ui.md)의 실제 서버 검증은 위 Chromium API fixture와 별도로 수행했다. 단건 상태 GET 포함 Backend jar·전용 MySQL 8.4·동결한 프로덕션 웹을 사용해 실제 로그인, 상세 저장/조회, 새로고침과 현재 상품 목록, 두 계정의 독립 저장/해제, 첫 계정 저장 보존, 390px 웹과 오류 수집을 확인했다. API route mocking은 사용하지 않았다. 이 수동 통합 결과가 CI의 fixture를 실제 Backend E2E로 바꾸거나 전체 FE03/C04 최종 인수를 완료한 것은 아니다.
 
+추가로 [찜 키보드 연속성 계획](plans/2026-11-01-favorites-keyboard-focus.md)에서는 같은 Backend jar·전용 MySQL·동일 harness와 기준/수정 웹의 불변 빌드를 사용해 실제 해제 뒤 포커스를 비교했다. 일반/좁은 웹의 첫·마지막 해제 뒤 다음 조작 연결과 정상 경로/계정 전환을 확인했다. 제어 지연·오류/Tab 이탈의 경합 검증은 fixture 근거로 유지하며 실제 서버 자연 경쟁·모든 보조 기술 검증으로 확대하지 않는다.
+
 ## 결과 보관
 
 단위 JUnit은 `reports/unit.xml`, 브라우저 JUnit은 `reports/browser.xml`, HTML은
