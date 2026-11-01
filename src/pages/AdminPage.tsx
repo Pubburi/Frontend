@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
@@ -70,7 +70,9 @@ export default function AdminPage() {
         key={tab}
         tab={tab}
         page={page}
-        onPage={(value) => setSearch({ tab, page: String(value) })}
+        onPage={(value, replace = false) =>
+          setSearch({ tab, page: String(value) }, { replace })
+        }
       />
     </section>
   )
@@ -96,7 +98,7 @@ function AdminPanel({
 }: {
   tab: Tab
   page: number
-  onPage: (value: number) => void
+  onPage: (value: number, replace?: boolean) => void
 }) {
   const { data: user } = useSession()
   const client = useQueryClient()
@@ -105,6 +107,12 @@ function AdminPanel({
     queryKey: ['admin', user?.id, tab, page],
     queryFn: () => fetchAdminPage(tab, page),
   })
+  const lastPage = query.data ? Math.max(1, query.data.totalPages) : page
+  const pageOutOfRange =
+    query.isSuccess && query.data.page === page && page > lastPage
+  useEffect(() => {
+    if (pageOutOfRange && !query.isFetching) onPage(lastPage, true)
+  }, [pageOutOfRange, query.isFetching, lastPage, onPage])
   const [draft, setDraft] = useState<{
     form: ReturnType<typeof blankForm>
     editing: Item | null
@@ -377,7 +385,7 @@ function AdminPanel({
             }}
           />
         )}
-        {query.isPending ? (
+        {query.isPending || pageOutOfRange ? (
           <Loading />
         ) : query.isError ? (
           <Empty title={`${labels[tab]} 정보를 불러오지 못했습니다`}>
@@ -546,7 +554,7 @@ function AdminPanel({
         ) : (
           <Empty title={`등록된 ${labels[tab]} 정보가 없습니다`} />
         )}
-        <Pagination page={query.data} onChange={onPage} />
+        <Pagination page={pageOutOfRange ? undefined : query.data} onChange={onPage} />
       </section>
       {deleting && (
         <Confirm

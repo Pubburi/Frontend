@@ -5,8 +5,8 @@ const products = [
   { id: 901, name: '시험 탁주', type: '탁주', price: 6000, abv: 6, img: null, orderCount: 0 },
   { id: 902, name: '시험 사케', type: '사케', price: 12000, abv: 14, img: null, orderCount: 0 },
 ]
-const pageOf = (items, size = 12) => ({
-  items, page: 1, size, total: items.length, totalPages: items.length ? 1 : 0, hasNext: false,
+const pageOf = (items, size = 12, page = 1) => ({
+  items: items.slice((page - 1) * size, page * size), page, size, total: items.length, totalPages: Math.ceil(items.length / size), hasNext: page * size < items.length,
 })
 const success = (data) => ({ data, message: 'ok', error: null })
 const failure = (code) => ({ data: null, message: null, error: { code, message: code } })
@@ -106,7 +106,7 @@ const test = base.extend({
         const q = url.searchParams.get('q') || ''
         const type = url.searchParams.get('type') || ''
         const items = state.catalog.filter((item) => (!type || item.type === type) && item.name.includes(q))
-        await route.fulfill({ json: success(pageOf(items)) })
+        await route.fulfill({ json: success(pageOf(items, Number(url.searchParams.get('size') || 12), Number(url.searchParams.get('page') || 1))) })
         return
       }
       if (method === 'GET' && path === '/recommendations/default') {
@@ -144,7 +144,7 @@ const test = base.extend({
         }
       }
       if (request.method() === 'GET' && path === '/markets') {
-        await route.fulfill({ json: success(pageOf(state.markets)) })
+        await route.fulfill({ json: success(pageOf(state.markets, Number(url.searchParams.get('size') || 12), Number(url.searchParams.get('page') || 1))) })
         return
       }
       if (request.method() === 'GET' && path === '/products/999/comments') {
@@ -196,7 +196,7 @@ const test = base.extend({
       }
       if (method === 'GET' && ['/admin/orders', '/admin/comments', '/admin/users'].includes(path)) {
         const items = path === '/admin/orders' ? state.orders : path === '/admin/comments' ? state.reviews : state.users
-        await route.fulfill({ json: success(pageOf(items, 20)) })
+        await route.fulfill({ json: success(pageOf(items, Number(url.searchParams.get('size') || 20), Number(url.searchParams.get('page') || 1))) })
         return
       }
       if (path === '/admin/products' && method === 'POST') {
@@ -2052,3 +2052,167 @@ test('관리자 제출 후 새 편집을 하지 않으면 성공 뒤 기존처�
   await expect(page.getByLabel('상품명', { exact: true })).toHaveValue('')
   await expect(page.getByLabel('가격', { exact: true })).toHaveValue('0')
 })
+
+for (const tab of ['products', 'markets', 'users', 'comments', 'orders']) {
+  test(`관리자 ${tab} 마지막 페이지 삭제 뒤 남은 목록 페이지로 복귀`, async ({ page, api }) => {
+    const admin = api.users.find((user) => user.id === 'admin')
+    api.user = admin
+    let target
+    if (tab === 'products') {
+      api.catalog = Array.from({ length: 21 }, (_, index) => ({ ...products[0], id: 3000 + index, name: `페이지 상품 ${index}` }))
+      target = '페이지 상품 20'
+    } else if (tab === 'markets') {
+      api.markets = Array.from({ length: 21 }, (_, index) => ({ id: 4000 + index, name: `페이지 매장 ${index}`, latitude: 37, longitude: 127 }))
+      target = '페이지 매장 20'
+    } else if (tab === 'users') {
+      api.users = [admin, ...Array.from({ length: 20 }, (_, index) => ({ id: `page-member-${index + 1}`, name: `페이지 회원 ${index + 1}`, role: 'USER', stamps: 0 }))]
+      target = '페이지 회원 20'
+    } else if (tab === 'comments') {
+      api.reviews = Array.from({ length: 21 }, (_, index) => ({ id: 5000 + index, userId: 'member', productId: 901, rating: 5, comment: `페이지 후기 ${index}` }))
+      target = '페이지 후기 20'
+    } else {
+      api.orders = Array.from({ length: 21 }, (_, index) => ({ oId: 6000 + index, userId: 'member', orderType: 'TAKEOUT', completed: 'N', orderTime: '2026-11-01T07:00:00', totalPrice: 6000, priceBasis: 'ORDER_SNAPSHOT', details: [] }))
+      target = '#6020'
+    }
+    await page.goto(`/admin?tab=${tab}&page=2`)
+    await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(1)
+    await page.locator('.table-row').filter({ hasText: target }).getByRole('button', { name: '삭제', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click()
+    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+    const stored = tab === 'products' ? api.catalog : tab === 'markets' ? api.markets : tab === 'users' ? api.users : tab === 'comments' ? api.reviews : api.orders
+    expect(stored).toHaveLength(20)
+    await expect(page).toHaveURL((url) => url.pathname === '/admin' && url.searchParams.get('tab') === tab && url.searchParams.get('page') === '1')
+    await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(20)
+    await expect(page.locator('.state-panel')).toHaveCount(0)
+  })
+}
+
+const adminPageProducts = (count) => Array.from({ length: count }, (_, index) => ({ ...products[0], id: 7000 + index, name: `경계 상품 ${index}` }))
+
+test('관리자 범위 밖 직접 링크는 성공 조회 후 마지막 페이지로 replace 보정하고 정상 빈 목록은 유지', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.catalog = adminPageProducts(21)
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let requested = false
+  await page.route('**/api/products?**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('page') !== '99') return route.fallback()
+    requested = true
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/profile')
+    await page.getByRole('link', { name: '관리', exact: true }).click()
+    await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(20)
+    await page.evaluate(() => { window.history.pushState({}, '', '/admin?tab=products&page=99'); window.dispatchEvent(new PopStateEvent('popstate')) })
+    await expect.poll(() => requested).toBe(true)
+    await expect(page).toHaveURL(/page=99$/)
+    await expect(page.getByText('등록된 상품 정보가 없습니다', { exact: true })).toHaveCount(0)
+    release()
+    await expect(page).toHaveURL(/page=2$/)
+    await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(1)
+    await page.goBack()
+    await expect(page).toHaveURL(/\/admin$/)
+    api.catalog = []
+    await page.getByRole('button', { name: '현재 탭 새로고침', exact: true }).click()
+    await expect(page.getByText('등록된 상품 정보가 없습니다', { exact: true })).toBeVisible()
+    await expect(page).toHaveURL(/\/admin$/)
+  } finally { release() }
+})
+
+test('관리자 외부 삭제 후 권위 재조회로 페이지를 보정하면서 작성 중 초안을 보존', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.catalog = adminPageProducts(41)
+  await page.goto('/admin?tab=products&page=3')
+  await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(1)
+  await page.getByLabel('상품명', { exact: true }).fill('아직 저장하지 않은 상품')
+  api.catalog = api.catalog.slice(0, 20)
+  await page.getByRole('button', { name: '현재 탭 새로고침', exact: true }).click()
+  await expect(page).toHaveURL(/page=1$/)
+  await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(20)
+  await expect(page.getByLabel('상품명', { exact: true })).toHaveValue('아직 저장하지 않은 상품')
+  expect(api.calls.filter((call) => call.method !== 'GET')).toHaveLength(0)
+})
+
+test('관리자 마지막 행 삭제 거절은 페이지와 항목을 유지하고 명시적 재시도만 삭제', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.catalog = adminPageProducts(21)
+  let attempts = 0
+  await page.route('**/api/admin/products/7020', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    attempts += 1
+    if (attempts === 1) return route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+    await route.fallback()
+  })
+  await page.goto('/admin?tab=products&page=2')
+  await page.locator('.table-row').filter({ hasText: '경계 상품 20' }).getByRole('button', { name: '삭제', exact: true }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true })).toBeEnabled()
+  await expect(page).toHaveURL(/page=2$/)
+  await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(1)
+  expect(api.catalog).toHaveLength(21)
+  expect(attempts).toBe(1)
+  await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click()
+  await expect(page).toHaveURL(/page=1$/)
+  await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(20)
+  expect(attempts).toBe(2)
+})
+
+test('관리자 범위 밖 읽기 실패를 빈 목록이나 페이지 보정으로 숨기지 않고 재시도', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.catalog = adminPageProducts(21)
+  api.catalogFailures = 1
+  await page.goto('/admin?tab=products&page=9')
+  await expect(page.getByText('상품 정보를 불러오지 못했습니다', { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/page=9$/)
+  await expect(page.getByText('등록된 상품 정보가 없습니다', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  await expect(page).toHaveURL(/page=2$/)
+  await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(1)
+})
+
+for (const leave of ['page', 'tab']) {
+  test(`관리자 늦은 이전 페이지 결과는 사용자의 ${leave} 이동을 되돌리지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    api.catalog = adminPageProducts(41)
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    let held = false
+    let delivered = false
+    let reads = 0
+    await page.route('**/api/products?**', async (route) => {
+      const url = new URL(route.request().url())
+      if (url.searchParams.get('page') !== '3') return route.fallback()
+      reads += 1
+      if (reads !== 2) return route.fallback()
+      held = true
+      await gate
+      await route.fulfill({ json: success(pageOf(api.catalog.slice(0, 20), 20, 3)) })
+      delivered = true
+    })
+    try {
+      await page.goto('/admin?tab=products&page=3')
+      await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(1)
+      await page.getByRole('button', { name: '현재 탭 새로고침', exact: true }).click()
+      await expect.poll(() => held).toBe(true)
+      if (leave === 'page') await page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '이전', exact: true }).click()
+      else await page.getByRole('navigation', { name: '관리 메뉴', exact: true }).getByRole('button', { name: '매장', exact: true }).click()
+      const current = leave === 'page' ? /tab=products&page=2$/ : /tab=markets&page=1$/
+      await expect(page).toHaveURL(current)
+      release()
+      await expect.poll(() => delivered).toBe(true)
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      await expect(page).toHaveURL(current)
+      if (leave === 'page') {
+        await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(20)
+        await page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true }).click()
+        await expect.poll(() => reads).toBe(3)
+        await expect(page.locator('.table-row:not(.table-head)')).toHaveCount(1)
+        await expect(page).toHaveURL(/tab=products&page=3$/)
+      } else await expect(page.getByText('등록된 매장 정보가 없습니다', { exact: true })).toBeVisible()
+    } finally { release() }
+  })
+}
