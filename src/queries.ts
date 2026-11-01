@@ -1,14 +1,18 @@
 import { QueryClient, useQuery } from '@tanstack/react-query'
 import { api, ApiClientError } from './services/api'
 import type { User } from './types'
+import { profilePrivacy } from './state/profilePrivacy'
 
-export const createQueryClient = () =>
-  new QueryClient({
+export const createQueryClient = () => {
+  const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, refetchOnWindowFocus: false },
       mutations: { retry: false },
     },
   })
+  profilePrivacy(client)
+  return client
+}
 export async function readSession(): Promise<User | null> {
   try {
     return await api.me()
