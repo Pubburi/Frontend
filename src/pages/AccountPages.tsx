@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '../services/api'
+import { api, ApiClientError } from '../services/api'
 import { safeRedirect, useSession } from '../queries'
 import { useCart, cartTotals } from '../state/cart'
 import { useUi } from '../state/ui'
@@ -184,18 +184,64 @@ export function CartPage() {
 }
 
 export function ProfilePage() {
-  const { data: user } = useSession()
+  const session = useSession()
+  const user = session.data
+  const client = useQueryClient()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const ui = useUi()
+  const queryCache = client.getQueryCache()
+  const authOwner = queryCache.find({ queryKey: ['session'], exact: true })
   const [page, setPage] = useState(1)
+  const profileKey = ['account', user?.id, 'profile'] as const
+  const ordersKey = ['account', user?.id, 'orders', page] as const
   const profile = useQuery<Profile>({
-    queryKey: ['account', user?.id, 'profile'],
+    queryKey: profileKey,
     queryFn: () => api.profile(user!.id),
     enabled: Boolean(user),
   })
   const orders = useQuery<Page<Order>>({
-    queryKey: ['account', user?.id, 'orders', page],
+    queryKey: ordersKey,
     queryFn: () => api.userOrders(user!.id, { page, size: 10 }),
     enabled: Boolean(user),
   })
+  const unauthorizedReads = [
+    { key: profileKey, result: profile },
+    { key: ordersKey, result: orders },
+  ].flatMap(({ key, result }) => {
+    if (!result.isError || !(result.error instanceof ApiClientError) || result.error.status !== 401)
+      return []
+    const query = queryCache.find({ queryKey: key, exact: true })
+    return query ? [{ key, query, error: result.error, fetching: result.isFetching }] : []
+  })
+  function loginAgain() {
+    const currentAuth = queryCache.find({ queryKey: ['session'], exact: true })
+    if (!user || !currentAuth || currentAuth !== authOwner ||
+        currentAuth.state.status !== 'success' || currentAuth.state.data !== user ||
+        currentAuth.state.fetchStatus !== 'idle')
+      return
+    const currentFailure = unauthorizedReads.some(({ key, query, error }) => {
+      const current = queryCache.find({ queryKey: key, exact: true })
+      return current === query && current.state.status === 'error' && current.state.error === error &&
+        current.state.fetchStatus === 'idle'
+    })
+    if (!currentFailure) return
+    ui.clear()
+    client.clear()
+    client.setQueryData(['session'], null)
+    navigate(`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`)
+  }
+  if (user && unauthorizedReads.length)
+    return (
+      <section className="view profile-view">
+        <Empty title="다시 로그인해 주세요" description="로그인 상태가 바뀌어 내 정보를 표시하지 않았습니다.">
+          <button className="btn btn-dark" onClick={loginAgain}
+            disabled={session.isFetching || unauthorizedReads.some(({ fetching }) => fetching)}>
+            다시 로그인
+          </button>
+        </Empty>
+      </section>
+    )
   const grade = profile.data?.grade || {}
   const stamps = profile.data?.user?.stamps ?? user?.stamps ?? 0
   const progress = grade.stepMax

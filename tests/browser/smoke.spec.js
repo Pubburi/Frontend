@@ -162,6 +162,10 @@ const test = base.extend({
         await route.fulfill({ status: product ? 200 : 404, json: product ? success(product) : failure('NOT_FOUND') })
         return
       }
+      if (method === 'GET' && /^\/users\/[^/]+\/(profile|orders)$/.test(path)) {
+        if (!state.user) { await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') }); return }
+        if (state.user.role !== 'ADMIN' && state.user.id !== path.split('/')[2]) { await route.fulfill({ status: 403, json: failure('FORBIDDEN') }); return }
+      }
       if (method === 'GET' && /^\/users\/[^/]+\/profile$/.test(path)) {
         const user = state.users.find((item) => item.id === path.split('/')[2]) || state.user
         await route.fulfill({ json: success({ user, grade: { title: '씨앗', to: 7, step: 3, stepMax: 10 } }) })
@@ -2692,4 +2696,186 @@ test('390px 웹에서 소수 평점을 보존하고 Tab과 Enter로 후기 폼�
   await expect(form).toHaveCount(0)
   expect(api.reviews[0].rating).toBe(4.5)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+for (const entry of ['first-read', 'refresh']) {
+  test(`서버 세션 상실 뒤 profile ${entry}은 재로그인으로 원래 화면에 복귀`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    if (entry === 'first-read') {
+      await page.goto('/products')
+      await expect(page.locator('.product-card')).toHaveCount(2)
+      api.user = null
+      await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '마이', exact: true }).click()
+    } else {
+      await page.goto('/profile')
+      await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+      api.user = null
+      await page.getByRole('button', { name: '새로고침', exact: true }).click()
+    }
+    await expect(page.getByRole('button', { name: /^(다시 로그인|다시 시도)$/ }).first()).toBeVisible()
+    const recovery = page.getByRole('button', { name: '다시 로그인', exact: true })
+    if (await recovery.count()) await recovery.click()
+    else {
+      const count = api.calls.filter((call) => call.path === '/users/member/profile').length
+      await page.getByRole('button', { name: '다시 시도', exact: true }).first().click()
+      await expect.poll(() => api.calls.filter((call) => call.path === '/users/member/profile').length).toBeGreaterThan(count)
+    }
+    await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/profile')
+    await page.getByLabel('아이디', { exact: true }).fill('member')
+    await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+    await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+    await expect(page).toHaveURL('/profile')
+    await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+    expect(api.user.id).toBe('member')
+  })
+}
+
+for (const endpoint of ['profile', 'orders']) {
+  test(`현재 ${endpoint} 조회의 단독401도 캐시 내용을 숨기고 명시적 로그인으로 복구`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    let attempts = 0
+    await page.route(`**/api/users/member/${endpoint}*`, async (route) => {
+      attempts += 1
+      if (attempts === 1) return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+      await route.fallback()
+    })
+    await page.goto('/profile')
+    await expect(page.getByRole('heading', { name: '다시 로그인해 주세요', exact: true })).toBeVisible()
+    await expect(page.locator('.profile-hero')).toHaveCount(0)
+    await expect(page.locator('.order-list')).toHaveCount(0)
+    expect(api.calls.filter((call) => call.path === '/auth/logout')).toHaveLength(0)
+    await page.getByRole('button', { name: '다시 로그인', exact: true }).click()
+    await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/profile')
+    await page.getByLabel('아이디', { exact: true }).fill('member')
+    await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+    await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '다시 로그인', exact: true })).toHaveCount(0)
+  })
+}
+
+for (const status of [403, 500, 503]) {
+  test(`profile ${status}는 세션 상실로 처리하지 않고 기존 재시도를 유지`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    let attempts = 0
+    await page.route('**/api/users/member/profile', async (route) => {
+      attempts += 1
+      if (attempts === 1) return route.fulfill({ status, json: failure(status === 403 ? 'FORBIDDEN' : 'SERVICE_UNAVAILABLE') })
+      await route.fallback()
+    })
+    await page.goto('/profile')
+    await expect(page.getByRole('heading', { name: '내 정보를 불러오지 못했습니다', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '다시 로그인', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '로그아웃', exact: true })).toBeEnabled()
+    await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+    expect(api.calls.filter((call) => call.path === '/auth/logout' || call.path === '/auth/login')).toHaveLength(0)
+    expect(api.user.id).toBe('member')
+  })
+}
+
+for (const nextId of ['member', 'other']) {
+  test(`이전 계정의 늦은profile401은 ${nextId} 새 인증 세대의 복귀를 지우지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    let reads = 0, delivered = false
+    await page.route('**/api/users/member/profile', async (route) => {
+      reads += 1
+      if (reads !== 1) return route.fallback()
+      await gate
+      await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+      delivered = true
+    })
+    try {
+      await page.goto('/profile')
+      await expect.poll(() => reads).toBe(1)
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await page.getByRole('link', { name: '로그인', exact: true }).click()
+      await page.getByLabel('아이디', { exact: true }).fill(nextId)
+      await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+      const expectedName = nextId === 'member' ? '시험회원님의 취향 기록' : '다른회원님의 취향 기록'
+      await expect(page.getByRole('heading', { name: expectedName, exact: true })).toBeVisible()
+      release()
+      await expect.poll(() => delivered).toBe(true)
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      await expect(page.getByRole('heading', { name: expectedName, exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: '다시 로그인', exact: true })).toHaveCount(0)
+      expect(api.user.id).toBe(nextId)
+      expect(api.calls.filter((call) => call.path === '/auth/logout')).toHaveLength(1)
+    } finally { release() }
+  })
+}
+
+test('명시적 재로그인에서 다른 계정으로 복귀해도 미제출 기기 장바구니와 요청은 보존', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.goto('/products/901')
+  await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
+  const nav = page.getByRole('navigation', { name: '주요 메뉴' })
+  await nav.getByRole('link', { name: /장바구니/ }).click()
+  await page.getByLabel('테이블·요청 사항', { exact: true }).fill('미제출 기기 요청')
+  await nav.getByRole('link', { name: '마이', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+  api.user = null
+  await page.getByRole('button', { name: '새로고침', exact: true }).click()
+  await page.getByRole('button', { name: '다시 로그인', exact: true }).click()
+  await page.getByLabel('아이디', { exact: true }).fill('other')
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+  await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '다른회원님의 취향 기록', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toHaveCount(0)
+  await nav.getByRole('link', { name: /장바구니/ }).click()
+  await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('1')
+  await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('미제출 기기 요청')
+  expect(api.calls.filter((call) => call.path === '/orders' && call.method === 'POST')).toHaveLength(0)
+})
+
+test('390px 세션 복귀 버튼과 로그인은 Enter로 동작하고 원래 query를 보존', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/profile?from=session-check')
+  await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+  api.user = null
+  await page.getByRole('button', { name: '새로고침', exact: true }).click()
+  const recovery = page.getByRole('button', { name: '다시 로그인', exact: true })
+  await recovery.focus()
+  await expect(recovery).toBeFocused()
+  await recovery.press('Enter')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/profile?from=session-check')
+  await page.getByLabel('아이디', { exact: true }).fill('member')
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+  await page.getByLabel('비밀번호', { exact: true }).press('Enter')
+  await expect(page).toHaveURL('/profile?from=session-check')
+  await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('현재401의 재연결 조회가 진행 중이면 복구 전환을 기다리고 성공 결과를 유지', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let reads = 0, release
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/users/member/profile', async (route) => {
+    reads += 1
+    if (reads === 2) return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+    if (reads === 3) await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/profile')
+    await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '새로고침', exact: true }).click()
+    const recovery = page.getByRole('button', { name: '다시 로그인', exact: true })
+    await expect(recovery).toBeEnabled()
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+    await page.evaluate(() => window.dispatchEvent(new Event('online')))
+    await expect.poll(() => reads).toBe(3)
+    await expect(recovery).toBeDisabled()
+    await expect(page.locator('.profile-hero')).toHaveCount(0)
+    release()
+    await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+    await expect(recovery).toHaveCount(0)
+    expect(api.user.id).toBe('member')
+    expect(api.calls.filter((call) => call.path === '/auth/logout' || call.path === '/auth/login')).toHaveLength(0)
+  } finally { release() }
 })
