@@ -26,10 +26,29 @@
 - API 계약 단위: size 기본 4/유한 요청, 계정 선택자와 body 없음, Product7/source의 원형 응답.
 - 프로덕션 Chromium fixture: BASELINE/FALLBACK 성공·현재 상세 링크·비회원 공개 접근, SKIPPED 저장 후 목록·신규 NOT_STARTED의 무쓰기 진입·COMPLETED/실제 0/범위 밖 목표 보존, 실패/빈/명시적 재조회·로딩·늦은 공개 응답과 개인 초안/다른 계정 격리·390px 웹.
 - 기존 R01의 건너뛰기 취소/초안·저장/초기화·계정 전환/ABA·이상 응답과 F01/포커스·관리자/후기·장바구니 회귀는 전체 검사에서 유지한다.
-- 실제 Backend/MySQL/Recommendation 통합은 조정자가 동결한 앱과 제공자 jar로 실행한다. 서버 없는 FALLBACK 모드의 실행은 실제 관측한 모드만 기록하며, fixture의 FALLBACK 응답을 실제 서버 중단 검증으로 바꾸지 않는다.
+- 실제 Backend/MySQL/Recommendation 통합은 조정자가 동결한 앱과 제공자 jar로 실행했다. 추천 서버 기동 BASELINE과 추천 프로세스 중단 FALLBACK에서 같은 실제 harness의 여섯 흐름을 각각 통과했다. 이 결과는 fixture의 FALLBACK 성공과 별도로 구분한다.
 - FE03/C04 최종 기능 동등성은 [React 계획의 남은 인수](2026-10-31-react-migration.md#남은-인수-경계) 체크리스트로 계속 남긴다. 이 기본 목록 연결만으로 전체 인수를 완료하지 않는다.
 
-Node 24.22.1의 전체 `npm run check`가 통과했다. 저장소 검사·locked npm ci·audit(취약점 0)·이미지 도구·strict TypeScript·단위 48개·프로덕션 빌드·Chromium 80개를 확인했다. 새 기본 목록 흐름은 10개이며, 이후 좁은 웹의 프로필/설문 진입 검증을 같은 390px 조건에 보강해 별도로 통과했다. 테스트 수는 검증 범위이며 서비스 성능이 아니다. 실제 서버 harness는 작성·구문검사만 했고 실행은 조정자에게 인계한다. 최신 head CI·Codex 리뷰·각 제공자 main·Frontend 병합/main CI는 별도 게이트다.
+Node 24.22.1의 전체 `npm run check`가 통과했다. 저장소 검사·locked npm ci·audit(취약점 0)·이미지 도구·strict TypeScript·단위 48개·프로덕션 빌드·Chromium 80개를 확인했다. 새 기본 목록 흐름은 10개이며, 이후 좁은 웹의 프로필/설문 진입 검증을 같은 390px 조건에 보강해 별도로 통과했다. 테스트 수는 검증 범위이며 서비스 성능이 아니다. 실제 서버 harness도 조정자가 두 모드에서 실행했으며 아래 결과를 별도로 확인했다. 최신 head CI·Codex 리뷰·각 제공자 main·Frontend 병합/main CI는 별도 게이트다.
+
+## 실제 세 서버 연동과 추천 서버 중단
+
+Frontend 제품 코드 `f59a940`의 동결한 프로덕션 웹, 동결한 Backend 후보 jar, 고정한 Recommendation B0 main 버전과 전용 MySQL 8.4를 연결했다. 같은 실제 harness를 추천 프로세스가 켜진 모드와 중단한 모드에 각각 실행했고 API route mocking이나 외부 서비스는 사용하지 않았다.
+
+동결 웹은 100개 파일의 크기·내용 SHA256을 확인한 산출물이다. manifest **파일 자체**의 SHA256은 `9ad42b4c88a04a2ce2ec18fa8526522cb273e5f43e3dfd00eeb8b8ca6f22d9ec`, 내부 `files` 배열을 compact UTF-8 JSON으로 직렬화한 **파일 목록**의 SHA256은 `c3566228e8e53977db7972f308f9cc353c62fbeea884597bf2fddceee44662cd`다. 두 해시의 대상이 다르며, 이번 문서 갱신에서 소스나 dist를 변경·재빌드하지 않았다.
+
+| 실제 사용자 흐름 | 추천 서버 기동 | 추천 프로세스 중단 |
+|---|---|---|
+| 비회원 기본 목록·Product7·source 코드 미노출 | 통과, BASELINE | 통과, FALLBACK |
+| SKIPPED 실제 전체 저장 → 기본 목록 | 도달·상태 보존 | 도달·상태 보존 |
+| 기본 항목 → 현재 상품 상세 | 링크·현재 Product7 일치 | 링크·현재 Product7 일치 |
+| COMPLETED 저장 → 기본 목록 → 재진입 | 목표 80.25·최대 가격 0·도수 상한 10 보존 | 같은 저장값 보존 |
+| 다른 신규 계정 → 기본 목록 | NOT_STARTED·미입력 보존 | NOT_STARTED·미입력 보존 |
+| 390px 웹·브라우저/서버 오류 | 넘침·pageerror·예상외 API 오류 없음 | 같은 결과 |
+
+두 실행의 실제 응답 출처는 각각 BASELINE만, FALLBACK만 관측됐다. 첫 로그인 완료 전 auth/me 401은 정상 비회원 응답으로 분리했고 이후 오류를 그 예외로 포함하지 않았다. 추천 서버가 없어도 유효한 상품 목록과 개인 입력 상태를 유지하는 흐름을 확인한 결과다.
+
+실제 통합은 위 정상/프로세스 중단 흐름을 확인했다. 빈 DB·DB 오류·느린/비정상 원격 응답·진행 중 계정 경쟁은 해당 fixture/제공자 검증과 구분하며 여기서 모두 실제 통합했다고 주장하지 않는다. 실제 사용자 선호·인기·구매·모델 품질이나 시간 성능은 측정하지 않았다. 전체 R01의 main 완료는 제공자/Frontend 리뷰·필수 CI·병합과 main CI 이후 조정자가 판정하며 FE03/C04 최종 인수는 계속 미완료다.
 
 ## 대표 사례 판단
 
