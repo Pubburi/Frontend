@@ -9,6 +9,7 @@ import { Confirm, Empty, Loading, Pagination } from '../components/ui'
 import { OrderLines, orderMoney } from '../components/OrderLines'
 import { ProductFeatureEditor } from '../components/ProductFeatureEditor'
 import { featureSaveKey } from '../productFeatures'
+import { publishAdminDeletion, reconcileDeletedEditor, subscribeAdminDeletion, type EditorDraft } from '../adminEditor'
 import { money, orderType } from '../utils/format'
 import type { Market, Order, Page, Product, Review, User } from '../types'
 
@@ -91,6 +92,8 @@ const blankForm = () => ({
   role: 'USER',
   pass: '',
 })
+type Draft = EditorDraft<ReturnType<typeof blankForm>, Item>
+const emptyDraft = (): Draft => ({ form: blankForm(), editing: null, revision: Symbol() })
 function AdminPanel({
   tab,
   page,
@@ -102,6 +105,7 @@ function AdminPanel({
 }) {
   const { data: user } = useSession()
   const client = useQueryClient()
+  const authOwner = client.getQueryCache().find({ queryKey: ['session'], exact: true })
   const ui = useUi()
   const query = useQuery<Page<Item>>({
     queryKey: ['admin', user?.id, tab, page],
@@ -113,23 +117,27 @@ function AdminPanel({
   useEffect(() => {
     if (pageOutOfRange && !query.isFetching) onPage(lastPage, true)
   }, [pageOutOfRange, query.isFetching, lastPage, onPage])
-  const [draft, setDraft] = useState<{
-    form: ReturnType<typeof blankForm>
-    editing: Item | null
-  }>(() => ({ form: blankForm(), editing: null }))
+  const [draft, setDraft] = useState<Draft>(emptyDraft)
   const { form, editing } = draft
   const [deleting, setDeleting] = useState<Item | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [featureProduct, setFeatureProduct] = useState<Product | null>(null)
   const featureTrigger = useRef<HTMLButtonElement | null>(null)
   const idOf = (item: Item) => ('oId' in item ? item.oId : item.id)
+  useEffect(() => subscribeAdminDeletion(client, (deletion) => {
+    const currentAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+    if (currentAuth === authOwner && currentAuth?.state.data === user &&
+        deletion.auth === authOwner && deletion.account === user &&
+        deletion.actor === user?.id && deletion.tab === tab)
+      setDraft((current) => reconcileDeletedEditor(current, deletion, idOf, emptyDraft))
+  }), [client, user, authOwner, tab])
   const saveKey = `admin-${tab}-save`
   const deleteKey = `admin-${tab}-delete`
   function updateForm(form: ReturnType<typeof blankForm>) {
-    setDraft((current) => ({ ...current, form }))
+    setDraft((current) => ({ ...current, form, revision: Symbol() }))
   }
   function reset() {
-    setDraft({ form: blankForm(), editing: null })
+    setDraft(emptyDraft())
   }
   function edit(item: Item) {
     const next = blankForm()
@@ -139,7 +147,7 @@ function AdminPanel({
           (item as unknown as Record<string, unknown>)[key] ?? '',
         )
     }
-    setDraft({ form: next, editing: item })
+    setDraft({ form: next, editing: item, revision: Symbol() })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   async function refresh() {
@@ -149,6 +157,10 @@ function AdminPanel({
   }
   async function save(event: FormEvent) {
     event.preventDefault()
+    if (draft.deleted) {
+      ui.error(new Error('삭제된 항목에는 저장할 수 없습니다. 입력을 복사하거나 편집을 취소해 주세요.'))
+      return
+    }
     const submitted = draft
     const { form, editing } = submitted
     const result = await ui.run(
@@ -193,12 +205,13 @@ function AdminPanel({
     )
     if (result.ok)
       setDraft((current) =>
-        current === submitted ? { form: blankForm(), editing: null } : current,
+        current === submitted ? emptyDraft() : current,
       )
   }
   async function remove() {
-    if (!deleting) return
+    if (!deleting || !user) return
     const id = idOf(deleting)
+    const revision = draft.revision
     const result = await ui.run(
       deleteKey,
       async () => {
@@ -207,16 +220,27 @@ function AdminPanel({
         if (tab === 'orders') await api.deleteOrder(id)
         if (tab === 'comments') await api.deleteComment(id)
         if (tab === 'users') await api.deleteUser(id)
-        await refresh()
-        if (tab === 'comments')
-          await client.invalidateQueries({ queryKey: ['reviews'] })
       },
       `${labels[tab]} 정보가 삭제되었습니다.`,
     )
     if (result.ok) {
+      const currentAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+      if (!authOwner || currentAuth !== authOwner || currentAuth.state.data !== user || currentAuth.state.status !== 'success') return
+      await client.cancelQueries({ queryKey: ['admin', user.id, tab] })
+      const latestAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+      if (latestAuth !== authOwner || latestAuth.state.data !== user || latestAuth.state.status !== 'success') return
+      client.setQueriesData<Page<Item>>({ queryKey: ['admin', user.id, tab] }, (data) => {
+        if (!data || !data.items.some((item) => idOf(item) === id)) return data
+        const total = Math.max(0, data.total - 1)
+        return { ...data, items: data.items.filter((item) => idOf(item) !== id), total,
+          totalPages: Math.ceil(total / data.size), hasNext: data.page * data.size < total }
+      })
+      publishAdminDeletion(client, { auth: authOwner, account: user, actor: user.id, tab, id, revision })
       setDeleting(null)
       if (tab === 'products')
         setFeatureProduct((current) => (current?.id === id ? null : current))
+      await refresh()
+      if (tab === 'comments') await client.invalidateQueries({ queryKey: ['reviews'] })
     }
   }
   async function complete(order: Order) {
@@ -279,6 +303,10 @@ function AdminPanel({
         </div>
         {formVisible && (
           <form className="admin-form" onSubmit={save}>
+            {draft.deleted && <p className="form-context deleted-editor-notice" role="status">
+              이 항목은 삭제되어 저장할 수 없습니다. 현재 입력은 남겨두었습니다.
+              필요한 내용을 복사하거나 편집을 취소해 주세요.
+            </p>}
             {tab === 'products' && (
               <>
                 {field('name', '상품명')}
@@ -360,8 +388,8 @@ function AdminPanel({
               </>
             )}
             <div className="admin-form-actions">
-              <button className="btn btn-dark" disabled={ui.pending[saveKey]}>
-                {editing ? '변경 저장' : `${labels[tab]} 등록`}
+              <button className="btn btn-dark" disabled={ui.pending[saveKey] || draft.deleted}>
+                {draft.deleted ? '저장할 수 없음' : editing ? '변경 저장' : `${labels[tab]} 등록`}
               </button>
               <button
                 type="button"
