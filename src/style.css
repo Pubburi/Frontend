@@ -1170,6 +1170,8 @@ textarea.form-control {
 .feature-tag-item .field-group { min-width: 0; flex: 1; }
 .feature-tag-item textarea { min-height: 44px; }
 .preferences-view { gap: 20px; }
+.favorites-view { gap: 20px; }
+.favorite-item { display: grid; align-content: start; gap: 10px; min-width: 0; }
 .preferences-form { display: grid; gap: 22px; }
 .preference-section { display: grid; gap: 16px; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); min-width: 0; }
 .preference-section h2, .preference-section p { margin: 0; }
@@ -1336,4 +1338,10 @@ textarea.form-control {
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+.favorite-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
 }

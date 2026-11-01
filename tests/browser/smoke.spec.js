@@ -17,7 +17,7 @@ const test = base.extend({
   api: [async ({ page }, use) => {
     const state = {
       user: null, catalogFailures: 0, sessionFailures: 0, orderFailures: 0,
-      catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {}, preferences: {},
+      catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {}, preferences: {}, favorites: {},
       users: [
         { id: 'member', name: '시험회원', role: 'USER', stamps: 3 },
         { id: 'other', name: '다른회원', role: 'USER', stamps: 0 },
@@ -72,6 +72,29 @@ const test = base.extend({
           state.preferences[state.user.id] = { ...body, softPreferences: { ...body.softPreferences, categories: body.softPreferences.categories?.toSorted() ?? null, tasteTags: normalize(body.softPreferences.tasteTags), aromaTags: normalize(body.softPreferences.aromaTags) } }
         }
         await route.fulfill({ json: success(state.preferences[state.user.id] ?? emptyPreference()) })
+        return
+      }
+      if (path === '/users/me/favorites' && method === 'GET') {
+        if (!state.user) { await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') }); return }
+        const ids = state.favorites[state.user.id] ?? []
+        const items = ids.map((id) => state.catalog.find((item) => item.id === id)).filter(Boolean)
+        const page = Number(url.searchParams.get('page') || 1)
+        const size = Number(url.searchParams.get('size') || 20)
+        await route.fulfill({ json: success({ items: items.slice((page - 1) * size, page * size), page, size, total: items.length, totalPages: Math.ceil(items.length / size), hasNext: page * size < items.length }) })
+        return
+      }
+      if (/^\/users\/me\/favorites\/\d+$/.test(path) && ['GET', 'PUT', 'DELETE'].includes(method)) {
+        if (!state.user) { await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') }); return }
+        const productId = Number(path.split('/').at(-1))
+        if (method === 'GET') {
+          await route.fulfill({ json: success({ productId, favorited: state.catalog.some((item) => item.id === productId) && (state.favorites[state.user.id] ?? []).includes(productId) }) })
+          return
+        }
+        if (method === 'PUT' && !state.catalog.some((item) => item.id === productId)) { await route.fulfill({ status: 404, json: failure('NOT_FOUND') }); return }
+        const ids = state.favorites[state.user.id] ?? []
+        if (method === 'PUT') state.favorites[state.user.id] = ids.includes(productId) ? ids : [productId, ...ids]
+        else state.favorites[state.user.id] = ids.filter((id) => id !== productId)
+        await route.fulfill({ json: success({ productId, favorited: method === 'PUT' }) })
         return
       }
       if (request.method() === 'GET' && path === '/products') {
@@ -1175,3 +1198,354 @@ for (const viewport of [{ name: '일반', width: 1280, height: 900 }, { name: '�
     }
   })
 }
+
+async function loginFavoriteAccount(page, id) {
+  await page.getByRole('link', { name: '로그인', exact: true }).click()
+  await page.getByLabel('아이디', { exact: true }).fill(id)
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture-password')
+  await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+  await page.getByRole('link', { name: '내 찜 목록', exact: true }).click()
+}
+
+test('본인 찜 목록은 최근 담은 순서·현재 상품 정보와 링크를 표시하고 해제 뒤 빈 목록으로 복구', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [902, 901]
+  api.catalog[1].price = 13000
+  await page.goto('/profile')
+  await page.getByRole('link', { name: '내 찜 목록', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '내 찜 목록', exact: true })).toBeVisible()
+  await expect(page.locator('.favorite-item h2')).toHaveText(['시험 사케', '시험 탁주'])
+  await expect(page.locator('.favorite-item').first()).toContainText('13,000원')
+  await page.locator('.favorite-item').first().getByRole('heading').getByRole('link').click()
+  await expect(page).toHaveURL('/products/902')
+  await page.goBack()
+  await page.getByRole('button', { name: '시험 사케 찜 해제', exact: true }).click()
+  await expect(page.locator('.favorite-item')).toHaveCount(1)
+  await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '주류 둘러보기', exact: true })).toHaveAttribute('href', '/products')
+  expect(api.favorites.member).toEqual([])
+  expect(api.calls.filter((call) => call.path.startsWith('/users/me/favorites') && call.method === 'GET').every((call) => call.query.size === '12')).toBe(true)
+})
+
+test('찜 페이지는 필요한 열두 상품만 읽고 마지막 항목 해제·상품 삭제 뒤 유효한 페이지로 이동', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.catalog = Array.from({ length: 14 }, (_, index) => ({ ...products[0], id: 1000 + index, name: `찜 시연 ${index}` }))
+  api.favorites.member = api.catalog.map((item) => item.id).reverse()
+  await page.goto('/favorites?page=2')
+  await expect(page.locator('.favorite-item')).toHaveCount(2)
+  await expect(page.locator('.favorite-item h2')).toHaveText(['찜 시연 1', '찜 시연 0'])
+  expect(api.calls.filter((call) => call.path === '/users/me/favorites')).toEqual([expect.objectContaining({ query: { page: '2', size: '12' } })])
+  api.catalog = api.catalog.filter((item) => item.id !== 1001)
+  await page.getByRole('button', { name: '찜 시연 1 찜 해제', exact: true }).click()
+  await expect(page.locator('.favorite-item')).toHaveCount(1)
+  await page.getByRole('button', { name: '찜 시연 0 찜 해제', exact: true }).click()
+  await expect(page).toHaveURL('/favorites?page=1')
+  await expect(page.locator('.favorite-item')).toHaveCount(12)
+  await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toHaveCount(0)
+  expect(api.calls.filter((call) => call.path === '/users/me/favorites').every((call) => call.query.size === '12')).toBe(true)
+})
+
+test('비회원 찜 목록은 API를 읽지 않고 목적지를 보존하며 조회 실패는 빈 목록으로 표시하지 않음', async ({ page, api }) => {
+  await page.goto('/favorites?page=2')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/favorites?page=2')
+  expect(api.calls.some((call) => call.path === '/users/me/favorites')).toBe(false)
+  api.user = api.users.find((user) => user.id === 'member')
+  let failed = true
+  await page.route('**/api/users/me/favorites?*', (route) => failed ? route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') }) : route.fallback())
+  await page.goto('/favorites')
+  await expect(page.getByRole('heading', { name: '찜 목록을 불러오지 못했습니다' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toHaveCount(0)
+  failed = false
+  await page.getByRole('button', { name: '찜 다시 불러오기' }).click()
+  await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
+})
+
+for (const status of [200, 401]) {
+  test(`이전 계정의 늦은 찜 해제 ${status}가 새 계정의 목록·세션을 바꾸지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    api.favorites.member = [901]
+    api.favorites.other = [902]
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    let attempts = 0
+    await page.route('**/api/users/me/favorites/901', async (route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback()
+      attempts += 1
+      await gate
+      if (status === 200) api.favorites.member = []
+      await route.fulfill({ status, json: status === 200 ? success({ productId: 901, favorited: false }) : failure('UNAUTHORIZED') })
+    })
+    try {
+      await page.goto('/favorites')
+      await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).click()
+      await expect.poll(() => attempts).toBe(1)
+      await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toBeDisabled()
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await loginFavoriteAccount(page, 'other')
+      await expect(page.locator('.favorite-item h2')).toHaveText(['시험 사케'])
+      const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/users/me/favorites/901' && result.request().method() === 'DELETE')
+      release()
+      await (await response).finished()
+      // A subsequent visible user operation also crosses the old response callback boundary.
+      await page.getByRole('button', { name: '찜 목록 새로고침' }).click()
+      await expect(page.locator('.favorite-item h2')).toHaveText(['시험 사케'])
+      await expect(page.getByText('다른회원님', { exact: true })).toBeVisible()
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      await expect(page.getByRole('status').filter({ hasText: '찜을 해제했습니다.' })).toHaveCount(0)
+      expect(api.favorites.other).toEqual([902])
+      expect(attempts).toBe(1)
+    } finally { release() }
+  })
+}
+
+test('진행 중 찜 해제는 중복 전송을 막고 같은 계정 재로그인 뒤 새 읽기까지 기다림', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901]
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let attempts = 0
+  await page.route('**/api/users/me/favorites/901', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    attempts += 1
+    await gate
+    api.favorites.member = []
+    await route.fulfill({ json: success({ productId: 901, favorited: false }) })
+  })
+  try {
+    await page.goto('/favorites')
+    const remove = page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })
+    await remove.focus()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => attempts).toBe(1)
+    await expect(remove).toBeDisabled()
+    await page.keyboard.press('Enter')
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+    await loginFavoriteAccount(page, 'member')
+    await expect(page.getByRole('status', { name: '진행 중인 찜 저장을 기다리는 중입니다.' })).toBeVisible()
+    await expect(page.locator('.favorite-item')).toHaveCount(0)
+    expect(api.calls.filter((call) => call.path === '/users/me/favorites')).toHaveLength(1)
+    const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/users/me/favorites/901' && result.request().method() === 'DELETE')
+    release()
+    await (await response).finished()
+    await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
+    expect(api.calls.filter((call) => call.path === '/users/me/favorites')).toHaveLength(2)
+    expect(attempts).toBe(1)
+    await expect(page.getByRole('status').filter({ hasText: '찜을 해제했습니다.' })).toHaveCount(0)
+  } finally { release() }
+})
+
+test('찜 해제 뒤 늦은 이전 목록 GET이 삭제 상품을 되살리지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901, 902]
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let armed = false
+  let held = false
+  await page.route('**/api/users/me/favorites?*', async (route) => {
+    if (!armed || held) return route.fallback()
+    held = true
+    const snapshot = products.map((item) => ({ ...item }))
+    await gate
+    await route.fulfill({ json: success(pageOf(snapshot)) })
+  })
+  try {
+    await page.goto('/favorites')
+    await expect(page.locator('.favorite-item')).toHaveCount(2)
+    armed = true
+    await page.getByRole('button', { name: '찜 목록 새로고침' }).click()
+    await expect.poll(() => held).toBe(true)
+    await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).click()
+    await expect(page.locator('.favorite-item h2')).toHaveText(['시험 사케'])
+    const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/users/me/favorites' && result.request().method() === 'GET')
+    release()
+    await (await response).finished()
+    await expect(page.locator('.favorite-item h2')).toHaveText(['시험 사케'])
+    await expect(page.getByText('총 1개', { exact: true })).toBeVisible()
+  } finally { release() }
+})
+
+test('찜 해제 실패는 항목을 보존하고 재연결 재전송 없이 명시적 재시도만 허용', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901]
+  let attempts = 0
+  let failed = true
+  await page.route('**/api/users/me/favorites/901', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    attempts += 1
+    if (failed) await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+    else await route.fallback()
+  })
+  await page.goto('/favorites')
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+  await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '찜 목록 새로고침' }).click()
+  await expect(page.locator('.favorite-item')).toHaveCount(1)
+  expect(attempts).toBe(1)
+  failed = false
+  await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
+  expect(attempts).toBe(2)
+})
+
+test('본인 찜 조회 401은 목록을 숨기고 현재 목적지로 다시 로그인하게 함', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.route('**/api/users/me/favorites?*', (route) => route.fulfill({ status: 401, json: failure('UNAUTHORIZED') }))
+  await page.goto('/favorites?page=2')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/favorites?page=2')
+  await expect(page.locator('.favorite-item')).toHaveCount(0)
+})
+
+test('상세의 단건 찜 토글은 목록 전체 조회 없이 저장·해제하고 새로고침과 좁은 화면에서도 보존', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.goto('/products')
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  expect(api.calls.some((call) => call.path.startsWith('/users/me/favorites'))).toBe(false)
+  await page.getByRole('heading', { name: '시험 탁주', exact: true }).getByRole('link').click()
+  const add = page.getByRole('button', { name: '시험 탁주 찜하기', exact: true })
+  await expect(add).toHaveAttribute('aria-pressed', 'false')
+  await add.focus()
+  await page.keyboard.press('Enter')
+  const remove = page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })
+  await expect(remove).toHaveAttribute('aria-pressed', 'true')
+  expect(api.favorites.member).toEqual([901])
+  expect(api.calls.some((call) => call.path === '/users/me/favorites')).toBe(false)
+  await page.reload()
+  await expect(remove).toHaveAttribute('aria-pressed', 'true')
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await remove.click()
+  await expect(add).toHaveAttribute('aria-pressed', 'false')
+  await page.getByRole('link', { name: '내 찜 목록', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
+  expect(api.calls.filter((call) => ['PUT', 'DELETE'].includes(call.method) && call.path === '/users/me/favorites/901').map((call) => [call.method, call.body])).toEqual([['PUT', null], ['DELETE', null]])
+})
+
+test('상세 찜 상태는 첫 페이지 밖에 있는 상품도 단건 GET으로 확인하고 조회 실패를 미등록으로 추정하지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.catalog.push(...Array.from({ length: 13 }, (_, index) => ({ ...products[1], id: 1000 + index, name: `추가 시연 ${index}` })))
+  api.favorites.member = [...api.catalog.filter((item) => item.id !== 901).map((item) => item.id), 901]
+  let failed = true
+  await page.route('**/api/users/me/favorites/901', (route) => route.request().method() === 'GET' && failed ? route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') }) : route.fallback())
+  await page.goto('/products/901')
+  await expect(page.getByText('찜 상태를 확인하지 못했습니다.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '시험 탁주 찜하기', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toHaveCount(0)
+  failed = false
+  await page.getByRole('button', { name: '찜 상태 다시 확인', exact: true }).click()
+  await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  expect(api.calls.some((call) => call.path === '/users/me/favorites')).toBe(false)
+  expect(api.calls.some((call) => call.method === 'PUT')).toBe(false)
+})
+
+test('찜 저장 중 반대 의도·중복 전송을 차단하고 동일 계정 재로그인 후 서버 확정을 다시 읽음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let attempts = 0
+  await page.route('**/api/users/me/favorites/901', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    attempts += 1
+    await gate
+    api.favorites.member = [901]
+    await route.fulfill({ json: success({ productId: 901, favorited: true }) })
+  })
+  try {
+    await page.goto('/products/901')
+    const add = page.getByRole('button', { name: '시험 탁주 찜하기', exact: true })
+    await add.click()
+    await expect.poll(() => attempts).toBe(1)
+    await expect(add).toBeDisabled()
+    await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toHaveCount(0)
+    await add.evaluate((button) => button.click())
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+    await loginFavoriteAccount(page, 'member')
+    await expect(page.getByRole('status', { name: '진행 중인 찜 저장을 기다리는 중입니다.' })).toBeVisible()
+    await expect(page.locator('.favorite-item')).toHaveCount(0)
+    expect(api.calls.some((call) => call.path === '/users/me/favorites')).toBe(false)
+    const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/users/me/favorites/901' && result.request().method() === 'PUT')
+    release()
+    await (await response).finished()
+    await expect(page.locator('.favorite-item h2')).toHaveText(['시험 탁주'])
+    expect(attempts).toBe(1)
+    await expect(page.getByRole('status').filter({ hasText: '찜에 저장했습니다.' })).toHaveCount(0)
+    await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
+    expect(api.favorites.member).toEqual([])
+  } finally { release() }
+})
+
+test('비회원 상세는 찜 API를 호출하지 않고 상세 목적지를 가진 로그인 진입만 제공', async ({ page, api }) => {
+  await page.goto('/products/901')
+  await expect(page.getByRole('link', { name: '로그인하고 찜하기', exact: true })).toHaveAttribute('href', '/account?redirect=%2Fproducts%2F901')
+  expect(api.calls.some((call) => call.path.startsWith('/users/me/favorites'))).toBe(false)
+  await page.getByRole('link', { name: '로그인하고 찜하기', exact: true }).click()
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/products/901')
+})
+
+for (const status of [200, 401]) {
+  test(`이전 계정의 늦은 찜 상태 GET ${status}가 새 계정 상세에 섞이지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    let held = false
+    await page.route('**/api/users/me/favorites/901', async (route) => {
+      if (route.request().method() !== 'GET' || held) return route.fallback()
+      held = true
+      await gate
+      await route.fulfill({ status, json: status === 200 ? success({ productId: 901, favorited: true }) : failure('UNAUTHORIZED') })
+    })
+    try {
+      await page.goto('/products/901')
+      await expect.poll(() => held).toBe(true)
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await loginFavoriteAccount(page, 'other')
+      await page.getByRole('link', { name: '주류 둘러보기', exact: true }).click()
+      await page.getByRole('heading', { name: '시험 탁주', exact: true }).getByRole('link').click()
+      await expect(page.getByRole('button', { name: '시험 탁주 찜하기', exact: true })).toHaveAttribute('aria-pressed', 'false')
+      const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/users/me/favorites/901' && result.request().method() === 'GET')
+      release()
+      await (await response).finished()
+      await page.getByRole('link', { name: '내 찜 목록', exact: true }).click()
+      await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
+      await expect(page.getByText('다른회원님', { exact: true })).toBeVisible()
+      await expect(page.getByRole('alert')).toHaveCount(0)
+    } finally { release() }
+  })
+}
+
+test('찜 저장 응답이 실패해도 실제 서버 상태를 다시 읽고 중복 PUT을 자동 재전송하지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let writes = 0
+  await page.route('**/api/users/me/favorites/901', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes += 1
+    api.favorites.member = [901]
+    await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+  })
+  await page.goto('/products/901')
+  await page.getByRole('button', { name: '시험 탁주 찜하기', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.evaluate(() => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')) })
+  await page.getByRole('link', { name: '내 찜 목록', exact: true }).click()
+  await expect(page.locator('.favorite-item h2')).toHaveText(['시험 탁주'])
+  expect(writes).toBe(1)
+})
+
+test('삭제된 상품의 찜 PUT 거절은 저장 성공으로 표시하지 않고 관리자도 자기 계정만 사용', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.favorites.member = [901]
+  await page.route('**/api/users/me/favorites/901', (route) => route.request().method() === 'PUT' ? route.fulfill({ status: 404, json: failure('NOT_FOUND') }) : route.fallback())
+  await page.goto('/products/901')
+  await expect(page.getByRole('button', { name: '시험 탁주 찜하기', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await page.getByRole('button', { name: '시험 탁주 찜하기', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('button', { name: '시험 탁주 찜하기', exact: true })).toBeEnabled()
+  await expect(page.getByRole('status').filter({ hasText: '찜에 저장했습니다.' })).toHaveCount(0)
+  expect(api.favorites.admin).toBeUndefined()
+  expect(api.favorites.member).toEqual([901])
+})
