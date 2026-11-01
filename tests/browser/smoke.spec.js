@@ -3070,3 +3070,92 @@ test('390px 관리자 좌표 생성은 범위와 필수를 유지하며 Enter로
   expect(writes[0].body).toMatchObject({ latitude: -37.123456789, longitude: 127.765432123 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
+
+for (const mode of ['login', 'join']) {
+  test(`${mode} 성공이 늦게 도착해도 새로 선택한 상품 목록을 옛redirect로 바꾸지 않음`, async ({ page, api }) => {
+    let release, committed = false
+    const gate = new Promise((resolve) => { release = resolve })
+    await page.route('**/api/auth/login', async (route) => {
+      committed = true
+      await gate
+      await route.fallback()
+    })
+    try {
+      await page.goto('/account?redirect=/cart')
+      if (mode === 'join') await page.locator('.segmented').getByRole('button', { name: '회원가입', exact: true }).click()
+      await page.getByLabel('아이디', { exact: true }).fill(mode === 'login' ? 'member' : 'route-joiner')
+      if (mode === 'join') {
+        await page.getByRole('button', { name: '중복 확인', exact: true }).click()
+        await expect(page.getByText('사용할 수 있는 아이디입니다.', { exact: true })).toBeVisible()
+        await page.getByLabel('이름', { exact: true }).fill('경로 시연회원')
+      }
+      await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: mode === 'login' ? '로그인' : '회원가입', exact: true }).click()
+      await expect.poll(() => committed).toBe(true)
+      await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+      await expect(page.locator('.product-card')).toHaveCount(2)
+      release()
+      await expect(page.locator('.user-name')).toHaveText((mode === 'login' ? '시험회원' : '경로 시연회원') + '님')
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      await expect(page).toHaveURL('/products')
+      expect(api.user.id).toBe(mode === 'login' ? 'member' : 'route-joiner')
+      expect(api.calls.filter((call) => call.path === '/auth/login' && call.method === 'POST')).toHaveLength(1)
+      expect(api.calls.filter((call) => call.path === '/users' && call.method === 'POST')).toHaveLength(mode === 'join' ? 1 : 0)
+    } finally { release() }
+  })
+}
+
+for (const reentry of ['same-url', 'new-target']) {
+  test(`${reentry} 계정 재진입의 현재 redirect는 이전 로그인 제출 목적지에 덮이지 않음`, async ({ page, api }) => {
+    let release, started = false
+    const gate = new Promise((resolve) => { release = resolve })
+    await page.route('**/api/auth/login', async (route) => {
+      started = true
+      await gate
+      await route.fallback()
+    })
+    try {
+      await page.goto('/account?redirect=/cart')
+      await page.getByLabel('아이디', { exact: true }).fill('member')
+      await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+      await expect.poll(() => started).toBe(true)
+      const nav = page.getByRole('navigation', { name: '주요 메뉴' })
+      await nav.getByRole('link', { name: '전체 주류', exact: true }).click()
+      if (reentry === 'same-url') await page.goBack()
+      else {
+        await page.locator('.product-card').first().getByRole('link', { name: '상세 보기', exact: true }).click()
+        await page.locator('.login-prompt').getByRole('link', { name: '로그인', exact: true }).click()
+      }
+      const target = reentry === 'same-url' ? '/cart' : '/products/901'
+      await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === target)
+      await expect(page.getByLabel('아이디', { exact: true })).toBeDisabled()
+      release()
+      await expect(page.locator('.user-name')).toHaveText('시험회원님')
+      await expect(page).toHaveURL(target)
+      await expect(page.getByRole('heading', { name: reentry === 'same-url' ? '장바구니' : '시험 탁주', exact: true })).toBeVisible()
+      expect(api.calls.filter((call) => call.path === '/auth/login' && call.method === 'POST')).toHaveLength(1)
+    } finally { release() }
+  })
+}
+
+test('같은 계정 폼에서 redirect만 바꾼 현재 경로는 이전 성공 navigate에 덮이지 않음', async ({ page, api }) => {
+  let release, started = false
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/auth/login', async (route) => { started = true; await gate; await route.fallback() })
+  try {
+    await page.goto('/account?redirect=/cart')
+    await page.getByLabel('아이디', { exact: true }).fill('member')
+    await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+    await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+    await expect.poll(() => started).toBe(true)
+    await page.locator('.user-pill').getByRole('link', { name: '로그인', exact: true }).click()
+    await expect(page).toHaveURL('/account')
+    await expect(page.getByLabel('아이디', { exact: true })).toHaveValue('member')
+    await expect(page.getByLabel('아이디', { exact: true })).toBeDisabled()
+    release()
+    await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록', exact: true })).toBeVisible()
+    await expect(page).toHaveURL('/profile')
+    expect(api.calls.filter((call) => call.path === '/auth/login' && call.method === 'POST')).toHaveLength(1)
+  } finally { release() }
+})
