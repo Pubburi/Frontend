@@ -1878,3 +1878,177 @@ test('390px 기본 주류 목록의 카드·재조회·전체 목록 링크에 �
   await page.getByRole('link', { name: '전체 주류 보기', exact: true }).click()
   await expect(page.getByRole('heading', { name: '전체 주류 둘러보기' })).toBeVisible()
 })
+
+for (const nextEdit of ['same', 'other', 'new', 'reopen']) {
+  test(`관리자 상품 저장 완료는 ${nextEdit} 편집의 새 초안을 지우지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    api.catalog[0].img = 'takju1.webp'
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const submissions = []
+    await page.route('**/api/admin/products/901', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback()
+      submissions.push(route.request().postDataJSON())
+      await gate
+      await route.fallback()
+    })
+    try {
+      await page.goto('/admin')
+      await page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '편집', exact: true }).click()
+      await page.getByLabel('가격', { exact: true }).fill('7000')
+      await page.getByRole('button', { name: '변경 저장', exact: true }).click()
+      await expect.poll(() => submissions.length).toBe(1)
+      if (nextEdit === 'other') await page.locator('.table-row').filter({ hasText: '시험 사케' }).getByRole('button', { name: '편집', exact: true }).click()
+      if (nextEdit === 'new' || nextEdit === 'reopen') await page.getByRole('button', { name: '편집 취소', exact: true }).click()
+      if (nextEdit === 'reopen') await page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '편집', exact: true }).click()
+      const nextName = nextEdit === 'reopen' ? '시험 탁주' : '보존할 새 상품 초안'
+      const nextPrice = nextEdit === 'reopen' ? '7000' : '8000'
+      await page.getByLabel('상품명', { exact: true }).fill(nextName)
+      await page.getByLabel('가격', { exact: true }).fill(nextPrice)
+      release()
+      await expect(page.getByRole('status').filter({ hasText: '상품 정보가 저장되었습니다.' })).toBeVisible()
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      await expect(page.getByLabel('상품명', { exact: true })).toHaveValue(nextName)
+      await expect(page.getByLabel('가격', { exact: true })).toHaveValue(nextPrice)
+      await expect(page.getByRole('button', { name: nextEdit === 'new' ? '상품 등록' : '변경 저장', exact: true })).toBeEnabled()
+      expect(submissions).toHaveLength(1)
+      expect(submissions[0].price).toBe(7000)
+      expect(api.catalog.find((item) => item.id === 901).price).toBe(7000)
+      expect(api.catalog.find((item) => item.id === 902).price).toBe(12000)
+    } finally { release() }
+  })
+}
+
+test('관리자 매장 저장 완료는 다른 매장의 새 초안을 지우지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.markets = [{ id: 201, name: '시연 첫 매장', latitude: 37, longitude: 127 }, { id: 202, name: '시연 둘째 매장', latitude: 38, longitude: 128 }]
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let attempts = 0
+  await page.route('**/api/admin/markets/201', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    attempts += 1
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/admin?tab=markets')
+    await page.locator('.table-row').filter({ hasText: '시연 첫 매장' }).getByRole('button', { name: '편집', exact: true }).click()
+    await page.getByLabel('위도', { exact: true }).fill('37.5')
+    await page.getByRole('button', { name: '변경 저장', exact: true }).click()
+    await expect.poll(() => attempts).toBe(1)
+    await page.locator('.table-row').filter({ hasText: '시연 둘째 매장' }).getByRole('button', { name: '편집', exact: true }).click()
+    await page.getByLabel('매장명', { exact: true }).fill('보존할 매장 초안')
+    release()
+    await expect(page.getByRole('status').filter({ hasText: '매장 정보가 저장되었습니다.' })).toBeVisible()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await expect(page.getByLabel('매장명', { exact: true })).toHaveValue('보존할 매장 초안')
+    expect(api.markets.find((item) => item.id === 201).latitude).toBe(37.5)
+    expect(api.markets.find((item) => item.id === 202).name).toBe('시연 둘째 매장')
+  } finally { release() }
+})
+
+test('관리자 회원 저장 완료는 다른 회원의 새 초안을 닫지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let attempts = 0
+  await page.route('**/api/admin/users/member', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    attempts += 1
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/admin?tab=users')
+    await page.locator('.table-row').filter({ hasText: '시험회원' }).getByRole('button', { name: '편집', exact: true }).click()
+    await page.getByLabel('이름', { exact: true }).fill('저장할 회원 이름')
+    await page.getByRole('button', { name: '변경 저장', exact: true }).click()
+    await expect.poll(() => attempts).toBe(1)
+    await page.locator('.table-row').filter({ hasText: '다른회원' }).getByRole('button', { name: '편집', exact: true }).click()
+    await page.getByLabel('이름', { exact: true }).fill('보존할 회원 초안')
+    release()
+    await expect(page.getByRole('status').filter({ hasText: '회원 정보가 저장되었습니다.' })).toBeVisible()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await expect(page.getByLabel('이름', { exact: true })).toHaveValue('보존할 회원 초안')
+    await expect(page.getByText('other 회원', { exact: true })).toBeVisible()
+    expect(api.users.find((item) => item.id === 'member').name).toBe('저장할 회원 이름')
+    expect(api.users.find((item) => item.id === 'other').name).toBe('다른회원')
+  } finally { release() }
+})
+
+test('관리자 신규 상품 등록 완료도 제출 뒤 작성한 다음 초안을 보존', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const submissions = []
+  await page.route('**/api/admin/products', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    submissions.push(route.request().postDataJSON())
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/admin')
+    await page.getByLabel('상품명', { exact: true }).fill('제출한 신규 상품')
+    await page.locator('.admin-form').getByLabel('주종', { exact: true }).selectOption('탁주')
+    await page.getByLabel('가격', { exact: true }).fill('7000')
+    await page.getByLabel('이미지 파일명', { exact: true }).fill('takju1.webp')
+    await page.getByRole('button', { name: '상품 등록', exact: true }).click()
+    await expect.poll(() => submissions.length).toBe(1)
+    await page.getByLabel('상품명', { exact: true }).fill('아직 제출하지 않은 다음 상품')
+    release()
+    await expect(page.getByRole('status').filter({ hasText: '상품 정보가 저장되었습니다.' })).toBeVisible()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await expect(page.getByLabel('상품명', { exact: true })).toHaveValue('아직 제출하지 않은 다음 상품')
+    expect(api.catalog.some((item) => item.name === '제출한 신규 상품')).toBe(true)
+    expect(api.catalog.some((item) => item.name === '아직 제출하지 않은 다음 상품')).toBe(false)
+    expect(submissions).toHaveLength(1)
+  } finally { release() }
+})
+
+test('관리자 저장 거절 뒤 새 대상 초안을 유지하고 명시적 다음 저장은 그 대상만 변경', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.catalog.forEach((item) => { item.img = 'takju1.webp' })
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let attempts = 0
+  await page.route('**/api/admin/products/901', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    attempts += 1
+    await gate
+    await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+  })
+  try {
+    await page.goto('/admin')
+    await page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '편집', exact: true }).click()
+    await page.getByLabel('가격', { exact: true }).fill('7000')
+    await page.getByRole('button', { name: '변경 저장', exact: true }).click()
+    await expect.poll(() => attempts).toBe(1)
+    await page.locator('.table-row').filter({ hasText: '시험 사케' }).getByRole('button', { name: '편집', exact: true }).click()
+    await page.getByLabel('상품명', { exact: true }).fill('다음 대상 상품')
+    await page.getByLabel('가격', { exact: true }).fill('15000')
+    release()
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page.getByRole('button', { name: '변경 저장', exact: true })).toBeEnabled()
+    await expect(page.getByLabel('상품명', { exact: true })).toHaveValue('다음 대상 상품')
+    await page.getByRole('button', { name: '변경 저장', exact: true }).click()
+    await expect(page.locator('.table-row').filter({ hasText: '다음 대상 상품' })).toContainText('15,000원')
+    expect(api.catalog.find((item) => item.id === 901).price).toBe(6000)
+    expect(api.catalog.find((item) => item.id === 902).name).toBe('다음 대상 상품')
+    expect(attempts).toBe(1)
+  } finally { release() }
+})
+
+test('관리자 제출 후 새 편집을 하지 않으면 성공 뒤 기존처럼 폼을 초기화', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.catalog[0].img = 'takju1.webp'
+  await page.goto('/admin')
+  await page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '편집', exact: true }).click()
+  await page.getByLabel('가격', { exact: true }).fill('7000')
+  await page.getByRole('button', { name: '변경 저장', exact: true }).click()
+  await expect(page.locator('.table-row').filter({ hasText: '시험 탁주' })).toContainText('7,000원')
+  await expect(page.getByRole('button', { name: '상품 등록', exact: true })).toBeEnabled()
+  await expect(page.getByLabel('상품명', { exact: true })).toHaveValue('')
+  await expect(page.getByLabel('가격', { exact: true })).toHaveValue('0')
+})

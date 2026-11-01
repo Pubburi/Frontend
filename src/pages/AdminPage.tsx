@@ -105,8 +105,11 @@ function AdminPanel({
     queryKey: ['admin', user?.id, tab, page],
     queryFn: () => fetchAdminPage(tab, page),
   })
-  const [form, setForm] = useState(blankForm)
-  const [editing, setEditing] = useState<Item | null>(null)
+  const [draft, setDraft] = useState<{
+    form: ReturnType<typeof blankForm>
+    editing: Item | null
+  }>(() => ({ form: blankForm(), editing: null }))
+  const { form, editing } = draft
   const [deleting, setDeleting] = useState<Item | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [featureProduct, setFeatureProduct] = useState<Product | null>(null)
@@ -114,9 +117,11 @@ function AdminPanel({
   const idOf = (item: Item) => ('oId' in item ? item.oId : item.id)
   const saveKey = `admin-${tab}-save`
   const deleteKey = `admin-${tab}-delete`
+  function updateForm(form: ReturnType<typeof blankForm>) {
+    setDraft((current) => ({ ...current, form }))
+  }
   function reset() {
-    setForm(blankForm())
-    setEditing(null)
+    setDraft({ form: blankForm(), editing: null })
   }
   function edit(item: Item) {
     const next = blankForm()
@@ -126,8 +131,7 @@ function AdminPanel({
           (item as unknown as Record<string, unknown>)[key] ?? '',
         )
     }
-    setForm(next)
-    setEditing(item)
+    setDraft({ form: next, editing: item })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   async function refresh() {
@@ -137,6 +141,8 @@ function AdminPanel({
   }
   async function save(event: FormEvent) {
     event.preventDefault()
+    const submitted = draft
+    const { form, editing } = submitted
     const result = await ui.run(
       saveKey,
       async () => {
@@ -177,7 +183,10 @@ function AdminPanel({
       },
       `${labels[tab]} 정보가 저장되었습니다.`,
     )
-    if (result.ok) reset()
+    if (result.ok)
+      setDraft((current) =>
+        current === submitted ? { form: blankForm(), editing: null } : current,
+      )
   }
   async function remove() {
     if (!deleting) return
@@ -236,7 +245,7 @@ function AdminPanel({
           max={options.max}
           step={options.step}
           value={form[key]}
-          onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+          onChange={(e) => updateForm({ ...form, [key]: e.target.value })}
         />
       </label>
     )
@@ -272,7 +281,7 @@ function AdminPanel({
                     required
                     value={form.type}
                     aria-label="주종"
-                    onChange={(e) => setForm({ ...form, type: e.target.value })}
+                    onChange={(e) => updateForm({ ...form, type: e.target.value })}
                   >
                     <option value="" disabled>
                       주종 선택
@@ -330,7 +339,7 @@ function AdminPanel({
                     className="form-select"
                     value={form.role}
                     disabled={Boolean(editing && idOf(editing) === user?.id)}
-                    onChange={(e) => setForm({ ...form, role: e.target.value })}
+                    onChange={(e) => updateForm({ ...form, role: e.target.value })}
                   >
                     <option value="USER">일반 회원</option>
                     <option value="ADMIN">관리자</option>
