@@ -1179,6 +1179,7 @@ textarea.form-control {
 .preference-categories label { display: flex; gap: 5px; align-items: center; }
 .preference-ranges { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; }
 .form-context { display: grid; align-self: center; }
+.deleted-editor-notice { grid-column: 1 / -1; margin: 0; color: var(--muted); }
 
 .table-row {
   grid-template-columns: 60px minmax(180px, 1fr) minmax(110px, .7fr) minmax(110px, .6fr) auto;
