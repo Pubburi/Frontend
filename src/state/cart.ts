@@ -55,6 +55,7 @@ export function createCartStore(storage: Storage | null) {
     /* corrupted legacy storage */
   }
   return createStore<CartState>()((set, get) => {
+    const lineOwners = new Map(restored.map((item) => [item.product.id, Symbol()]))
     function save(items: CartItem[]) {
       const normalized = normalizeCart(items)
       set({ items: normalized })
@@ -77,6 +78,8 @@ export function createCartStore(storage: Storage | null) {
       add(product, quantity = 1) {
         const amount = normalizeQuantity(quantity)
         const items = get().items
+        if (!items.some((item) => item.product.id === product.id))
+          lineOwners.set(product.id, Symbol())
         save(
           items.some((item) => item.product.id === product.id)
             ? items.map((item) =>
@@ -97,6 +100,7 @@ export function createCartStore(storage: Storage | null) {
         )
       },
       remove(id) {
+        lineOwners.delete(id)
         save(get().items.filter((item) => item.product.id !== id))
       },
       setOrderForm(value) {
@@ -104,6 +108,12 @@ export function createCartStore(storage: Storage | null) {
       },
       async checkout(userId) {
         const { items, orderForm } = get()
+        const submitted = new Map(
+          items.map((item) => [
+            item.product.id,
+            { quantity: item.quantity, owner: lineOwners.get(item.product.id) },
+          ]),
+        )
         const order = await api.createOrder({
           userId,
           orderType: orderForm.orderType,
@@ -113,8 +123,19 @@ export function createCartStore(storage: Storage | null) {
             quantity: item.quantity,
           })),
         })
-        save([])
-        set({ orderForm: { ...get().orderForm, orderTable: '' } })
+        save(
+          get().items.flatMap((item) => {
+            const original = submitted.get(item.product.id)
+            if (!original || lineOwners.get(item.product.id) !== original.owner)
+              return [item]
+            const quantity = Math.max(0, item.quantity - original.quantity)
+            if (quantity > 0) return [{ ...item, quantity }]
+            lineOwners.delete(item.product.id)
+            return []
+          }),
+        )
+        if (get().orderForm === orderForm)
+          set({ orderForm: { ...orderForm, orderTable: '' } })
         return order
       },
     }

@@ -2216,3 +2216,117 @@ for (const leave of ['page', 'tab']) {
     } finally { release() }
   })
 }
+
+for (const change of ['new-product', 'new-note']) {
+  test(`데모 주문 완료는 전송 뒤 ${change} 다음 주문 입력을 지우지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const submissions = []
+    await page.route('**/api/orders', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      submissions.push(route.request().postDataJSON())
+      await gate
+      await route.fallback()
+    })
+    try {
+      await page.goto('/products/901')
+      await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
+      await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: /장바구니/ }).click()
+      await page.getByLabel('테이블·요청 사항', { exact: true }).fill('제출한 요청')
+      await page.getByRole('button', { name: '6,000원 주문하기', exact: true }).click()
+      await expect.poll(() => submissions.length).toBe(1)
+      if (change === 'new-product') {
+        await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+        await page.locator('.product-card').filter({ hasText: '시험 사케' }).getByRole('button', { name: '빠른 담기', exact: true }).click()
+      } else await page.getByLabel('테이블·요청 사항', { exact: true }).fill('다음 주문 요청')
+      release()
+      await expect(page.getByText('주문이 접수되었습니다.', { exact: true })).toBeVisible()
+      await expect.poll(() => api.orders.length).toBe(1)
+      expect(api.orders[0].details.map((item) => ({ productId: item.productId, quantity: item.quantity }))).toEqual([{ productId: 901, quantity: 1 }])
+      expect(api.orders[0].orderTable).toBe('제출한 요청')
+      if (change === 'new-product') await expect(page).toHaveURL('/products')
+      if (change === 'new-note') {
+        await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+        await page.locator('.product-card').filter({ hasText: '시험 사케' }).getByRole('button', { name: '빠른 담기', exact: true }).click()
+      }
+      await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: /장바구니/ }).click()
+      await expect(page.getByRole('spinbutton', { name: '시험 사케 수량', exact: true })).toHaveValue('1')
+      await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveCount(0)
+      await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue(change === 'new-note' ? '다음 주문 요청' : '')
+      expect(submissions).toHaveLength(1)
+    } finally { release() }
+  })
+}
+
+for (const change of ['additional-quantity', 're-added-line', 'decreased-quantity', 'rejected-order']) {
+  test(`접수 중 장바구니 ${change} 경계는 제출량과 다음 입력을 구분`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    if (change === 'rejected-order') api.orderFailures = 1
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const submissions = []
+    await page.route('**/api/orders', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      submissions.push(route.request().postDataJSON())
+      await gate
+      await route.fallback()
+    })
+    const cartLink = () => page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: /장바구니/ })
+    try {
+      await page.goto('/products/901')
+      await page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true }).fill('2')
+      await page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true }).press('Enter')
+      await page.getByRole('button', { name: '2개 장바구니에 담기', exact: true }).click()
+      await cartLink().click()
+      await page.getByLabel('테이블·요청 사항', { exact: true }).fill('처음 요청')
+      await page.getByRole('button', { name: '12,000원 주문하기', exact: true }).click()
+      await expect.poll(() => submissions.length).toBe(1)
+      await expect(page.getByText(/이미 전송한 상품과 수량은 변경되지 않습니다/)).toBeVisible()
+      await page.locator('.checkout-form').evaluate((form) => form.requestSubmit())
+      expect(submissions).toHaveLength(1)
+      if (change === 're-added-line') {
+        await page.getByRole('button', { name: '시험 탁주 삭제', exact: true }).click()
+        await page.getByRole('link', { name: '전체 주류 보기', exact: true }).click()
+        await page.locator('.product-card').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '빠른 담기', exact: true }).click()
+        await cartLink().click()
+        await page.getByLabel('테이블·요청 사항', { exact: true }).fill('다시 연 화면의 요청')
+      } else {
+        await page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true }).fill(change === 'decreased-quantity' ? '1' : '3')
+        await page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true }).press('Enter')
+        await page.getByLabel('테이블·요청 사항', { exact: true }).fill('다음 요청')
+        if (change === 'decreased-quantity') {
+          await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+          await page.locator('.product-card').filter({ hasText: '시험 사케' }).getByRole('button', { name: '빠른 담기', exact: true }).click()
+        }
+      }
+      release()
+      if (change === 'rejected-order') {
+        await expect(page.getByRole('alert')).toBeVisible()
+        await expect(page.getByRole('button', { name: '18,000원 주문하기', exact: true })).toBeEnabled()
+        await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('3')
+        await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('다음 요청')
+        expect(api.orders).toHaveLength(0)
+        expect(submissions).toHaveLength(1)
+        await page.getByRole('button', { name: '18,000원 주문하기', exact: true }).click()
+        await expect(page).toHaveURL('/profile')
+        expect(api.orders[0].details[0].quantity).toBe(3)
+        expect(api.orders[0].orderTable).toBe('다음 요청')
+        expect(submissions).toHaveLength(2)
+      } else {
+        await expect(page.getByText('주문이 접수되었습니다.', { exact: true })).toBeVisible()
+        if (change === 're-added-line') await expect(page).toHaveURL('/cart')
+        else if (change === 'decreased-quantity') await expect(page).toHaveURL('/products')
+        else { await expect(page).toHaveURL('/profile'); await cartLink().click() }
+        if (change === 'decreased-quantity') await cartLink().click()
+        const name = change === 'decreased-quantity' ? '시험 사케' : '시험 탁주'
+        await expect(page.getByRole('spinbutton', { name: `${name} 수량`, exact: true })).toHaveValue('1')
+        await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue(change === 're-added-line' ? '다시 연 화면의 요청' : '다음 요청')
+        expect(api.orders).toHaveLength(1)
+        expect(api.orders[0].details.map((item) => item.quantity)).toEqual([2])
+        expect(api.orders[0].orderTable).toBe('처음 요청')
+        expect(submissions).toHaveLength(1)
+      }
+    } finally { release() }
+  })
+}
