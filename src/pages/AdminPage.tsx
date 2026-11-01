@@ -305,7 +305,7 @@ function AdminPanel({
                   type: 'number',
                   min: 0,
                   max: 100,
-                  step: '0.1',
+                  step: 'any',
                 })}
                 {field('orderCount', '누적 주문 수', {
                   type: 'number',
@@ -320,13 +320,13 @@ function AdminPanel({
                   type: 'number',
                   min: -90,
                   max: 90,
-                  step: '0.000001',
+                  step: 'any',
                 })}
                 {field('longitude', '경도', {
                   type: 'number',
                   min: -180,
                   max: 180,
-                  step: '0.000001',
+                  step: 'any',
                 })}
                 {field('image', '이미지 경로 (선택)', {
                   required: false,

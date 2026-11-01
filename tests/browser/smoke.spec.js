@@ -2965,3 +2965,108 @@ test('cold401 뒤 offline 재진입의 paused 읽기도 개인 내용을 숨기�
     expect(api.calls.filter((call) => call.path === '/auth/login' || call.path === '/auth/logout')).toHaveLength(0)
   } finally { release() }
 })
+
+for (const tab of ['products', 'markets']) {
+  test(`관리자 ${tab}의 기존 유효 소수값은 이름만 바꿔도 원값으로 저장`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    api.catalog[0] = { ...api.catalog[0], abv: 6.25, img: 'technical-fixture.webp' }
+    api.markets.push({ id: 921, name: '정밀도 시연매장', latitude: 37.1234567, longitude: 127.7654321, image: '' })
+    const original = tab === 'products' ? api.catalog[0] : api.markets[0]
+    const changedName = original.name + ' 수정'
+    await page.goto(`/admin?tab=${tab}&page=1`)
+    await page.locator('.table-row').filter({ hasText: original.name }).getByRole('button', { name: '편집', exact: true }).click()
+    const form = page.locator('.admin-form')
+    await form.getByLabel(tab === 'products' ? '상품명' : '매장명', { exact: true }).fill(changedName)
+    for (const [label, value] of tab === 'products' ? [['도수', '6.25']] : [['위도', '37.1234567'], ['경도', '127.7654321']]) {
+      const input = form.getByLabel(label, { exact: true })
+      await expect(input).toHaveValue(value)
+      expect(await input.evaluate((node) => node.validity.stepMismatch)).toBe(false)
+    }
+    expect(await form.evaluate((node) => node.checkValidity())).toBe(true)
+    await form.getByRole('button', { name: '변경 저장', exact: true }).click()
+    const updated = page.locator('.table-row').filter({ hasText: changedName })
+    await expect(updated).toBeVisible()
+    const put = api.calls.filter((call) => call.path === `/admin/${tab}/${original.id}` && call.method === 'PUT')
+    expect(put).toHaveLength(1)
+    expect(put[0].body).toMatchObject(tab === 'products' ? { abv: 6.25 } : { latitude: 37.1234567, longitude: 127.7654321 })
+    await updated.getByRole('button', { name: '편집', exact: true }).click()
+    await expect(form.getByLabel(tab === 'products' ? '도수' : '위도', { exact: true })).toHaveValue(tab === 'products' ? '6.25' : '37.1234567')
+  })
+}
+
+test('관리자 소수 도수 생성은 범위·정수 가격을 유지하고 거절 뒤 원값으로 재제출', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  let writes = 0
+  await page.route('**/api/admin/products', async (route) => {
+    if (route.request().method() === 'POST' && ++writes === 1)
+      return route.fulfill({ status: 400, json: { data: null, message: null, error: { code: 'VALIDATION_FAILED', message: '시연 거절', fields: { abv: '입력을 다시 확인해 주세요.' } } } })
+    await route.fallback()
+  })
+  await page.goto('/admin?tab=products&page=1')
+  const form = page.locator('.admin-form')
+  await form.getByLabel('상품명', { exact: true }).fill('소수 도수 생성시연')
+  await form.getByLabel('주종', { exact: true }).selectOption('탁주')
+  const price = form.getByLabel('가격', { exact: true })
+  await price.fill('6000')
+  await form.getByLabel('이미지 파일명', { exact: true }).fill('technical-fixture.webp')
+  const abv = form.getByLabel('도수', { exact: true })
+  const create = form.getByRole('button', { name: '상품 등록', exact: true })
+  for (const value of ['-0.01', '100.01', '']) {
+    await abv.fill(value)
+    expect(await form.evaluate((node) => node.checkValidity())).toBe(false)
+    await create.click()
+    expect(writes).toBe(0)
+  }
+  for (const value of ['0', '100']) {
+    await abv.fill(value)
+    expect(await abv.evaluate((node) => node.validity.valid)).toBe(true)
+  }
+  await abv.fill('7.125')
+  for (const value of ['0', '6000.5']) {
+    await price.fill(value)
+    expect(await form.evaluate((node) => node.checkValidity())).toBe(false)
+    await create.click()
+    expect(writes).toBe(0)
+  }
+  await price.fill('6000')
+  await create.click()
+  await expect(page.getByRole('alert')).toContainText('입력을 다시 확인해 주세요.')
+  await expect(abv).toHaveValue('7.125')
+  await expect(form.getByLabel('상품명', { exact: true })).toHaveValue('소수 도수 생성시연')
+  await create.click()
+  await expect(page.locator('.table-row').filter({ hasText: '소수 도수 생성시연' })).toBeVisible()
+  expect(writes).toBe(2)
+  expect(api.catalog.find((product) => product.name === '소수 도수 생성시연').abv).toBe(7.125)
+})
+
+test('390px 관리자 좌표 생성은 범위와 필수를 유지하며 Enter로 소수 원값 전송', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin?tab=markets&page=1')
+  const form = page.locator('.admin-form')
+  await form.getByLabel('매장명', { exact: true }).fill('소수 좌표 생성시연')
+  const latitude = form.getByLabel('위도', { exact: true })
+  const longitude = form.getByLabel('경도', { exact: true })
+  const create = form.getByRole('button', { name: '매장 등록', exact: true })
+  for (const [input, values] of [[latitude, ['-90.0000001', '90.0000001', '']], [longitude, ['-180.0000001', '180.0000001', '']]]) {
+    for (const value of values) {
+      await input.fill(value)
+      expect(await form.evaluate((node) => node.checkValidity())).toBe(false)
+      await create.click()
+      expect(api.calls.filter((call) => call.method === 'POST' && call.path === '/admin/markets')).toHaveLength(0)
+    }
+    await input.fill('0')
+  }
+  for (const value of ['-90', '90']) { await latitude.fill(value); expect(await latitude.evaluate((node) => node.validity.valid)).toBe(true) }
+  for (const value of ['-180', '180']) { await longitude.fill(value); expect(await longitude.evaluate((node) => node.validity.valid)).toBe(true) }
+  await latitude.fill('-37.123456789')
+  await longitude.fill('127.765432123')
+  await create.focus()
+  await expect(create).toBeFocused()
+  await create.press('Enter')
+  await expect(page.locator('.table-row').filter({ hasText: '소수 좌표 생성시연' })).toBeVisible()
+  const writes = api.calls.filter((call) => call.method === 'POST' && call.path === '/admin/markets')
+  expect(writes).toHaveLength(1)
+  expect(writes[0].body).toMatchObject({ latitude: -37.123456789, longitude: 127.765432123 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
