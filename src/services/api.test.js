@@ -67,6 +67,18 @@ describe('api client', () => {
     expect(fetch).toHaveBeenLastCalledWith('/api/admin/products/901/features', expect.objectContaining({ credentials: 'include', method: 'PUT', body: JSON.stringify(payload) }))
   })
 
+  it('기본 상품은 개인 선택자 없이 유한 크기와 Product7·출처 응답을 유지한다', async () => {
+    const product = { id: 901, name: '시연 주류', type: '탁주', price: 6000, abv: 6, img: null, orderCount: 0 }
+    for (const source of ['BASELINE', 'FALLBACK']) {
+      mockResponse({ data: { items: [product], source }, message: 'ok', error: null })
+      await expect(api.defaultProducts()).resolves.toEqual({ items: [product], source })
+      expect(fetch).toHaveBeenLastCalledWith('/api/recommendations/default?size=4', expect.objectContaining({ credentials: 'include' }))
+      expect(fetch.mock.calls.at(-1)[1].body).toBeUndefined()
+    }
+    await api.defaultProducts(12)
+    expect(fetch).toHaveBeenLastCalledWith('/api/recommendations/default?size=12', expect.objectContaining({ credentials: 'include' }))
+  })
+
   it('찜은 계정 선택자와 본문 없이 본인 경로·쿠키·유한 페이지 계약을 사용한다', async () => {
     mockResponse({ data: { items: [], page: 2, size: 12, total: 0, totalPages: 0, hasNext: false }, message: 'ok', error: null })
     await api.ownFavorites({ page: 2, size: 12 })

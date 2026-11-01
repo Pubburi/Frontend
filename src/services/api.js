@@ -106,6 +106,8 @@ export const api = {
 
   products: (params = {}) => request(`/products?${pageQuery(params, { page: 1, size: 12 })}`),
   popularProducts: () => request('/products/popular'),
+  /** @param {number} size @returns {Promise<import('../types').DefaultProducts>} */
+  defaultProducts: (size = 4) => request(`/recommendations/default?${new URLSearchParams({ size: String(size) })}`),
   product: (id) => request(`/products/${id}`),
   /** @param {number} id @returns {Promise<import('../types').ProductFeatures>} */
   productFeatures: (id) => request(`/products/${id}/features`),

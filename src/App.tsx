@@ -19,6 +19,7 @@ import { HomePage, ProductsPage, ProductDetailPage } from './pages/CatalogPages'
 import { AccountPage, CartPage, ProfilePage } from './pages/AccountPages'
 import { PreferencesPage } from './pages/PreferencesPage'
 import { FavoritesPage } from './pages/FavoritesPage'
+import { DiscoverPage } from './pages/DiscoverPage'
 
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 function Guard({
@@ -166,6 +167,7 @@ export function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
+            <Route path="/discover" element={<DiscoverPage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route
               path="/account"

@@ -19,6 +19,10 @@ export interface FavoriteState {
   productId: number
   favorited: boolean
 }
+export interface DefaultProducts {
+  items: Product[]
+  source: 'BASELINE' | 'FALLBACK'
+}
 export interface ProductFeatureValues {
   volumeMl: number | null
   description: string | null
