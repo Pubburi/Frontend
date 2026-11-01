@@ -1377,8 +1377,12 @@ test('찜 해제 실패는 항목을 보존하고 재연결 재전송 없이 명
     else await route.fallback()
   })
   await page.goto('/favorites')
+  // 초기 읽기가 끝난 항목의 쓰기 실패를 검증하므로 로드 전에 offline을 주입하지 않는다.
+  const remove = page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })
+  await expect(remove).toBeVisible()
+  await expect(remove).toBeEnabled()
   await page.evaluate(() => window.dispatchEvent(new Event('offline')))
-  await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).click()
+  await remove.click()
   await expect(page.getByRole('alert')).toBeVisible()
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
   await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toBeEnabled()
