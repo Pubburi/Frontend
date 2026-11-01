@@ -1227,6 +1227,8 @@ test('본인 찜 목록은 최근 담은 순서·현재 상품 정보와 링크�
   await expect(page.locator('.favorite-item').first()).toContainText('13,000원')
   await page.locator('.favorite-item').first().getByRole('heading').getByRole('link').click()
   await expect(page).toHaveURL('/products/902')
+  await expect(page.getByRole('heading', { name: '시험 사케', level: 1, exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '시험 사케 찜 해제', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.goBack()
   await page.getByRole('button', { name: '시험 사케 찜 해제', exact: true }).click()
   await expect(page.locator('.favorite-item')).toHaveCount(1)
@@ -1234,7 +1236,10 @@ test('본인 찜 목록은 최근 담은 순서·현재 상품 정보와 링크�
   await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
   await expect(page.getByRole('link', { name: '주류 둘러보기', exact: true })).toHaveAttribute('href', '/products')
   expect(api.favorites.member).toEqual([])
-  expect(api.calls.filter((call) => call.path.startsWith('/users/me/favorites') && call.method === 'GET').every((call) => call.query.size === '12')).toBe(true)
+  const listGets = api.calls.filter((call) => call.path === '/users/me/favorites' && call.method === 'GET')
+  expect(listGets.length).toBeGreaterThan(0)
+  expect(listGets.every((call) => call.query.size === '12')).toBe(true)
+  expect(api.calls).toContainEqual(expect.objectContaining({ method: 'GET', path: '/users/me/favorites/902', query: {} }))
 })
 
 test('찜 페이지는 필요한 열두 상품만 읽고 마지막 항목 해제·상품 삭제 뒤 유효한 페이지로 이동', async ({ page, api }) => {
