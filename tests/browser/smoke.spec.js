@@ -1549,3 +1549,152 @@ test('삭제된 상품의 찜 PUT 거절은 저장 성공으로 표시하지 않
   expect(api.favorites.admin).toBeUndefined()
   expect(api.favorites.member).toEqual([901])
 })
+
+for (const width of [1280, 390]) {
+  test(`찜 해제 이후 ${width}px 목록에서 다음 상품 해제로 키보드 포커스를 이어감`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    api.favorites.member = [901, 902]
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/favorites')
+    await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).focus()
+    await page.keyboard.press('Enter')
+    await expect(page.locator('.favorite-item h2')).toHaveText(['시험 사케'])
+    await expect(page.getByRole('button', { name: '시험 사케 찜 해제', exact: true })).toBeFocused()
+  })
+}
+
+test('찜 해제 이후 마지막 상품이 없어지면 둘러보기로 키보드 포커스를 이어감', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901]
+  await page.goto('/favorites')
+  await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: '아직 찜한 상품이 없습니다' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '주류 둘러보기', exact: true })).toBeFocused()
+})
+
+test('찜 해제 이후 마지막 페이지 보정에서도 남은 상품으로 키보드 포커스를 이어감', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.catalog = Array.from({ length: 13 }, (_, index) => ({ ...products[0], id: 1000 + index, name: `포커스 시연 ${index}` }))
+  api.favorites.member = api.catalog.map((item) => item.id).reverse()
+  await page.goto('/favorites?page=2')
+  await page.getByRole('button', { name: '포커스 시연 0 찜 해제', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL('/favorites?page=1')
+  await expect(page.locator('.favorite-item')).toHaveCount(12)
+  await expect(page.getByRole('button', { name: '포커스 시연 12 찜 해제', exact: true })).toBeFocused()
+})
+
+test('찜 해제 이후 권위 조회가 실패하면 재조회 버튼으로 키보드 포커스를 이어감', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901]
+  let reads = 0
+  await page.route('**/api/users/me/favorites?*', (route) => ++reads === 1 ? route.fallback() : route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') }))
+  await page.goto('/favorites')
+  await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: '찜 목록을 불러오지 못했습니다' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '찜 다시 불러오기', exact: true })).toBeFocused()
+})
+
+test('찜 해제 이후 쓰기가 거절되면 보존된 같은 상품으로 키보드 포커스를 이어감', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901]
+  await page.route('**/api/users/me/favorites/901', (route) => route.request().method() === 'DELETE' ? route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') }) : route.fallback())
+  await page.goto('/favorites')
+  await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('alert')).toBeVisible()
+  const retry = page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })
+  await expect(retry).toBeEnabled()
+  await expect(retry).toBeFocused()
+})
+
+test('찜 목록 마지막 행 해제 후에는 이전 행으로 포커스를 이어감', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901, 902]
+  await page.goto('/favorites')
+  await page.getByRole('button', { name: '시험 사케 찜 해제', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.favorite-item h2')).toHaveText(['시험 탁주'])
+  await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toBeFocused()
+})
+
+test('찜 응답을 기다리다 Tab으로 이동한 사용자의 포커스를 돌려 빼앗지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901, 902]
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/users/me/favorites/901', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    await gate
+    api.favorites.member = [902]
+    await route.fulfill({ json: success({ productId: 901, favorited: false }) })
+  })
+  try {
+    await page.goto('/favorites')
+    await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('heading', { name: '내 찜 목록', exact: true })).toBeFocused()
+    await page.keyboard.press('Tab')
+    const profile = page.getByRole('link', { name: '마이페이지', exact: true })
+    await expect(profile).toBeFocused()
+    release()
+    await expect(page.locator('.favorite-item h2')).toHaveText(['시험 사케'])
+    await expect(profile).toBeFocused()
+    await expect(page.getByRole('button', { name: '시험 사케 찜 해제', exact: true })).not.toBeFocused()
+  } finally { release() }
+})
+
+test('찜 해제 중 화면을 떠나 새로 진입하면 이전 화면의 포커스 의도를 가져오지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.favorites.member = [901, 902]
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/users/me/favorites/901', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    await gate
+    api.favorites.member = [902]
+    await route.fulfill({ json: success({ productId: 901, favorited: false }) })
+  })
+  try {
+    await page.goto('/favorites')
+    await page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true }).focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('heading', { name: '내 찜 목록', exact: true })).toBeFocused()
+    await page.getByRole('link', { name: '마이페이지', exact: true }).click()
+    await page.getByRole('link', { name: '내 찜 목록', exact: true }).click()
+    await expect(page.getByRole('button', { name: '시험 탁주 찜 해제', exact: true })).toBeDisabled()
+    release()
+    await expect(page.locator('.favorite-item h2')).toHaveText(['시험 사케'])
+    await expect(page.getByRole('button', { name: '시험 사케 찜 해제', exact: true })).not.toBeFocused()
+  } finally { release() }
+})
+
+test('목록 아래에서 찜 해제를 시작해도 임시 포커스가 화면을 위로 끌어올리지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.catalog = Array.from({ length: 12 }, (_, index) => ({ ...products[0], id: 1000 + index, name: `스크롤 시연 ${index}` }))
+  api.favorites.member = api.catalog.map((item) => item.id)
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/users/me/favorites/1011', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    await gate
+    api.favorites.member = api.favorites.member.filter((id) => id !== 1011)
+    await route.fulfill({ json: success({ productId: 1011, favorited: false }) })
+  })
+  try {
+    await page.setViewportSize({ width: 1280, height: 600 })
+    await page.goto('/favorites')
+    const remove = page.getByRole('button', { name: '스크롤 시연 11 찜 해제', exact: true })
+    await remove.scrollIntoViewIfNeeded()
+    await remove.focus()
+    const before = await page.evaluate(() => scrollY)
+    expect(before).toBeGreaterThan(0)
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('heading', { name: '내 찜 목록', exact: true })).toBeFocused()
+    expect(await page.evaluate(() => scrollY)).toBe(before)
+    release()
+    await expect(page.getByRole('button', { name: '스크롤 시연 10 찜 해제', exact: true })).toBeFocused()
+  } finally { release() }
+})

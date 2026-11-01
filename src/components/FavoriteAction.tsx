@@ -120,11 +120,13 @@ export function FavoriteAction({
   productId,
   name,
   favorited,
+  onKeyboardStart,
 }: {
   user: User
   productId: number
   name: string
   favorited: boolean
+  onKeyboardStart?: (trigger: HTMLButtonElement) => void
 }) {
   const client = useQueryClient()
   const ui = useUi()
@@ -138,13 +140,14 @@ export function FavoriteAction({
   const pending = useFavoriteWrites(
     (state) => state.owners.get(user.id)?.has(productId) ?? false,
   )
-  async function change() {
+  async function change(keyboardTrigger: HTMLButtonElement | null) {
     if (client.getQueryData(['session']) !== user) return
     const owner = useFavoriteWrites.getState().begin(user.id, productId)
     if (!owner) return
     ui.clear()
     const sameSession = () => client.getQueryData(['session']) === user
     try {
+      if (keyboardTrigger) onKeyboardStart?.(keyboardTrigger)
       await (favorited
         ? api.removeFavorite(productId)
         : api.addFavorite(productId))
@@ -173,8 +176,9 @@ export function FavoriteAction({
       aria-pressed={favorited}
       aria-busy={pending}
       disabled={pending}
-      onClick={() => {
-        void change()
+      data-favorite-product-id={productId}
+      onClick={(event) => {
+        void change(event.detail === 0 ? event.currentTarget : null)
       }}
     >
       {pending ? '처리 중…' : favorited ? '♥ 찜 해제' : '♡ 찜하기'}
