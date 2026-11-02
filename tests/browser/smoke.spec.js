@@ -3823,3 +3823,66 @@ test('관리자 특성 저장 뒤 공개 상세 재진입은 이전 캐시 대�
   await page.getByRole('heading', { name: '시험 탁주', exact: true }).getByRole('link').click()
   await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('375 mL')
 })
+
+async function expectReadableDetailName(page, name) {
+  const heading = page.getByRole('heading', { name, level: 1, exact: true })
+  await expect(heading).toHaveText(name)
+  await expect(heading).toBeVisible()
+  const geometry = await heading.evaluate(element => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    const box = element.getBoundingClientRect()
+    return {
+      viewport: innerWidth,
+      document: document.documentElement.scrollWidth,
+      box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
+      text: [...range.getClientRects()].filter(rect => rect.width > 0).map(rect => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })),
+    }
+  })
+  await test.info().attach('product-detail-layout', { body: JSON.stringify(geometry), contentType: 'application/json' })
+  expect(geometry.document).toBeLessThanOrEqual(geometry.viewport)
+  expect(geometry.text.length).toBeGreaterThan(0)
+  for (const rect of geometry.text) {
+    expect(rect.left).toBeGreaterThanOrEqual(0)
+    expect(rect.right).toBeLessThanOrEqual(geometry.viewport)
+    // Text glyph extents can slightly exceed their CSS line box.
+    expect(rect.top).toBeGreaterThanOrEqual(geometry.box.top - 4)
+    expect(rect.bottom).toBeLessThanOrEqual(geometry.box.bottom + 4)
+  }
+}
+
+test('390px 긴 ASCII 상품명은 상세 그리드를 밀지 않고 전체 제목과 담기·특성을 보존', async ({ page, api }) => {
+  const product = { ...products[0], name: 'ci_jpa_h06_public_features' }
+  api.catalog[0] = product
+  api.features[product.id] = { ...unknownFeatures(product.id), tasteTags: [], aromaTags: [], sourceName: '직접 등록한 시연 출처' }
+  await page.setViewportSize({ width: 390, height: 900 })
+  await page.goto('/products/' + product.id)
+  await expectReadableDetailName(page, product.name)
+  await expect(page.locator('.detail-stats').getByText('6,000원', { exact: true })).toBeVisible()
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  await expect(facts.getByText('등록된 태그 없음', { exact: true })).toHaveCount(2)
+  await expect(facts.getByText('직접 등록한 시연 출처', { exact: true })).toBeVisible()
+  const increase = page.locator('.detail-panel').getByRole('button', { name: '수량 늘리기', exact: true })
+  await increase.focus()
+  await increase.press('Enter')
+  await page.getByRole('button', { name: '2개 장바구니에 담기', exact: true }).click()
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart')))
+  expect(saved).toHaveLength(1)
+  expect(saved[0].product).toEqual(product)
+  expect(saved[0].quantity).toBe(2)
+  expect(api.calls.filter(call => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(call.method))).toHaveLength(0)
+})
+
+for (const width of [320, 720, 721, 980, 1280]) {
+  test(`${width}px 허용 길이의 긴 상품명은 생략·클리핑 없이 상세 제목과 이미지 영역에 수용`, async ({ page, api }) => {
+    const name = 'PubburiLongProductName'.repeat(5).slice(0, 100)
+    api.catalog[0] = { ...products[0], name }
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/products/901')
+    await expectReadableDetailName(page, name)
+    const image = page.locator('.detail-media img')
+    await expect(image).toBeVisible()
+    await expect(image).toHaveAttribute('alt', name)
+    await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+  })
+}
