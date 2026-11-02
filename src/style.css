@@ -946,6 +946,16 @@ textarea.form-control {
 .purchase-box > strong { font-size: 24px; }
 .detail-cart-button { min-height: 52px; font-size: 16px; }
 
+.product-features { min-width: 0; border-top: 1px solid var(--line); padding-top: 20px; }
+.product-features h2 { margin: 0 0 14px; font-size: 21px; }
+.product-feature-list { display: grid; gap: 12px; margin: 0; }
+.product-feature-row { display: grid; grid-template-columns: minmax(64px, .2fr) minmax(0, 1fr); gap: 12px; }
+.product-feature-row dt { color: var(--muted); }
+.product-feature-row dd { min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.product-feature-row dd > a, .product-feature-row dd > span + span { display: block; margin-top: 6px; }
+.product-feature-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.product-feature-tags li { max-width: 100%; padding: 3px 8px; background: var(--cream); border-radius: 6px; overflow-wrap: anywhere; }
+
 .quantity-stepper {
   display: inline-grid;
   grid-template-columns: 44px 56px 44px;
