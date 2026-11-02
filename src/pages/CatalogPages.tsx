@@ -202,10 +202,10 @@ export function ProductsPage() {
     queryKey: ['catalog', 'products', filters],
     queryFn: () => api.products(filters),
   })
-  function navigate(page = 1) {
+  function navigate(page = 1, criteria = form) {
     setSearch(
       new URLSearchParams(
-        Object.entries(buildProductQuery(form, page)).map(([key, value]) => [
+        Object.entries(buildProductQuery(criteria, page)).map(([key, value]) => [
           key,
           String(value),
         ]),
@@ -328,7 +328,7 @@ export function ProductsPage() {
           </button>
         </Empty>
       )}
-      <Pagination page={products.data} onChange={navigate} />
+      <Pagination page={products.data} onChange={(page) => navigate(page, filters)} />
     </section>
   )
 }
