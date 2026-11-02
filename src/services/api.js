@@ -38,7 +38,9 @@ export function pageQuery(params = {}, defaults = {}) {
   const query = new URLSearchParams()
   const merged = { ...defaults, ...params }
   Object.entries(merged).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
+    if (Array.isArray(value)) {
+      value.forEach((item) => query.append(key, String(item)))
+    } else if (value !== undefined && value !== null && value !== '') {
       query.set(key, value)
     }
   })
