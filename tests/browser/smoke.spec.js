@@ -346,6 +346,98 @@ test('진행 중 검색을 해제하면 최신 URL의 상품 요청과 결과를
   }
 })
 
+for (const draftField of ['q', 'type', 'sort']) {
+  test(`상품 페이지 이동은 미제출 ${draftField} 대신 현재 URL의 검색 조건을 유지`, async ({ page, api }) => {
+    api.catalog = Array.from({ length: 14 }, (_, index) => ({ ...products[0], id: 1100 + index, name: `시연 탁주 ${index + 1}` }))
+    await page.goto('/products?type=탁주&q=시연&sort=name&page=1')
+    await expect(page.locator('.product-card')).toHaveCount(12)
+    if (draftField === 'q') await page.getByLabel('상품 검색', { exact: true }).fill('아직 제출하지 않은 검색')
+    if (draftField === 'type') await page.getByRole('combobox', { name: /^주종/ }).selectOption('사케')
+    if (draftField === 'sort') await page.getByRole('combobox', { name: /^정렬/ }).selectOption('priceDesc')
+    const beforeNext = api.calls.length
+    await page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true }).click()
+    await expect(page).toHaveURL((url) => url.searchParams.get('q') === '시연' && url.searchParams.get('type') === '탁주' && url.searchParams.get('sort') === 'name' && url.searchParams.get('page') === '2')
+    await expect(page.locator('.product-card')).toHaveCount(2)
+    await expect(page.getByRole('heading', { name: '시연 탁주 13', exact: true })).toBeVisible()
+    expect(api.calls.slice(beforeNext).filter((call) => call.path === '/products')).toEqual([
+      expect.objectContaining({ method: 'GET', query: { type: '탁주', q: '시연', sort: 'name', page: '2', size: '12' } }),
+    ])
+    await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('시연')
+    await expect(page.getByRole('combobox', { name: /^주종/ })).toHaveValue('탁주')
+    await expect(page.getByRole('combobox', { name: /^정렬/ })).toHaveValue('name')
+  })
+}
+
+test('다음 페이지의 검색 초안은 Enter 제출 때 첫 페이지에 적용하고 뒤로 가기는 이전 조건을 복원', async ({ page, api }) => {
+  api.catalog = Array.from({ length: 14 }, (_, index) => ({ ...products[0], id: 1100 + index, name: `시연 탁주 ${index + 1}` }))
+  api.catalog.push({ ...products[1], name: '새 조건 사케' })
+  await page.goto('/products?type=탁주&q=시연&sort=name&page=2')
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  await page.getByLabel('상품 검색', { exact: true }).fill('새 조건')
+  await page.getByRole('combobox', { name: /^주종/ }).selectOption('사케')
+  await page.getByRole('combobox', { name: /^정렬/ }).selectOption('priceDesc')
+  await page.getByLabel('상품 검색', { exact: true }).press('Enter')
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === '새 조건' && url.searchParams.get('type') === '사케' && url.searchParams.get('sort') === 'priceDesc' && url.searchParams.get('page') === '1')
+  await expect(page.getByRole('heading', { name: '새 조건 사케', exact: true })).toBeVisible()
+  await page.goBack()
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === '시연' && url.searchParams.get('type') === '탁주' && url.searchParams.get('sort') === 'name' && url.searchParams.get('page') === '2')
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('시연')
+  await page.getByRole('button', { name: '전체 해제', exact: true }).click()
+  await expect(page).toHaveURL('/products?sort=popular&page=1')
+  await expect(page.locator('.product-card')).toHaveCount(12)
+})
+
+test('이전 페이지의 늦은 응답은 명시적으로 제출한 새 검색을 덮지 않음', async ({ page, api }) => {
+  api.catalog = Array.from({ length: 14 }, (_, index) => ({ ...products[0], id: 1100 + index, name: `시연 탁주 ${index + 1}` }))
+  api.catalog.push({ ...products[1], name: '새 조건 사케' })
+  let releaseOld
+  const oldGate = new Promise((resolve) => { releaseOld = resolve })
+  let oldRequested = false
+  await page.route('**/api/products?**', async (route) => {
+    const search = new URL(route.request().url()).searchParams
+    if (search.get('page') !== '2' || search.get('q') !== '시연') return route.fallback()
+    oldRequested = true
+    await oldGate
+    await route.fulfill({ json: success(pageOf(api.catalog.filter((item) => item.type === '탁주'), 12, 2)) })
+  })
+  try {
+    await page.goto('/products?type=탁주&q=시연&sort=name&page=1')
+    await expect(page.locator('.product-card')).toHaveCount(12)
+    await page.getByLabel('상품 검색', { exact: true }).fill('아직 제출하지 않은 검색')
+    await page.getByRole('button', { name: '다음', exact: true }).click()
+    await expect.poll(() => oldRequested).toBe(true)
+    await page.getByLabel('상품 검색', { exact: true }).fill('새 조건')
+    await page.getByRole('combobox', { name: /^주종/ }).selectOption('사케')
+    await page.getByRole('button', { name: '검색하기', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '새 조건 사케', exact: true })).toBeVisible()
+    const oldResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get('page') === '2')
+    releaseOld()
+    await (await oldResponse).finished()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+    await expect(page.getByRole('heading', { name: '새 조건 사케', exact: true })).toBeVisible()
+    await expect(page.locator('.product-card')).toHaveCount(1)
+    await expect(page).toHaveURL((url) => url.searchParams.get('q') === '새 조건' && url.searchParams.get('page') === '1')
+  } finally {
+    releaseOld()
+  }
+})
+
+test('390px 키보드 페이지 이동도 미제출 검색 대신 적용 조건을 유지', async ({ page, api }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  api.catalog = Array.from({ length: 14 }, (_, index) => ({ ...products[0], id: 1100 + index, name: `시연 탁주 ${index + 1}` }))
+  await page.goto('/products?type=탁주&q=시연&sort=name&page=1')
+  await expect(page.locator('.product-card')).toHaveCount(12)
+  await page.getByLabel('상품 검색', { exact: true }).fill('미제출')
+  const next = page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true })
+  await next.focus()
+  await next.press('Enter')
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === '시연' && url.searchParams.get('page') === '2')
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await expect(page.getByRole('button', { name: '이전', exact: true })).toBeEnabled()
+})
+
 test('기본 검색 URL에서 미제출 입력을 해제해도 입력과 칩을 초기화', async ({ page }) => {
   await page.goto('/products?sort=popular&page=1')
   await expect(page.locator('.product-card')).toHaveCount(2)
