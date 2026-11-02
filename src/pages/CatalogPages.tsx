@@ -13,6 +13,7 @@ import { useSession } from '../queries'
 import { useCart } from '../state/cart'
 import { useUi } from '../state/ui'
 import { ProductFavorite } from '../components/FavoriteAction'
+import { ProductFeatureDetails } from '../components/ProductFeatureDetails'
 import {
   Confirm,
   Empty,
@@ -477,6 +478,7 @@ function ProductDetail({ id }: { id: string }) {
             {quantity}개 장바구니에 담기
           </button>
           <ProductFavorite product={item} />
+          <ProductFeatureDetails productId={item.id} />
           <div className="comment-box">
             <div className="comment-title">
               <div>

@@ -3644,3 +3644,182 @@ test('390px 관리자 재로그인 Enter는 원래 tab과 추가 query를 보존
   await expect(page.getByText('시험회원', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
+
+const publicFacts = (productId, overrides = {}) => ({
+  ...unknownFeatures(productId),
+  volumeMl: 750,
+  description: '등록 설명 <b>문자 그대로</b>\n둘째 줄',
+  tasteTags: ['grain\nsmoke', '고소함'],
+  aromaTags: ['citrus'],
+  sourceName: '<script>window.featureSourceExecuted=true</script>',
+  sourceUrl: 'https://example.test/facts',
+  sourceNote: '<img src=x onerror="window.featureSourceExecuted=true"> 공개 원문',
+  ...overrides,
+})
+
+test('공개 상품 특성은 원값·mL·단일 태그·출처 텍스트를 보존하고 장바구니 계약은 유지', async ({ page, api }) => {
+  api.features[901] = publicFacts(901)
+  await page.goto('/products/901')
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('750 mL')
+  await expect(facts.locator('[data-feature="description"] dd')).toHaveText(api.features[901].description)
+  const tags = facts.getByRole('list', { name: '맛 태그', exact: true }).getByRole('listitem')
+  await expect(tags).toHaveCount(2)
+  expect(await tags.first().textContent()).toBe('grain\nsmoke')
+  await expect(facts.locator('[data-feature="source"]')).toContainText(api.features[901].sourceName)
+  await expect(facts.locator('[data-feature="note"] dd')).toHaveText(api.features[901].sourceNote)
+  await expect(facts.locator('script, img, b')).toHaveCount(0)
+  expect(await page.evaluate(() => window.featureSourceExecuted)).toBeUndefined()
+  const source = facts.getByRole('link', { name: '출처 보기 (새 창)', exact: true })
+  await expect(source).toHaveAttribute('href', 'https://example.test/facts')
+  await expect(source).toHaveAttribute('target', '_blank')
+  await expect(source).toHaveAttribute('rel', 'noopener noreferrer')
+  await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart')))
+  expect(saved[0].product).toEqual(products[0])
+  expect(api.calls.filter(call => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(call.method))).toHaveLength(0)
+})
+
+test('공개 상품 특성 null은 미확인이고 확인하지 않은 맛이나 향을 추론하지 않음', async ({ page }) => {
+  await page.goto('/products/901')
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  for (const field of ['volume', 'description', 'taste', 'aroma', 'source', 'note'])
+    await expect(facts.locator(`[data-feature="${field}"] dd`)).toHaveText('미확인')
+  await expect(facts.getByRole('list')).toHaveCount(0)
+  await expect(facts.getByRole('link')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+})
+
+test('공개 검수 빈 태그는 미확인이나 맛 없음으로 바꾸지 않고 출처와 구분', async ({ page, api }) => {
+  api.features[901] = { ...unknownFeatures(901), tasteTags: [], aromaTags: [], sourceName: '직접 검수 시연' }
+  await page.goto('/products/901')
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  for (const field of ['taste', 'aroma']) await expect(facts.locator(`[data-feature="${field}"] dd`)).toHaveText('등록된 태그 없음')
+  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('미확인')
+  await expect(facts.locator('[data-feature="source"] dd')).toHaveText('직접 검수 시연')
+  await expect(facts.getByRole('list')).toHaveCount(0)
+  await expect(facts.getByText('맛 없음', { exact: true })).toHaveCount(0)
+})
+
+test('공개 특성 실패와 재시도는 가격·담기·후기 조회를 막지 않음', async ({ page, api }) => {
+  api.features[901] = publicFacts(901, { volumeMl: 375 })
+  let reads = 0
+  await page.route('**/api/products/901/features', async route => {
+    reads++
+    if (reads === 1) return route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+    await route.fallback()
+  })
+  await page.goto('/products/901')
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  await expect(facts.getByRole('button', { name: '특성 다시 불러오기', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+  await expect(page.getByText('아직 등록된 후기가 없습니다', { exact: true })).toBeVisible()
+  await facts.getByRole('button', { name: '특성 다시 불러오기', exact: true }).click()
+  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('375 mL')
+  expect(reads).toBe(2)
+  expect(api.calls.filter(call => call.path === '/products/901' && call.method === 'GET')).toHaveLength(1)
+})
+
+test('공개 특성 로딩 중에도 원래 상품을 담을 수 있고 완료는 수량을 바꾸지 않음', async ({ page, api }) => {
+  api.features[901] = publicFacts(901)
+  let release, started = false
+  const gate = new Promise(resolve => { release = resolve })
+  await page.route('**/api/products/901/features', async route => { started = true; await gate; await route.fallback() })
+  try {
+    await page.goto('/products/901')
+    await expect.poll(() => started).toBe(true)
+    const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+    await expect(facts.getByText('상품 특성을 불러오는 중입니다.', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
+    release()
+    await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('750 mL')
+    await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('1')
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart'))[0].quantity)).toBe(1)
+  } finally { release() }
+})
+
+test('이전 상품의 늦은 특성 응답은 현재 다른 상품의 특성과 오류를 덮지 않음', async ({ page, api }) => {
+  api.features[901] = publicFacts(901, { description: '이전 상품 설명' })
+  api.features[902] = publicFacts(902, { volumeMl: 500, description: '현재 상품 설명' })
+  let release, started = false, delivered = false
+  const gate = new Promise(resolve => { release = resolve })
+  await page.route('**/api/products/901/features', async route => { started = true; await gate; await route.fallback(); delivered = true })
+  try {
+    await page.goto('/products/901')
+    await expect.poll(() => started).toBe(true)
+    await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+    await page.getByRole('heading', { name: '시험 사케', exact: true }).getByRole('link').click()
+    const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+    await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('500 mL')
+    release()
+    await expect.poll(() => delivered).toBe(true)
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await expect(facts.locator('[data-feature="description"] dd')).toHaveText('현재 상품 설명')
+    await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('500 mL')
+    await expect(facts.getByText('이전 상품 설명', { exact: true })).toHaveCount(0)
+  } finally { release() }
+})
+
+test('특성 응답 productId가 현재 상품과 다르면 다른SKU 정보를 표시하지 않고 재시도', async ({ page }) => {
+  let reads = 0
+  await page.route('**/api/products/901/features', async route => {
+    reads++
+    if (reads === 1) return route.fulfill({ json: success(publicFacts(902, { description: '다른SKU 원문' })) })
+    await route.fallback()
+  })
+  await page.goto('/products/901')
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  await expect(facts.getByRole('button', { name: '특성 다시 불러오기', exact: true })).toBeVisible()
+  await expect(facts.getByText('다른SKU 원문', { exact: true })).toHaveCount(0)
+  await facts.getByRole('button', { name: '특성 다시 불러오기', exact: true }).click()
+  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('미확인')
+})
+
+for (const sourceUrl of ['javascript:window.featureSourceExecuted=true', 'https://private-user:private-pass@example.test', '//example.test/source']) {
+  test(`공개 특성의 unsafe 출처 URL ${sourceUrl.split(':')[0]}는 탐색이나 원문 노출을 만들지 않음`, async ({ page, api }) => {
+    api.features[901] = publicFacts(901, { sourceUrl, sourceName: '검증 출처' })
+    await page.goto('/products/901')
+    const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+    await expect(facts.locator('[data-feature="source"]')).toContainText('출처 링크 미제공')
+    await expect(facts.getByRole('link')).toHaveCount(0)
+    expect(await facts.textContent()).not.toContain(sourceUrl)
+    expect(await facts.textContent()).not.toContain('private-pass')
+    expect(await page.evaluate(() => window.featureSourceExecuted)).toBeUndefined()
+  })
+}
+
+test('390px 공개 특성의 긴 원문·태그·출처와 키보드 링크는 가로 넘침 없이 표시', async ({ page, api }) => {
+  api.features[901] = publicFacts(901, { description: '긴설명'.repeat(300), sourceName: '출처이름'.repeat(40), tasteTags: ['하나의긴태그'.repeat(5)], sourceUrl: 'https://example.test/' + 'source'.repeat(100) })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/products/901')
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('750 mL')
+  const source = facts.getByRole('link', { name: '출처 보기 (새 창)', exact: true })
+  await source.focus()
+  await expect(source).toBeFocused()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('없는 상품은 특성 소비 요청이나 패널을 만들지 않음', async ({ page, api }) => {
+  await page.goto('/products/999')
+  await expect(page.getByRole('heading', { name: '상품을 찾을 수 없습니다', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '상품 특성', exact: true })).toHaveCount(0)
+  expect(api.calls.filter(call => call.path === '/products/999/features')).toHaveLength(0)
+})
+
+test('관리자 특성 저장 뒤 공개 상세 재진입은 이전 캐시 대신 새 공개GET 결과를 표시', async ({ page, api }) => {
+  api.user = api.users.find(user => user.id === 'admin')
+  api.features[901] = publicFacts(901, { sourceName: '시연 출처', sourceNote: null })
+  await page.goto('/products/901')
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('750 mL')
+  const nav = page.getByRole('navigation', { name: '주요 메뉴' })
+  await nav.getByRole('link', { name: '관리', exact: true }).click()
+  await page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '특성 편집', exact: true }).click()
+  await page.getByLabel('용량 (mL)', { exact: true }).fill('375')
+  await page.getByRole('button', { name: '특성 저장', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: '시험 탁주 특성이 저장되었습니다.' })).toBeVisible()
+  await nav.getByRole('link', { name: '전체 주류', exact: true }).click()
+  await page.getByRole('heading', { name: '시험 탁주', exact: true }).getByRole('link').click()
+  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('375 mL')
+})
