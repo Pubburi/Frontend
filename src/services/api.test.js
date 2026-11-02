@@ -48,6 +48,17 @@ describe('api client', () => {
     expect(pageQuery({ page: 2, size: 12, q: '', type: '탁주' })).toBe('page=2&size=12&type=%ED%83%81%EC%A3%BC')
   })
 
+  it('serializes repeated product tags literally with credentials and keeps scalar queries unchanged', async () => {
+    mockResponse({ data: { items: [] }, message: 'ok', error: null })
+    await api.products({ tasteTag: ['dry,sweet', 'line\nbreak'], aromaTag: ['floral'], minPriceKrw: '0' })
+    const [url, options] = fetch.mock.calls.at(-1)
+    const query = new URL(url, 'http://local').searchParams
+    expect(query.getAll('tasteTag')).toEqual(['dry,sweet', 'line\nbreak'])
+    expect(query.getAll('aromaTag')).toEqual(['floral']); expect(query.get('minPriceKrw')).toBe('0')
+    expect(options.credentials).toBe('include')
+    expect(new URLSearchParams(pageQuery({ tasteTag: [''], aromaTag: [] })).getAll('tasteTag')).toEqual([''])
+  })
+
   it('uses only the session-bound preferences path with cookies and a full body', async () => {
     const value = { surveyStatus: 'SKIPPED', softPreferences: { categories: null, tasteTags: null, aromaTags: null, targetAbvPercent: null }, hardConstraints: { minPriceKrw: null, maxPriceKrw: null, minAbvPercent: null, maxAbvPercent: null } }
     mockResponse({ data: value, message: 'ok', error: null })

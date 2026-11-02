@@ -7,12 +7,14 @@ import {
   useSearchParams,
 } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ApiClientError } from '../services/api'
+import { api, ApiClientError, pageQuery } from '../services/api'
 import { categories, carouselImages } from '../catalog'
 import { useSession } from '../queries'
 import { useCart } from '../state/cart'
 import { useUi } from '../state/ui'
 import { ProductFavorite } from '../components/FavoriteAction'
+import { SearchTagFields } from '../components/SearchTagFields'
+import { productTagFields, buildProductTags, normalizeProductTag, validateProductTags, type ProductTagKey, type ProductTagIssues } from '../productTags'
 import { ProductFeatureDetails } from '../components/ProductFeatureDetails'
 import {
   Confirm,
@@ -194,7 +196,7 @@ export function HomePage() {
 export function ProductsPage() {
   const [search, setSearch] = useSearchParams()
   const filters = parseProductQuery(
-    Object.fromEntries(search),
+    { ...Object.fromEntries(search), tasteTag: search.getAll('tasteTag'), aromaTag: search.getAll('aromaTag') },
     categories.map((category) => category.label),
   )
   const urlRangeOptions = {
@@ -202,47 +204,63 @@ export function ProductsPage() {
     duplicates: productRangeFields.filter(({ key }) => search.getAll(key).length > 1).map(({ key }) => key),
   }
   const urlRangeErrors = validateProductRanges(filters, urlRangeOptions)
-  const invalidUrlRange = Object.keys(urlRangeErrors).length > 0
+  const urlTagIssues = validateProductTags(filters)
+  const invalidUrlFilters = Object.keys(urlRangeErrors).length > 0 || Object.keys(urlTagIssues).length > 0
   const [form, setForm] = useState(filters)
   const [rangeErrors, setRangeErrors] = useState<ProductRangeErrors>(urlRangeErrors)
+  const [tagIssues, setTagIssues] = useState<ProductTagIssues>(urlTagIssues)
+  const tagInputs = useRef<Partial<Record<ProductTagKey, (HTMLTextAreaElement | null)[]>>>({})
   const rangeInputs = useRef<Partial<Record<ProductRangeKey, HTMLInputElement | null>>>({})
   useEffect(() => {
     setForm(filters)
     setRangeErrors(urlRangeErrors)
+    setTagIssues(urlTagIssues)
   }, [search.toString()])
   const products = useQuery<Page<Product>>({
     queryKey: ['catalog', 'products', filters],
     queryFn: () => api.products(filters),
-    enabled: !invalidUrlRange,
+    enabled: !invalidUrlFilters,
+    refetchOnReconnect: (query) => !(query.state.error instanceof ApiClientError && query.state.error.status === 400),
   })
+  const rejectedTags = products.isError && products.error instanceof ApiClientError && products.error.status === 400 &&
+    productTagFields.some(({ key }) => filters[key].length > 0)
+  const searchButton = useRef<HTMLButtonElement>(null)
   function editRange(key: ProductRangeKey, value: string) {
     const next = { ...form, [key]: value }
     setForm(next)
     if (Object.keys(rangeErrors).length) setRangeErrors(validateProductRanges(next))
   }
+  function editTags(key: ProductTagKey, tags: string[]) {
+    const next = { ...form, [key]: tags }
+    setForm(next)
+    if (Object.keys(tagIssues).length) setTagIssues(validateProductTags(next))
+  }
   function submitSearch(event: FormEvent) {
     event.preventDefault()
     const errors = validateProductRanges(form)
     setRangeErrors(errors)
+    const tags = validateProductTags(form)
+    setTagIssues(tags)
     const first = productRangeFields.find(({ key }) => errors[key])
     if (first) {
       rangeInputs.current[first.key]?.focus()
       return
     }
-    navigate()
+    const firstTag = productTagFields.find(({ key }) => tags[key])
+    if (firstTag) {
+      tagInputs.current[firstTag.key]?.[tags[firstTag.key]!.index]?.focus()
+      return
+    }
+    const canonical = { ...form, ...buildProductTags(form) }
+    setForm(canonical)
+    navigate(1, canonical)
   }
   function navigate(page = 1, criteria = form) {
-    setSearch(
-      new URLSearchParams(
-        Object.entries(buildProductQuery(criteria, page)).map(([key, value]) => [
-          key,
-          String(value),
-        ]),
-      ),
-    )
+    setSearch(new URLSearchParams(pageQuery(buildProductQuery(criteria, page))))
   }
   function reset() {
     setRangeErrors({})
+    setTagIssues({})
     setForm(
       parseProductQuery(
         {},
@@ -260,7 +278,7 @@ export function ProductsPage() {
           <p>탁주·청주부터 맥주, 위스키와 사케까지 한 곳에서 비교해 보세요.</p>
         </div>
         <span className="result-count">
-          총 <strong>{invalidUrlRange ? 0 : products.data?.total || 0}</strong>개
+          {invalidUrlFilters || rejectedTags ? '조건 확인 필요' : <>총 <strong>{products.data?.total || 0}</strong>개</>}
         </span>
       </div>
       <form
@@ -334,7 +352,12 @@ export function ProductsPage() {
             ))}
           </div>
         </fieldset>
+        <SearchTagFields values={form} issues={tagIssues} onChange={editTags} registerInput={(key, index, element) => {
+          tagInputs.current[key] ??= []
+          tagInputs.current[key]![index] = element
+        }} />
         <button
+          ref={searchButton}
           className="btn btn-dark filter-submit"
           aria-busy={products.isFetching}
         >
@@ -343,12 +366,19 @@ export function ProductsPage() {
       </form>
       <p className="applied-range-summary" aria-label="현재 적용된 가격·도수 범위">
         <strong>현재 적용 범위</strong>{' '}
-        {invalidUrlRange ? 'URL의 검색 조건을 확인해 주세요.' :
+        {invalidUrlFilters || rejectedTags ? '검색 조건을 확인해 주세요.' :
           productRangeFields.filter(({ key }) => filters[key] !== '').map(({ key, kind, bound }) =>
             `${kind === 'price' ? `${money(filters[key])}원` : `${filters[key]}%`} ${bound}`,
           ).join(' · ') || '가격·도수 제한 없음'}
       </p>
-      {(form.type || form.q.trim() || productRangeFields.some(({ key }) => form[key] !== '') || invalidUrlRange) && (
+      <div className="applied-tag-summary" aria-label="현재 적용된 태그 조건">
+        <strong>현재 적용 태그</strong>
+        {invalidUrlFilters || rejectedTags ? <span>검색 조건을 확인해 주세요.</span> :
+          productTagFields.some(({ key }) => filters[key].length) ? productTagFields.map(({ key, label }) => filters[key].length > 0 &&
+            <span key={key}>{label}: {filters[key].map((tag, index) => <span className="search-tag-value" key={index}>{normalizeProductTag(tag)}</span>)}</span>
+          ) : <span>태그 제한 없음</span>}
+      </div>
+      {(form.type || form.q.trim() || productRangeFields.some(({ key }) => form[key] !== '') || productTagFields.some(({ key }) => form[key].length || filters[key].length) || invalidUrlFilters) && (
         <div className="active-filters" aria-label="적용된 필터">
           {form.type && <span>{form.type}</span>}
           {form.q.trim() && <span>검색: {form.q.trim()}</span>}
@@ -358,8 +388,17 @@ export function ProductsPage() {
           </button>
         </div>
       )}
-      {invalidUrlRange ? (
-        <Empty title="검색 조건을 확인해 주세요" description="가격·도수 범위를 고치고 검색하거나 전체 해제해 주세요. 결과를 불러오지 않았습니다." />
+      {invalidUrlFilters ? (
+        <Empty title="검색 조건을 확인해 주세요" description="가격·도수 범위와 태그 조건을 고치고 검색하거나 전체 해제해 주세요. 결과를 불러오지 않았습니다." />
+      ) : rejectedTags ? (
+        <Empty title="검색 조건을 확인해 주세요" description="입력한 검색 조건을 허용하지 않는 응답을 받았습니다. 태그의 중복·길이와 범위를 수정하거나 전체 해제해 주세요.">
+          <button className="btn btn-dark" onClick={() => {
+            const key = productTagFields.find(({ key }) => form[key].length)?.key
+            const input = key ? tagInputs.current[key]?.[0] : null
+            const target = input ?? searchButton.current
+            target?.focus()
+          }}>태그 조건 수정</button>
+        </Empty>
       ) : products.isPending ? (
         <Loading />
       ) : products.isError ? (
@@ -382,14 +421,14 @@ export function ProductsPage() {
         <Empty
           icon="⌕"
           title="조건에 맞는 상품이 없습니다"
-          description="검색어·주종이나 가격·도수 범위를 바꿔 다시 찾아보세요."
+          description="검색어·주종이나 가격·도수·태그 조건을 바꿔 다시 찾아보세요."
         >
           <button className="btn btn-outline-dark" onClick={reset}>
             모든 상품 보기
           </button>
         </Empty>
       )}
-      <Pagination page={invalidUrlRange ? undefined : products.data} onChange={(page) => navigate(page, filters)} />
+      <Pagination page={invalidUrlFilters ? undefined : products.data} onChange={(page) => navigate(page, filters)} />
     </section>
   )
 }
