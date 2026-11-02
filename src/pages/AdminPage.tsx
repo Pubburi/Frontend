@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
 import { categories } from '../catalog'
 import { useSession } from '../queries'
 import { useUi } from '../state/ui'
+import { adminPrivacy } from '../state/adminPrivacy'
 import { Confirm, Empty, Loading, Pagination } from '../components/ui'
 import { OrderLines, orderMoney } from '../components/OrderLines'
 import { ProductFeatureEditor } from '../components/ProductFeatureEditor'
@@ -103,9 +104,15 @@ function AdminPanel({
   page: number
   onPage: (value: number, replace?: boolean) => void
 }) {
-  const { data: user } = useSession()
+  const session = useSession()
+  const user = session.data
   const client = useQueryClient()
+  const location = useLocation()
+  const navigate = useNavigate()
   const authOwner = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+  const privacy = adminPrivacy(client)
+  const failures = useSyncExternalStore(privacy.subscribe, privacy.snapshot)
+  const unauthorizedReads = failures.filter((failure) => failure.auth === authOwner && failure.account === user)
   const ui = useUi()
   const query = useQuery<Page<Item>>({
     queryKey: ['admin', user?.id, tab, page],
@@ -253,6 +260,19 @@ function AdminPanel({
       '주문을 완료 처리했습니다.',
     )
   }
+  function loginAgain() {
+    const cache = client.getQueryCache()
+    const currentAuth = cache.find({ queryKey: ['session'], exact: true })
+    if (!user || !currentAuth || currentAuth !== authOwner || currentAuth.state.status !== 'success' ||
+        currentAuth.state.data !== user || currentAuth.state.fetchStatus !== 'idle') return
+    const currentFailures = privacy.snapshot().filter((failure) => failure.auth === currentAuth && failure.account === user)
+    if (currentFailures.some(({ query }) => query.state.fetchStatus !== 'idle')) return
+    if (!unauthorizedReads.some((failure) => currentFailures.includes(failure) && cache.get(failure.query.queryHash) === failure.query)) return
+    ui.clear()
+    client.clear()
+    client.setQueryData(['session'], null)
+    navigate(`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`)
+  }
   function field(
     key: keyof typeof form,
     label: string,
@@ -282,6 +302,17 @@ function AdminPanel({
       </label>
     )
   }
+  if (user && unauthorizedReads.length)
+    return (
+      <section className="admin-panel">
+        <Empty title="다시 로그인해 주세요" description="로그인 상태가 바뀌어 관리자 정보를 표시하지 않았습니다.">
+          <button className="btn btn-dark" onClick={loginAgain}
+            disabled={session.fetchStatus !== 'idle' || unauthorizedReads.some(({ query }) => query.state.fetchStatus !== 'idle')}>
+            다시 로그인
+          </button>
+        </Empty>
+      </section>
+    )
   const formVisible =
     tab === 'products' || tab === 'markets' || (tab === 'users' && editing)
   return (
