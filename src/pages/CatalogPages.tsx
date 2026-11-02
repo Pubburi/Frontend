@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   Link,
   useLocation,
@@ -24,6 +24,7 @@ import {
   Quantity,
 } from '../components/ui'
 import { buildProductQuery, parseProductQuery } from '../utils/productFilters'
+import { productRangeFields, validateProductRanges, type ProductRangeKey, type ProductRangeErrors } from '../productRanges'
 import { money, productImage } from '../utils/format'
 import type { Market, Page, Product, Review } from '../types'
 
@@ -196,12 +197,40 @@ export function ProductsPage() {
     Object.fromEntries(search),
     categories.map((category) => category.label),
   )
+  const urlRangeOptions = {
+    provided: productRangeFields.filter(({ key }) => search.has(key)).map(({ key }) => key),
+    duplicates: productRangeFields.filter(({ key }) => search.getAll(key).length > 1).map(({ key }) => key),
+  }
+  const urlRangeErrors = validateProductRanges(filters, urlRangeOptions)
+  const invalidUrlRange = Object.keys(urlRangeErrors).length > 0
   const [form, setForm] = useState(filters)
-  useEffect(() => setForm(filters), [search.toString()])
+  const [rangeErrors, setRangeErrors] = useState<ProductRangeErrors>(urlRangeErrors)
+  const rangeInputs = useRef<Partial<Record<ProductRangeKey, HTMLInputElement | null>>>({})
+  useEffect(() => {
+    setForm(filters)
+    setRangeErrors(urlRangeErrors)
+  }, [search.toString()])
   const products = useQuery<Page<Product>>({
     queryKey: ['catalog', 'products', filters],
     queryFn: () => api.products(filters),
+    enabled: !invalidUrlRange,
   })
+  function editRange(key: ProductRangeKey, value: string) {
+    const next = { ...form, [key]: value }
+    setForm(next)
+    if (Object.keys(rangeErrors).length) setRangeErrors(validateProductRanges(next))
+  }
+  function submitSearch(event: FormEvent) {
+    event.preventDefault()
+    const errors = validateProductRanges(form)
+    setRangeErrors(errors)
+    const first = productRangeFields.find(({ key }) => errors[key])
+    if (first) {
+      rangeInputs.current[first.key]?.focus()
+      return
+    }
+    navigate()
+  }
   function navigate(page = 1, criteria = form) {
     setSearch(
       new URLSearchParams(
@@ -213,6 +242,7 @@ export function ProductsPage() {
     )
   }
   function reset() {
+    setRangeErrors({})
     setForm(
       parseProductQuery(
         {},
@@ -230,16 +260,14 @@ export function ProductsPage() {
           <p>탁주·청주부터 맥주, 위스키와 사케까지 한 곳에서 비교해 보세요.</p>
         </div>
         <span className="result-count">
-          총 <strong>{products.data?.total || 0}</strong>개
+          총 <strong>{invalidUrlRange ? 0 : products.data?.total || 0}</strong>개
         </span>
       </div>
       <form
         className="filter-panel"
         role="search"
-        onSubmit={(e) => {
-          e.preventDefault()
-          navigate()
-        }}
+        noValidate
+        onSubmit={submitSearch}
       >
         <label className="field-group">
           <span>주종</span>
@@ -283,6 +311,29 @@ export function ProductsPage() {
             ))}
           </select>
         </label>
+        <fieldset className="range-filter-group">
+          <legend>가격·도수 범위</legend>
+          <p className="muted" id="range-filter-help">빈 값은 제한하지 않으며, 입력한 모든 범위를 함께 적용합니다.</p>
+          <div className="range-filter-fields">
+            {productRangeFields.map(({ key, label, kind }) => (
+              <label className="field-group" key={key}>
+                <span>{label}</span>
+                <input
+                  ref={(element) => { rangeInputs.current[key] = element }}
+                  className="form-control"
+                  type="text"
+                  inputMode={kind === 'price' ? 'numeric' : 'decimal'}
+                  aria-label={label}
+                  aria-invalid={rangeErrors[key] ? true : undefined}
+                  aria-describedby={rangeErrors[key] ? `range-error-${key}` : 'range-filter-help'}
+                  value={form[key]}
+                  onChange={(event) => editRange(key, event.target.value)}
+                />
+                {rangeErrors[key] && <small id={`range-error-${key}`} className="range-field-error">{rangeErrors[key]}</small>}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <button
           className="btn btn-dark filter-submit"
           aria-busy={products.isFetching}
@@ -290,16 +341,26 @@ export function ProductsPage() {
           검색하기
         </button>
       </form>
-      {(form.type || form.q.trim()) && (
+      <p className="applied-range-summary" aria-label="현재 적용된 가격·도수 범위">
+        <strong>현재 적용 범위</strong>{' '}
+        {invalidUrlRange ? 'URL의 검색 조건을 확인해 주세요.' :
+          productRangeFields.filter(({ key }) => filters[key] !== '').map(({ key, kind, bound }) =>
+            `${kind === 'price' ? `${money(filters[key])}원` : `${filters[key]}%`} ${bound}`,
+          ).join(' · ') || '가격·도수 제한 없음'}
+      </p>
+      {(form.type || form.q.trim() || productRangeFields.some(({ key }) => form[key] !== '') || invalidUrlRange) && (
         <div className="active-filters" aria-label="적용된 필터">
           {form.type && <span>{form.type}</span>}
           {form.q.trim() && <span>검색: {form.q.trim()}</span>}
+          {productRangeFields.filter(({ key }) => form[key] !== '').map(({ key, label }) => <span key={key}>{label}: {form[key]}</span>)}
           <button className="text-link" onClick={reset}>
             전체 해제
           </button>
         </div>
       )}
-      {products.isPending ? (
+      {invalidUrlRange ? (
+        <Empty title="검색 조건을 확인해 주세요" description="가격·도수 범위를 고치고 검색하거나 전체 해제해 주세요. 결과를 불러오지 않았습니다." />
+      ) : products.isPending ? (
         <Loading />
       ) : products.isError ? (
         <Empty
@@ -321,14 +382,14 @@ export function ProductsPage() {
         <Empty
           icon="⌕"
           title="조건에 맞는 상품이 없습니다"
-          description="검색어나 주종을 바꿔 다시 찾아보세요."
+          description="검색어·주종이나 가격·도수 범위를 바꿔 다시 찾아보세요."
         >
           <button className="btn btn-outline-dark" onClick={reset}>
             모든 상품 보기
           </button>
         </Empty>
       )}
-      <Pagination page={products.data} onChange={(page) => navigate(page, filters)} />
+      <Pagination page={invalidUrlRange ? undefined : products.data} onChange={(page) => navigate(page, filters)} />
     </section>
   )
 }
