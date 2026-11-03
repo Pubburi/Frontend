@@ -764,6 +764,14 @@ textarea.form-control {
 .comparison-table td > a { display: block; margin-top: 8px; }
 .comparison-table p { margin: 8px 0; }
 .comparison-table .product-feature-tags { margin: 0; }
+.recent-view h1 { scroll-margin-top: 90px; }
+.recent-view h1:focus-visible { outline: 3px solid rgba(31, 106, 75, 0.28); outline-offset: 3px; }
+.recent-policy { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.recent-policy p { margin: 0; line-height: 1.7; }
+.recent-policy p + p { margin-top: 8px; }
+.recent-item { display: flex; flex-direction: column; min-width: 0; gap: 10px; }
+.recent-item .product-card { min-height: 0; flex: 1; }
+.recent-time { margin: 0; font-size: 12px; }
 
 .filter-panel {
   display: grid;
