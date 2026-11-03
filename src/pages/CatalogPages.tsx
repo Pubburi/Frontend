@@ -16,6 +16,7 @@ import { ProductFavorite } from '../components/FavoriteAction'
 import { SearchTagFields } from '../components/SearchTagFields'
 import { productTagFields, buildProductTags, normalizeProductTag, validateProductTags, type ProductTagKey, type ProductTagIssues } from '../productTags'
 import { ProductFeatureDetails } from '../components/ProductFeatureDetails'
+import { CompareAction } from '../components/CompareAction'
 import {
   Confirm,
   Empty,
@@ -598,6 +599,7 @@ function ProductDetail({ id }: { id: string }) {
             {quantity}개 장바구니에 담기
           </button>
           <ProductFavorite product={item} />
+          <CompareAction product={item} />
           <ProductFeatureDetails productId={item.id} />
           <div className="comment-box">
             <div className="comment-title">
