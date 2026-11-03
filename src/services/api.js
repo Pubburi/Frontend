@@ -93,6 +93,10 @@ export const api = {
   join: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
   idAvailable: (id) => request(`/users/id-available?id=${encodeURIComponent(id)}`),
   profile: (id) => request(`/users/${encodeURIComponent(id)}/profile`),
+  /** @param {{name: string}} payload @returns {Promise<boolean>} */
+  updateOwnProfile: (payload) => request('/users/me/profile', { method: 'PUT', body: JSON.stringify({ name: payload.name }) }),
+  /** @param {{currentPassword: string, newPassword: string}} payload @returns {Promise<boolean>} */
+  updateOwnPassword: (payload) => request('/users/me/password', { method: 'PUT', body: JSON.stringify({ currentPassword: payload.currentPassword, newPassword: payload.newPassword }) }),
   /** @returns {Promise<import('../types').ExplicitPreferences>} */
   ownPreferences: () => request('/users/me/preferences'),
   /** @param {import('../types').ExplicitPreferences} payload @returns {Promise<import('../types').ExplicitPreferences>} */

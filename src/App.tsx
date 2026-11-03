@@ -25,6 +25,7 @@ import { ComparePage } from './pages/ComparePage'
 import { useComparison } from './state/comparison'
 import { comparisonUrl } from './comparison'
 import { RecentPage } from './pages/RecentPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { useRecentProducts } from './state/recentProducts'
 
 const AdminPage = lazy(() => import('./pages/AdminPage'))
@@ -208,6 +209,10 @@ export function App() {
                   <ProfilePage />
                 </Guard>
               }
+            />
+            <Route
+              path="/settings"
+              element={<SettingsPage />}
             />
             <Route
               path="/preferences"

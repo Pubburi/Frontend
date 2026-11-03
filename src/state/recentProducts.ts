@@ -110,7 +110,7 @@ export function recentProducts(client: QueryClient) {
     }
     const pending = useUi.getState().pending
     const data = query.state.data
-    if (query.state.status !== 'success' || query.state.fetchStatus !== 'idle' || pending.login || pending.join || pending.logout ||
+    if (query.state.status !== 'success' || query.state.fetchStatus !== 'idle' || pending.login || pending.join || pending.logout || pending['settings-password'] ||
         !(data === null || (typeof data === 'object' && data && 'id' in data && typeof data.id === 'string'))) {
       current.getState().suspend()
       return
@@ -137,8 +137,8 @@ export function recentProducts(client: QueryClient) {
     sync()
   })
   useUi.subscribe((state, previous) => {
-    const before = ['login', 'join', 'logout'].some((key) => previous.pending[key])
-    const after = ['login', 'join', 'logout'].some((key) => state.pending[key])
+    const before = ['login', 'join', 'logout', 'settings-password'].some((key) => previous.pending[key])
+    const after = ['login', 'join', 'logout', 'settings-password'].some((key) => state.pending[key])
     if (after && !before) {
       fence = { query: cache.find({ queryKey: ['session'], exact: true }), readSequence }
       current.getState().requireVerification()
