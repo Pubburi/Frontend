@@ -6,7 +6,7 @@ import { useUi } from '../state/ui'
 export function useRecordRecentVisit(id: number | undefined, success: boolean, locationKey: string) {
   const history = useRecentProducts()
   const client = useQueryClient()
-  const pending = useUi((state) => Boolean(state.pending.login || state.pending.join || state.pending.logout))
+  const pending = useUi((state) => Boolean(state.pending.login || state.pending.join || state.pending.logout || state.pending['settings-password']))
   // A known owner remains the visit owner while its session is being checked.
   // A later different account must not adopt that already-opened detail.
   const visit = useRef<{ key: string; owner?: object; blocked: boolean; recorded: boolean }>({ key: locationKey, owner: history.owner ?? undefined, blocked: pending || history.verificationRequired, recorded: false })

@@ -266,6 +266,7 @@ export function ProfilePage() {
               <p className="section-kicker">My Page</p>
               <h1>{profile.data?.user?.name || user?.name}님의 취향 기록</h1>
               <p className="muted">{user?.id}</p>
+              <Link className="btn btn-outline-dark" to="/settings">내 계정 설정</Link>
               <Link className="btn btn-outline-dark" to="/preferences">내 취향 설정</Link>
               <Link className="btn btn-outline-dark" to="/favorites">내 찜 목록</Link>
               <Link className="btn btn-outline-dark" to="/discover">기본 주류 둘러보기</Link>

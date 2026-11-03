@@ -19,6 +19,13 @@ function mockTextResponse(body, ok, status, statusText) {
 }
 
 describe('api client', () => {
+  it('F09 writes only the session-bound fields and preserves literal passwords', async () => {
+    mockResponse({ data: true, message: 'ok', error: null })
+    await expect(api.updateOwnProfile({ name: ' 이름 ', id: 'other', role: 'ADMIN', stamps: 99 })).resolves.toBe(true)
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/profile', expect.objectContaining({ method: 'PUT', credentials: 'include', body: JSON.stringify({ name: ' 이름 ' }) }))
+    await expect(api.updateOwnPassword({ currentPassword: ' old ', newPassword: ' new ', id: 'other' })).resolves.toBe(true)
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/password', expect.objectContaining({ method: 'PUT', credentials: 'include', body: JSON.stringify({ currentPassword: ' old ', newPassword: ' new ' }) }))
+  })
   it('unwraps successful ApiResponse data', async () => {
     mockResponse({ data: { id: 'id01' }, message: 'ok', error: null })
 

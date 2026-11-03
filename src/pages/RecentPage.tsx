@@ -17,7 +17,7 @@ export function RecentPage() {
   const currentLocation = useRef(location.key); currentLocation.current = location.key
   const revision = useRef(0)
   const [checked, setChecked] = useState<{ key: string; generation: number } | null>(null)
-  const authPending = useUi((state) => Boolean(state.pending.login || state.pending.join || state.pending.logout))
+  const authPending = useUi((state) => Boolean(state.pending.login || state.pending.join || state.pending.logout || state.pending['settings-password']))
   const [checking, setChecking] = useState(false)
   const [checkError, setCheckError] = useState(false)
   async function confirmSession() {
