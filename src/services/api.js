@@ -131,6 +131,8 @@ export const api = {
   adminComments: (params = {}) => request(`/admin/comments?${pageQuery(params, { page: 1, size: 20 })}`),
 
   markets: (params = {}) => request(`/markets?${pageQuery(params, { page: 1, size: 12 })}`),
+  /** @param {number} id @returns {Promise<import('../types').Market>} */
+  market: (id) => request(`/markets/${id}`),
   createMarket: (payload) => request('/admin/markets', { method: 'POST', body: JSON.stringify(payload) }),
   updateMarket: (id, payload) => request(`/admin/markets/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteMarket: (id) => request(`/admin/markets/${id}`, { method: 'DELETE' }),

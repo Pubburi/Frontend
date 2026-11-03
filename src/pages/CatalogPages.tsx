@@ -184,6 +184,7 @@ export function HomePage() {
                   {Number(market.latitude).toFixed(5)},{' '}
                   {Number(market.longitude).toFixed(5)}
                 </span>
+                <Link className="text-link" to={`/markets/${market.id}`} aria-label={`${market.name} 상세 보기`}>매장 상세 보기 →</Link>
               </article>
             ))}
           </div>

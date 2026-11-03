@@ -40,7 +40,7 @@ export interface Market {
   name: string
   latitude: number
   longitude: number
-  image?: string
+  image?: string | null
 }
 export interface User {
   id: string

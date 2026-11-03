@@ -19,6 +19,14 @@ function mockTextResponse(body, ok, status, statusText) {
 }
 
 describe('api client', () => {
+  it('reads a public market detail with cookies and no account selector or write', async () => {
+    const market = { id: 1, name: '시연 매장', latitude: 0, longitude: 127.7654321, image: null }
+    mockResponse({ data: market, message: 'ok', error: null })
+    await expect(api.market(1)).resolves.toEqual(market)
+    expect(fetch).toHaveBeenLastCalledWith('/api/markets/1', expect.objectContaining({ credentials: 'include' }))
+    expect(fetch.mock.calls.at(-1)[1].body).toBeUndefined()
+    expect(fetch.mock.calls.at(-1)[1].method).toBeUndefined()
+  })
   it('F09 writes only the session-bound fields and preserves literal passwords', async () => {
     mockResponse({ data: true, message: 'ok', error: null })
     await expect(api.updateOwnProfile({ name: ' 이름 ', id: 'other', role: 'ADMIN', stamps: 99 })).resolves.toBe(true)
