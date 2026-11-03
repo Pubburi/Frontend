@@ -96,6 +96,8 @@ test('직접 비교 URL의 순서·새로고침·뒤로와 키보드 제거/전�
   await remove.focus(); await page.keyboard.press('Enter')
   await expect(page).toHaveURL('/compare?productId=201')
   await expect(page.getByRole('heading', { name: '상품 비교', exact: true })).toBeFocused()
+  await expect(page.locator('thead th[data-product-id]')).toHaveCount(1)
+  await expect(page.getByRole('link', { name: '상품 비교 1', exact: true })).toHaveAttribute('href', '/compare?productId=201')
   await page.goBack()
   await expect(page.locator('thead th[data-product-id]')).toHaveCount(2)
   await expect(page.getByRole('link', { name: '상품 비교 2', exact: true })).toHaveAttribute('href', '/compare?productId=203&productId=201')
@@ -245,4 +247,47 @@ test('390px 비교 표의 가로 이동·Tab/Enter 제거는 문서 넘침 없�
   await expect(page.getByRole('heading', { name: '상품 비교', exact: true })).toBeFocused()
   await expect(page.locator('thead th[data-product-id]')).toHaveCount(3)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})
+
+// Hold only scheduler task delivery, keeping URL changes/native history and HTTP real within this fixture.
+// This deterministically models Back before the removal's concurrent React commit.
+test('제거의 React commit 전 빠른 nativeBack도 URL·표·전역선택과 보관 상태를 일치시킴', async ({ page }) => {
+  await page.addInitScript(() => {
+    const Original = window.MessageChannel
+    window.__holdComparisonRender = false; window.__heldComparisonTasks = []; window.__deliveredComparisonTasks = 0
+    window.MessageChannel = function () {
+      const channel = new Original(), post = channel.port2.postMessage.bind(channel.port2)
+      channel.port1.addEventListener('message', () => window.__deliveredComparisonTasks++)
+      channel.port2.postMessage = (...args) => {
+        if (window.__holdComparisonRender) window.__heldComparisonTasks.push(() => post(...args))
+        else post(...args)
+      }
+      return channel
+    }
+    window.MessageChannel.prototype = Original.prototype
+    localStorage.setItem('pubburi-cart', JSON.stringify([{product:{id:201,name:'비교 표본 201',price:0,abv:0,type:'탁주',img:null,orderCount:0},quantity:2}]))
+    localStorage.setItem('pubburi-recent-products-v1',JSON.stringify({version:1,entries:[{id:201,viewedAt:Date.now()}]}))
+  })
+  await page.goto('/compare?productId=203&productId=201')
+  await expect(cell(page, 201, 'price')).toHaveText('0원')
+  await expect(page.getByRole('link',{name:'상품 비교 2',exact:true})).toHaveAttribute('href','/compare?productId=203&productId=201')
+  const stored=await page.evaluate(()=>({cart:localStorage.getItem('pubburi-cart'),recent:localStorage.getItem('pubburi-recent-products-v1')}))
+  const remove=page.getByRole('button',{name:'상품 203 비교 해제',exact:true});await remove.focus()
+  await page.evaluate(()=>{window.__holdComparisonRender=true})
+  try {
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL('/compare?productId=201')
+    expect(await page.evaluate(()=>window.__heldComparisonTasks.length)).toBeGreaterThan(0)
+    await page.goBack()
+    await expect(page).toHaveURL('/compare?productId=203&productId=201')
+  } finally {
+    await page.evaluate(()=>{window.__holdComparisonRender=false;for(const deliver of window.__heldComparisonTasks.splice(0))deliver()})
+  }
+  await expect.poll(()=>page.evaluate(()=>window.__deliveredComparisonTasks)).toBeGreaterThan(0)
+  await expect(page.locator('thead th[data-product-id]')).toHaveCount(2)
+  await expect(page.getByRole('link',{name:'상품 비교 2',exact:true})).toHaveAttribute('href','/compare?productId=203&productId=201')
+  await page.getByRole('link',{name:'상품 더 고르기',exact:true}).click()
+  await expect(page.getByRole('button',{name:'비교 표본 203 비교 해제',exact:true})).toHaveAttribute('aria-pressed','true')
+  await expect(page.getByRole('button',{name:'비교 표본 201 비교 해제',exact:true})).toHaveAttribute('aria-pressed','true')
+  expect(await page.evaluate(()=>({cart:localStorage.getItem('pubburi-cart'),recent:localStorage.getItem('pubburi-recent-products-v1')}))).toEqual(stored)
 })
