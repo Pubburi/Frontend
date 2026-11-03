@@ -67,7 +67,9 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-.product-results:focus-visible {
+.product-results:focus-visible,
+.comparison-view h1:focus-visible,
+.comparison-scroll:focus-visible {
   outline: 3px solid rgba(31, 106, 75, 0.28);
   outline-offset: 3px;
 }
@@ -748,6 +750,20 @@ textarea.form-control {
 .product-orders { margin: 0; color: var(--muted); font-size: 12px; }
 .product-body .button-row { margin-top: 4px; }
 .product-body .button-row > * { flex: 1; }
+
+.compare-action[aria-pressed="true"] { color: var(--paper); background: var(--forest); }
+.comparison-view { min-width: 0; }
+.comparison-view h1 { scroll-margin-top: 90px; }
+.comparison-actions { margin-bottom: 20px; }
+.comparison-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+.comparison-table { width: 100%; border-collapse: collapse; background: var(--paper); table-layout: fixed; }
+.comparison-table caption { padding: 14px; text-align: left; font-size: 13px; color: var(--muted); }
+.comparison-table th, .comparison-table td { min-width: 0; width: 240px; padding: 16px; vertical-align: top; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; white-space: pre-wrap; }
+.comparison-table th:first-child { width: 110px; background: var(--cream); }
+.comparison-table h2 { font-size: 18px; line-height: 1.4; margin: 14px 0 0; }
+.comparison-table td > a { display: block; margin-top: 8px; }
+.comparison-table p { margin: 8px 0; }
+.comparison-table .product-feature-tags { margin: 0; }
 
 .filter-panel {
   display: grid;

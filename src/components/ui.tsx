@@ -4,6 +4,7 @@ import { useCart } from '../state/cart'
 import { useUi } from '../state/ui'
 import { money, productImage, webpSource } from '../utils/format'
 import type { Page, Product } from '../types'
+import { CompareAction } from './CompareAction'
 
 export function Image({
   src = '',
@@ -202,6 +203,7 @@ export function ProductCard({ product }: { product: Product }) {
             빠른 담기
           </button>
         </div>
+        <CompareAction product={product} />
       </div>
     </article>
   )

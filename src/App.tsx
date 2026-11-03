@@ -21,6 +21,9 @@ import { AccountPage, CartPage, ProfilePage } from './pages/AccountPages'
 import { PreferencesPage } from './pages/PreferencesPage'
 import { FavoritesPage } from './pages/FavoritesPage'
 import { DiscoverPage } from './pages/DiscoverPage'
+import { ComparePage } from './pages/ComparePage'
+import { useComparison } from './state/comparison'
+import { comparisonUrl } from './comparison'
 
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 function Guard({
@@ -61,6 +64,7 @@ function Guard({
 export function App() {
   const session = useSession()
   const cart = useCart()
+  const comparisonIds = useComparison((state) => state.ids)
   const ui = useUi()
   const client = useQueryClient()
   const navigate = useNavigate()
@@ -119,6 +123,7 @@ export function App() {
           <nav className="nav-actions" aria-label="주요 메뉴">
             <NavLink to="/">홈</NavLink>
             <NavLink to="/products">전체 주류</NavLink>
+            <NavLink to={comparisonUrl(comparisonIds)}>상품 비교{comparisonIds.length > 0 ? ` ${comparisonIds.length}` : ''}</NavLink>
             <NavLink to="/cart">
               장바구니{' '}
               {cartTotals(cart.items).count > 0 && (
@@ -180,6 +185,7 @@ export function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
+            <Route path="/compare" element={<ComparePage />} />
             <Route path="/discover" element={<DiscoverPage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route
