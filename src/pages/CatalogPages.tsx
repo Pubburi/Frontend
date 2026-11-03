@@ -17,6 +17,7 @@ import { SearchTagFields } from '../components/SearchTagFields'
 import { productTagFields, buildProductTags, normalizeProductTag, validateProductTags, type ProductTagKey, type ProductTagIssues } from '../productTags'
 import { ProductFeatureDetails } from '../components/ProductFeatureDetails'
 import { CompareAction } from '../components/CompareAction'
+import { useRecordRecentVisit } from '../components/RecentVisit'
 import {
   Confirm,
   Empty,
@@ -481,6 +482,8 @@ function ProductDetail({ id }: { id: string }) {
     queryFn: () => api.comments(id, { page, size: 10 }),
     enabled: product.isSuccess,
   })
+  useRecordRecentVisit(product.data?.id === Number(id) ? product.data.id : undefined,
+    product.isSuccess && !product.isFetching && !product.isPaused, location.key)
   async function refresh() {
     await client.invalidateQueries({ queryKey: ['reviews', id] })
   }
