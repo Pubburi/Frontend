@@ -41,7 +41,7 @@ export function ComparePage() {
   })) })
   function select(next: number[], event: MouseEvent<HTMLButtonElement>) {
     if (event.detail === 0 && document.activeElement === event.currentTarget) heading.current?.focus({ preventScroll: true })
-    replace(next)
+    // The committed URL alone owns the shared selection, including a cancelled transition.
     setSearch(new URLSearchParams(comparisonUrl(next).split('?')[1] ?? ''))
   }
   function productValue(index: number, render: (product: Product) => ReactNode) {

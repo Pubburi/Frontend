@@ -19,7 +19,7 @@ npm run check
 독립 실행은 `npm run typecheck`, `npm run test`, `VITE_API_BASE_URL=/api npm run build`, `npm run test:browser`다.
 Linux CI는 `npx playwright install --with-deps chromium`으로 시스템 의존성도 설치한다.
 
-preview는 127.0.0.1:4173에서 strict port로 실행하며 기존 서버를 재사용하지 않는다.
+preview는 127.0.0.1:4173에서 strict port로 실행하며 기존 서버를 재사용하지 않는다. 독립 checkout은 유효한 숫자 `PLAYWRIGHT_PORT`로 전용 loopback 포트를 지정할 수 있으며 CI 기본값은4173이다.
 해당 포트를 사용 중인 사용자 프로세스를 종료하지 말고 먼저 충돌 원인을 확인한다.
 Playwright는 자신이 시작한 서버만 실행 종료 시 정리한다.
 
@@ -68,6 +68,8 @@ Playwright는 자신이 시작한 서버만 실행 종료 시 정리한다.
 
 Vitest는 브라우저 spec을 수집하지 않는다. 기존 유틸·상태·API 단위 검증과 production browser
 검증을 모두 `frontend-ci` 필수 검사 안에서 실행한다. 기존 Pinia/Vue Router 테스트를 Zustand·세션 query·관리자 API 선택과 React 브라우저 검증으로 옮겼다. 테스트 개수의 일치를 기능 동등성으로 간주하지 않고 사용자 결과·오류/권한 경계를 추적한다.
+
+[비교 URL 소유](plans/2026-11-03-comparison-url-ownership.md)는 중간 React commit 전 keyboard 해제/native Back의 task gate와 별도 정상 commit 대조를 분리한다. gate 사용/해제 뒤 URL·표·메뉴/목록 선택·F05/카트 보관을 확인하며 API fixture·자연 경쟁·시간 성능으로 합산하지 않는다.
 
 ## F01 별도 실제 연동 확인
 
