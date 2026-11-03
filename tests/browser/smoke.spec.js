@@ -1239,7 +1239,8 @@ test('주문 내역은 확정·추정·미확인 금액과 삭제 상품을 구�
   await expect(unknown).not.toContainText('0원')
   await expect(unknown).toContainText('금액 출처 미확인')
   await expect(unknown).toContainText('삭제된 상품')
-  await expect(unknown.locator('a')).toHaveCount(0)
+  await expect(unknown.locator('a[href^="/products/"]')).toHaveCount(0)
+  await expect(unknown.getByRole('link', { name: '주문 103 상세 보기', exact: true })).toHaveAttribute('href', '/orders/103')
 })
 
 test('관리자 주문 완료·삭제와 탈퇴 회원의 보존 이력 표시', async ({ page, api }) => {

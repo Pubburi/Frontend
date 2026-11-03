@@ -875,6 +875,11 @@ textarea.form-control {
 .market-coordinates dt { color: var(--muted); }
 .market-coordinates dd { margin: 0; }
 
+.order-detail-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.order-detail-actions [aria-disabled="true"] { opacity: 0.6; cursor: default; }
+.order-detail-card, .order-detail-card .order-summary-head > div, .order-detail-card .order-item-line > span { min-width: 0; }
+.order-detail-card h2, .order-detail-card .order-item-line > span, .order-detail-card .order-detail-meta { overflow-wrap: anywhere; }
+
 .state-panel {
   display: grid;
   place-items: center;
