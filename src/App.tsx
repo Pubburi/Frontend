@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Link,
   NavLink,
@@ -7,6 +7,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useNavigationType,
   useSearchParams,
 } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -65,10 +66,22 @@ export function App() {
   const navigate = useNavigate()
   const location = useLocation()
   const [menu, setMenu] = useState(false)
+  const navigationType = useNavigationType()
+  const previousLocation = useRef<{ key: string; destination: string } | null>(null)
   useEffect(() => {
+    const previous = previousLocation.current
+    const destination = location.pathname + location.search
+    previousLocation.current = { key: location.key, destination }
+    // Consume navigation ownership once, including same-URL entries. POP never opts out.
+    if (previous?.destination === destination) return
     setMenu(false)
-    window.scrollTo({ top: 0 })
-  }, [location.pathname, location.search])
+    const intent = location.state?.catalogPagination
+    const focusedResults = navigationType === 'PUSH' && previous &&
+      intent?.fromLocationKey === previous.key && intent?.destination === destination &&
+      document.activeElement instanceof HTMLElement &&
+      document.activeElement.dataset.catalogResults === 'true'
+    if (!focusedResults) window.scrollTo({ top: 0 })
+  }, [location.key, location.pathname, location.search, navigationType])
   async function logout() {
     const result = await ui.run(
       'logout',

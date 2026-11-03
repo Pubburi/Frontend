@@ -66,7 +66,8 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+.product-results:focus-visible {
   outline: 3px solid rgba(31, 106, 75, 0.28);
   outline-offset: 3px;
 }
@@ -761,6 +762,7 @@ textarea.form-control {
 }
 
 .filter-submit { min-width: 130px; }
+.product-results { min-width: 0; scroll-margin-top: 90px; }
 .filter-panel .filter-submit { grid-column: 1 / -1; justify-self: end; }
 .range-filter-group { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
 .range-filter-group legend { padding: 0 6px; font-weight: 800; }

@@ -195,6 +195,7 @@ export function HomePage() {
 
 export function ProductsPage() {
   const [search, setSearch] = useSearchParams()
+  const location = useLocation()
   const filters = parseProductQuery(
     { ...Object.fromEntries(search), tasteTag: search.getAll('tasteTag'), aromaTag: search.getAll('aromaTag') },
     categories.map((category) => category.label),
@@ -225,6 +226,7 @@ export function ProductsPage() {
   const rejectedTags = products.isError && products.error instanceof ApiClientError && products.error.status === 400 &&
     productTagFields.some(({ key }) => filters[key].length > 0)
   const searchButton = useRef<HTMLButtonElement>(null)
+  const results = useRef<HTMLElement>(null)
   function editRange(key: ProductRangeKey, value: string) {
     const next = { ...form, [key]: value }
     setForm(next)
@@ -257,6 +259,20 @@ export function ProductsPage() {
   }
   function navigate(page = 1, criteria = form) {
     setSearch(new URLSearchParams(pageQuery(buildProductQuery(criteria, page))))
+  }
+  function changeKeyboardPage(page: number, trigger: HTMLButtonElement) {
+    if (document.activeElement !== trigger || !results.current) {
+      navigate(page, filters)
+      return
+    }
+    const destination = new URLSearchParams(pageQuery(buildProductQuery(filters, page)))
+    // This element survives loading, success and rejection. No response moves focus.
+    results.current.focus({ preventScroll: true })
+    results.current.scrollIntoView({ block: 'start', behavior: 'instant' })
+    setSearch(destination, { state: { catalogPagination: {
+      fromLocationKey: location.key,
+      destination: location.pathname + '?' + destination.toString(),
+    } } })
   }
   function reset() {
     setRangeErrors({})
@@ -388,6 +404,8 @@ export function ProductsPage() {
           </button>
         </div>
       )}
+      <section ref={results} className="product-results" aria-label="상품 검색 결과"
+        aria-busy={products.isFetching} tabIndex={-1} data-catalog-results="true">
       {invalidUrlFilters ? (
         <Empty title="검색 조건을 확인해 주세요" description="가격·도수 범위와 태그 조건을 고치고 검색하거나 전체 해제해 주세요. 결과를 불러오지 않았습니다." />
       ) : rejectedTags ? (
@@ -428,7 +446,9 @@ export function ProductsPage() {
           </button>
         </Empty>
       )}
-      <Pagination page={invalidUrlFilters ? undefined : products.data} onChange={(page) => navigate(page, filters)} />
+      </section>
+      <Pagination page={invalidUrlFilters ? undefined : products.data}
+        onChange={(page) => navigate(page, filters)} onKeyboardNavigate={changeKeyboardPage} />
     </section>
   )
 }

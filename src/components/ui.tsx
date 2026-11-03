@@ -77,16 +77,20 @@ export function Empty({
 export function Pagination<T>({
   page,
   onChange,
+  onKeyboardNavigate,
 }: {
   page?: Page<T>
   onChange: (page: number) => void
+  onKeyboardNavigate?: (page: number, trigger: HTMLButtonElement) => void
 }) {
   return page && page.totalPages > 1 ? (
     <nav className="pagination-bar" aria-label="pagination">
       <button
         className="btn btn-sm btn-outline-dark"
         disabled={page.page <= 1}
-        onClick={() => onChange(page.page - 1)}
+        onClick={(event) => event.detail === 0 && onKeyboardNavigate
+          ? onKeyboardNavigate(page.page - 1, event.currentTarget)
+          : onChange(page.page - 1)}
       >
         이전
       </button>
@@ -96,7 +100,9 @@ export function Pagination<T>({
       <button
         className="btn btn-sm btn-outline-dark"
         disabled={!page.hasNext}
-        onClick={() => onChange(page.page + 1)}
+        onClick={(event) => event.detail === 0 && onKeyboardNavigate
+          ? onKeyboardNavigate(page.page + 1, event.currentTarget)
+          : onChange(page.page + 1)}
       >
         다음
       </button>
