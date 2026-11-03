@@ -6,7 +6,7 @@
 
 Frontend 일정 정본은 [React 이전·인수 계획](2026-10-31-react-migration.md)이며 이 문서는 새 기한의 세부 기준이다. Backend의 API/DB·검색 계약과 Recommendation의 데이터/모델 정본은 각 소유 저장소에서 관리한다. 여기서는 웹 소비·기능 인수·선행만 연결하며 다른 영역의 상세 계획을 복제하지 않는다.
 
-- 최근 제품 확인 main `88b8833`: Vite·React·TypeScript·Router·TanStack Query·Zustand의 실제 고객/관리 라우트 이전(FE02)은 완료했다. FE03/C04 전체 동등성·실제 조합 인수는 진행 중이다.
+- 최근 제품 확인 main `f7995e7`: Vite·React·TypeScript·Router·TanStack Query·Zustand의 실제 고객/관리 라우트 이전(FE02)은 완료했다. FE03/C04 전체 동등성·실제 조합 인수는 진행 중이다.
 - 기한 변경 당시3/20에서 [F06](https://github.com/Pubburi/Frontend/pull/36)·[F05 병합·검증](https://github.com/Pubburi/Frontend/pull/37) 뒤 현재 **5/20(R01·F01·F03·F05·F06)**로 갱신한다. 부분 제공자·선택 검증이나 F09 구현을 미리 전체 완료로 올리지 않는다. DB 전환·검색 기술 작업과 FE 하위 수정은20개에 추가 합산하지 않는다.
 - F02의 가격/도수·맛/향 리터럴 AND와 반복 URL은 연결됐다. 엔진·자동완성·검수 동의어/오타 등 전체 검색 인수는 남는다. 비ASCII의 제공자 정규화·400 입력 보존과 기존 적용/초안·페이지 소유를 유지한다.
 - PostgreSQL/JPA의 제공 API는 순차 검증 중이다. 과거 MySQL/fixture 근거를 전체 PostgreSQL 전환·현재 세 서버 인수로 바꾸지 않는다.
