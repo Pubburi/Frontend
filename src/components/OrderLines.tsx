@@ -1,5 +1,6 @@
 import { date, money, orderType } from '../utils/format'
 import type { Order } from '../types'
+import { Link } from 'react-router-dom'
 
 export function priceBasisLabel(value?: string | null) {
   if (value === 'ORDER_SNAPSHOT') return '주문 당시 금액'
@@ -9,7 +10,7 @@ export function priceBasisLabel(value?: string | null) {
 export function orderMoney(value: number | null | undefined) {
   return value == null ? '금액 미확인' : `${money(value)}원`
 }
-export function OrderLines({ order }: { order: Order }) {
+export function OrderLines({ order, showUnitPrice = false }: { order: Order; showUnitPrice?: boolean }) {
   return (
     <>
       <div className="order-detail-meta">
@@ -24,6 +25,7 @@ export function OrderLines({ order }: { order: Order }) {
               {detail.name}
               {detail.productId === null && <small> · 삭제된 상품</small>}{' '}
               {detail.type && `· ${detail.type}`} × {detail.quantity}
+              {showUnitPrice && <small> · 단가 {orderMoney(detail.unitPrice)}</small>}
             </span>
             <strong>{orderMoney(detail.sumPrice)}</strong>
           </div>
@@ -49,6 +51,7 @@ export function OrderCard({ order }: { order: Order }) {
         <strong className="order-total">{orderMoney(order.totalPrice)}</strong>
       </div>
       <OrderLines order={order} />
+      <Link className="text-link" to={`/orders/${order.oId}`} aria-label={`주문 ${order.oId} 상세 보기`}>주문 상세 보기 →</Link>
     </article>
   )
 }

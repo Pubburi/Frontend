@@ -6,8 +6,8 @@
 
 Frontend 일정 정본은 [React 이전·인수 계획](2026-10-31-react-migration.md)이며 이 문서는 새 기한의 세부 기준이다. Backend의 API/DB·검색 계약과 Recommendation의 데이터/모델 정본은 각 소유 저장소에서 관리한다. 여기서는 웹 소비·기능 인수·선행만 연결하며 다른 영역의 상세 계획을 복제하지 않는다.
 
-- 최근 제품 확인 main `861fb07`: Vite·React·TypeScript·Router·TanStack Query·Zustand의 실제 고객/관리 라우트 이전(FE02)은 완료했다. FE03/C04 전체 동등성·실제 조합 인수는 진행 중이다.
-- 기한 변경 당시3/20에서 [F06](https://github.com/Pubburi/Frontend/pull/36)·[F05](https://github.com/Pubburi/Frontend/pull/37)·[F09 병합·검증](https://github.com/Pubburi/Frontend/pull/39) 뒤 현재 **6/20(R01·F01·F03·F05·F06·F09)**로 갱신한다. 부분 제공자·선택 검증이나 F11 매장 상세 증분을 미리 전체 완료로 올리지 않는다. DB 전환·검색 기술 작업과 FE 하위 수정은20개에 추가 합산하지 않는다.
+- 최근 제품 확인 main `2909554`: Vite·React·TypeScript·Router·TanStack Query·Zustand의 실제 고객/관리 라우트 이전(FE02)은 완료했다. FE03/C04 전체 동등성·실제 조합 인수는 진행 중이다.
+- 기한 변경 당시3/20에서 [F06](https://github.com/Pubburi/Frontend/pull/36)·[F05](https://github.com/Pubburi/Frontend/pull/37)·[F09 병합·검증](https://github.com/Pubburi/Frontend/pull/39) 뒤 현재 **6/20(R01·F01·F03·F05·F06·F09)**로 갱신한다. 부분 제공자·선택 검증이나 F11 주문/매장 증분을 미리 전체 완료로 올리지 않는다. DB 전환·검색 기술 작업과 FE 하위 수정은20개에 추가 합산하지 않는다.
 - F02의 가격/도수·맛/향 리터럴 AND와 반복 URL은 연결됐다. 엔진·자동완성·검수 동의어/오타 등 전체 검색 인수는 남는다. 비ASCII의 제공자 정규화·400 입력 보존과 기존 적용/초안·페이지 소유를 유지한다.
 - PostgreSQL/JPA의 제공 API는 순차 검증 중이다. 과거 MySQL/fixture 근거를 전체 PostgreSQL 전환·현재 세 서버 인수로 바꾸지 않는다.
 
@@ -48,7 +48,7 @@ MVP 전에는 남은 필수 기능·선행 계약과 진행 중 구현/리뷰/�
 | F08 · 12-28 | 검수한 입문/선물/음식 테마 목록과 상품 연결, 근거 없는 연관 생성 금지. | F03·FE04, 검수 큐레이션 API | 미착수 |
 | F09 · 12-23 | 본인 정보·비밀번호·취향 수정, 세션 갱신/회수와 타 계정 접근 차단. | BE03·R01, 본인 수정 API | [main 병합·검증 완료](https://github.com/Pubburi/Frontend/pull/39) |
 | F10 · 12-17 | 계정 장바구니·로그인 병합·수량/삭제와 병합 정책, 기존 브라우저 보관/주문 보존. | BE03·FE04, 계정 장바구니 API | 미착수 |
-| F11 · 12-22 | 데모 주문/매장 상세·상태 표시, 실제 재고·예약·결제와 구분. | BE01·BE02·FE03, 현재 주문/매장 계약; 제공된 매장 GET은 전체 DB 전환과 독립 | 진행 중: [공개 매장 상세](2026-11-04-market-detail.md) 부분 증분; 데모 주문 보강·전체 인수는 별도 |
+| F11 · 12-22 | 데모 주문/매장 상세·상태 표시, 실제 재고·예약·결제와 구분. | BE01·BE02·FE03, 현재 주문/매장 계약; 제공된 매장 GET은 전체 DB 전환과 독립 | 진행 중: [공개 매장 상세](2026-11-04-market-detail.md) PR40 병합·검증, [데모 주문 상세/상태](2026-11-04-demo-order-detail.md) 연결·전체 실제 인수/게이트 후 판정 |
 | F12 · 12-29 | 서비스 내 알림 생성 사건·목록·읽음, 계정 격리와 관련 화면 연결. 외부 push 제외. | BE03·F04·F11, 내부 알림 API | 미착수 |
 
 ## 12월 내 필수 인수와 1월 추가 검증

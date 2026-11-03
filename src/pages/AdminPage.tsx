@@ -498,6 +498,7 @@ function AdminPanel({
                         {orderMoney(order.totalPrice)}
                       </strong>
                       <div className="button-row table-actions">
+                        <Link className="text-link" to={`/orders/${order.oId}`} aria-label={`주문 ${order.oId} 상세 보기`}>상세 보기</Link>
                         <button
                           className="btn btn-sm btn-outline-dark"
                           disabled={

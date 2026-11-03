@@ -138,6 +138,8 @@ export const api = {
   deleteMarket: (id) => request(`/admin/markets/${id}`, { method: 'DELETE' }),
 
   createOrder: (payload) => request('/orders', { method: 'POST', body: JSON.stringify(payload) }),
+  /** @param {number} id @returns {Promise<import('../types').Order>} */
+  order: (id) => request(`/orders/${id}`),
   userOrders: (userId, params = {}) =>
     request(`/users/${encodeURIComponent(userId)}/orders?${pageQuery(params, { page: 1, size: 10 })}`),
   adminOrders: (params = {}) => request(`/admin/orders?${pageQuery(params, { page: 1, size: 20 })}`),
