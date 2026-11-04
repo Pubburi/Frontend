@@ -52,7 +52,9 @@ const test = base.extend({
 
 for (const width of [1280, 390]) test(`전체평균·후기수·평점정렬과 페이지 초기화, ${width}px`, async ({ page, reviewsApi }) => {
   await page.setViewportSize({ width, height: 900 })
-  reviewsApi.reviews = [0, .5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.555].map((rating, index) => review(101 + index, rating))
+  const memberId = 'ci_jpa_0123456789abcdef_member'
+  reviewsApi.user = { ...reviewsApi.user, id: memberId }
+  reviewsApi.reviews = [0, .5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.555].map((rating, index) => ({ ...review(101 + index, rating), userId: memberId }))
   await page.goto('/products/901')
   await expect(page.getByRole('heading', { name: '회원 후기 12', exact: true })).toBeVisible()
   await expect(page.locator('.review-summary')).toHaveText('평균 2.75점 · 전체 후기 12개')
@@ -73,6 +75,12 @@ for (const width of [1280, 390]) test(`전체평균·후기수·평점정렬과 
   const reads = reviewsApi.calls.filter((call) => call.path.endsWith('/comments') && call.method === 'GET')
   expect(reads.every((call) => call.query.includeSummary === 'true')).toBe(true)
   expect(reads.at(-1).query).toEqual({ page: '1', size: '10', sort: 'rating_asc', includeSummary: 'true' })
+  await expect(page.locator('.comment-head strong')).toHaveText(Array.from({ length: 10 }, () => memberId))
+  const bounds = await page.locator('.comment-row').evaluateAll((rows) => rows.map((row) => {
+    const card = row.getBoundingClientRect(), name = row.querySelector('.comment-head strong').getBoundingClientRect(), badge = row.querySelector('.comment-head > .badge').getBoundingClientRect()
+    return { withinCard: name.left >= card.left && name.right <= card.right && badge.left >= card.left && badge.right <= card.right, separated: name.right <= badge.left }
+  }))
+  expect(bounds.every((row) => row.withinCard && row.separated)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await test.info().attach(`review-summary-${width}`, { body: await page.locator('.comment-box').screenshot(), contentType: 'image/png' })
 })
