@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent, type MouseEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
@@ -11,6 +11,7 @@ import { OrderLines, orderMoney } from '../components/OrderLines'
 import { ProductFeatureEditor } from '../components/ProductFeatureEditor'
 import { featureSaveKey } from '../productFeatures'
 import { publishAdminDeletion, reconcileDeletedEditor, subscribeAdminDeletion, type EditorDraft } from '../adminEditor'
+import { focusAdminEdit, type AdminEditFocusIntent } from '../adminEditFocus'
 import { money, orderType } from '../utils/format'
 import type { Market, Order, Page, Product, Review, User } from '../types'
 
@@ -125,7 +126,22 @@ function AdminPanel({
     if (pageOutOfRange && !query.isFetching) onPage(lastPage, true)
   }, [pageOutOfRange, query.isFetching, lastPage, onPage])
   const [draft, setDraft] = useState<Draft>(emptyDraft)
+  const editInput = useRef<HTMLInputElement>(null)
+  const editFocus = useRef<AdminEditFocusIntent | null>(null)
   const { form, editing } = draft
+  useLayoutEffect(() => {
+    const intent = editFocus.current
+    editFocus.current = null
+    if (!intent) return
+    const currentAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+    const pending = useUi.getState().pending
+    focusAdminEdit(intent, {
+      revision: draft.revision, auth: currentAuth, account: currentAuth?.state.data as User | undefined,
+      locationKey: location.key, input: editInput.current,
+      ready: currentAuth?.state.status === 'success' && currentAuth.state.fetchStatus === 'idle' &&
+        user?.role === 'ADMIN' && !['login', 'join', 'logout', 'settings-password'].some((key) => pending[key]),
+    })
+  }, [draft.revision, location.key, client, user])
   const [deleting, setDeleting] = useState<Item | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [featureProduct, setFeatureProduct] = useState<Product | null>(null)
@@ -146,7 +162,7 @@ function AdminPanel({
   function reset() {
     setDraft(emptyDraft())
   }
-  function edit(item: Item) {
+  function edit(item: Item, event: MouseEvent<HTMLButtonElement>) {
     const next = blankForm()
     for (const key of Object.keys(next) as (keyof typeof next)[]) {
       if (key in item)
@@ -154,8 +170,11 @@ function AdminPanel({
           (item as unknown as Record<string, unknown>)[key] ?? '',
         )
     }
-    setDraft({ form: next, editing: item, revision: Symbol() })
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    const updated = { form: next, editing: item, revision: Symbol() }
+    const keyboard = event.detail === 0 && document.activeElement === event.currentTarget
+    editFocus.current = keyboard ? { revision: updated.revision, trigger: event.currentTarget, auth: authOwner, account: user ?? undefined, locationKey: location.key } : null
+    setDraft(updated)
+    if (!keyboard) window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   async function refresh() {
     await client.invalidateQueries({ queryKey: ['admin', user?.id, tab] })
@@ -289,6 +308,7 @@ function AdminPanel({
       <label className="field-group" key={key}>
         <span>{label}</span>
         <input
+          ref={key === 'name' ? editInput : undefined}
           className="form-control"
           type={options.type || 'text'}
           required={options.required !== false}
@@ -594,7 +614,7 @@ function AdminPanel({
                     {tab !== 'comments' && (
                       <button
                         className="btn btn-sm btn-outline-dark"
-                        onClick={() => edit(item)}
+                        onClick={(event) => edit(item, event)}
                       >
                         편집
                       </button>

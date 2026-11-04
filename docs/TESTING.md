@@ -25,6 +25,8 @@ Playwright는 자신이 시작한 서버만 실행 종료 시 정리한다.
 
 ## 검증 범위
 
+- [관리자 키보드 편집](plans/2026-11-04-admin-keyboard-edit-focus.md)은 상품·매장·회원의 Enter/Space 진입·현재 이름 입력/다음 Tab·1280/390px 가시성과 현재 draft/auth/account/경로 소유를 확인한다. 포인터·비활성 script·반복/다른 행/취소 재진입, 보류 조회 뒤 Tab 이탈/초안 보존을 구분하며 업무 쓰기 없이 폼 연결을 검사한다. 같은 하네스의 실제 두 DB 대조와 fixture 경합은 별도다.
+
 - [R06 취향 검색 문구](plans/2026-11-04-owned-search-phrases-ui.md)는 별도 opt-in·본인 POST/guest 기본 링크·엄격한 typed wire와 exact pair 적용을 확인한다.0/소수 표기·원자 태그·unknown/empty/conflict·400/401/409/503/UNAVAILABLE·기존 입력/URL 보존·명시 재요청과 늦은 me/POST·계정/ABA·실패 인증 쓰기·1280/390px 키보드를 검사한다. 자동 검색/조건 약화나 상품 수 추정 없이 실제 상품 GET·빈 결과/초기화를 연결하며 fixture와 실제 세 서버 인수는 구분한다.
 
 - [F11 데모 주문 상세](plans/2026-11-04-demo-order-detail.md)는 Profile/Admin 링크·단건/상태 재조회와 현재 me/세션 query·view 수명,401/403/404/503·명시 복구·ID/소유 불일치·역할 회수·다른 계정/ABA·불확실 인증 쓰기를 검사한다. snapshot0/null/단가·금액 출처·삭제 이력/미확인 상태를 현재 상품으로 재계산하지 않으며 cached/offline/지연 응답·1280/390px 전체 이름/키보드·저장 거부를 확인한다. 실제 자체 시연 주문→기존 관리자 완료/상품 삭제→현재 상태/이력→타인·만료/재로그인→삭제404는 fixture와 별도다.
