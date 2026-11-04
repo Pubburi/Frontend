@@ -19,6 +19,11 @@ function mockTextResponse(body, ok, status, statusText) {
 }
 
 describe('api client', () => {
+  it('derives search phrases only through credentialed self POST with separate optins/limit and no preferences/owner snapshot', async () => {
+    mockResponse({ data: { source: 'UNAVAILABLE', result: null }, message: 'ok', error: null })
+    await expect(api.ownSearchPhrases(['tasteTags', 'targetAbvPercent'])).resolves.toEqual({ source: 'UNAVAILABLE', result: null })
+    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/search-phrases', expect.objectContaining({ credentials: 'include', method: 'POST', body: JSON.stringify({ searchOptInFields: ['tasteTags', 'targetAbvPercent'], limit: 5 }) }))
+  })
   it('reads one order through the credentialed owner-protected path without a body or actor selector', async () => {
     const order = { oId: 901, userId: 'member', totalPrice: 0, priceBasis: 'ORDER_SNAPSHOT', details: [] }
     mockResponse({ data: order, message: 'ok', error: null })

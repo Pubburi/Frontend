@@ -25,6 +25,8 @@ Playwright는 자신이 시작한 서버만 실행 종료 시 정리한다.
 
 ## 검증 범위
 
+- [R06 취향 검색 문구](plans/2026-11-04-owned-search-phrases-ui.md)는 별도 opt-in·본인 POST/guest 기본 링크·엄격한 typed wire와 exact pair 적용을 확인한다.0/소수 표기·원자 태그·unknown/empty/conflict·400/401/409/503/UNAVAILABLE·기존 입력/URL 보존·명시 재요청과 늦은 me/POST·계정/ABA·실패 인증 쓰기·1280/390px 키보드를 검사한다. 자동 검색/조건 약화나 상품 수 추정 없이 실제 상품 GET·빈 결과/초기화를 연결하며 fixture와 실제 세 서버 인수는 구분한다.
+
 - [F11 데모 주문 상세](plans/2026-11-04-demo-order-detail.md)는 Profile/Admin 링크·단건/상태 재조회와 현재 me/세션 query·view 수명,401/403/404/503·명시 복구·ID/소유 불일치·역할 회수·다른 계정/ABA·불확실 인증 쓰기를 검사한다. snapshot0/null/단가·금액 출처·삭제 이력/미확인 상태를 현재 상품으로 재계산하지 않으며 cached/offline/지연 응답·1280/390px 전체 이름/키보드·저장 거부를 확인한다. 실제 자체 시연 주문→기존 관리자 완료/상품 삭제→현재 상태/이력→타인·만료/재로그인→삭제404는 fixture와 별도다.
 
 - [F11 공개 매장 상세 증분](plans/2026-11-04-market-detail.md)은 홈 링크/직접 주소·현재 단건 GET·새로고침/Back, 엄격한 Java int 주소 무조회·응답 ID 불일치·좌표0/정밀도/미확인과 사진 미제공을 구분한다. 현재 query의 pending/paused/404/403/503·명시 재시도/중복 차단·캐시 재진입/늦은 이전 ID·포커스와1280/390px 전체 이름·키보드/원문 보관을 확인한다. fixture 제어와 별도 실제 GET 인수, 매장 상세 제공과 전체 F11/FE03/C04 완료는 구분한다.

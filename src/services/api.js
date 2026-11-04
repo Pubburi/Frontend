@@ -99,6 +99,8 @@ export const api = {
   updateOwnPassword: (payload) => request('/users/me/password', { method: 'PUT', body: JSON.stringify({ currentPassword: payload.currentPassword, newPassword: payload.newPassword }) }),
   /** @returns {Promise<import('../types').ExplicitPreferences>} */
   ownPreferences: () => request('/users/me/preferences'),
+  /** @param {import('../searchPhrases').SearchOptIn[]} searchOptInFields @returns {Promise<unknown>} */
+  ownSearchPhrases: (searchOptInFields) => request('/users/me/search-phrases', { method: 'POST', body: JSON.stringify({ searchOptInFields, limit: 5 }) }),
   /** @param {import('../types').ExplicitPreferences} payload @returns {Promise<import('../types').ExplicitPreferences>} */
   replaceOwnPreferences: (payload) => request('/users/me/preferences', { method: 'PUT', body: JSON.stringify(payload) }),
   /** @param {{ page?: number, size?: number }} params @returns {Promise<import('../types').Page<import('../types').Product>>} */

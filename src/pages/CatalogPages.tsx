@@ -14,6 +14,7 @@ import { useCart } from '../state/cart'
 import { useUi } from '../state/ui'
 import { ProductFavorite } from '../components/FavoriteAction'
 import { SearchTagFields } from '../components/SearchTagFields'
+import { SearchPhrases } from '../components/SearchPhrases'
 import { productTagFields, buildProductTags, normalizeProductTag, validateProductTags, type ProductTagKey, type ProductTagIssues } from '../productTags'
 import { ProductFeatureDetails } from '../components/ProductFeatureDetails'
 import { CompareAction } from '../components/CompareAction'
@@ -288,6 +289,13 @@ export function ProductsPage() {
     )
     setSearch({ sort: 'popular', page: '1' })
   }
+  function applySearchPhrase(url: string) {
+    // Same-URL navigation does not run the URL-change effect. This explicit
+    // current-tab action also replaces unsent drafts without changing the wire.
+    const query = new URLSearchParams(url.split('?')[1] ?? '')
+    setForm(parseProductQuery({ ...Object.fromEntries(query), tasteTag: query.getAll('tasteTag'), aromaTag: query.getAll('aromaTag') }, categories.map((category) => category.label)))
+    setRangeErrors({}); setTagIssues({})
+  }
   return (
     <section className="view products-view">
       <div className="shop-intro">
@@ -407,6 +415,7 @@ export function ProductsPage() {
           </button>
         </div>
       )}
+      <SearchPhrases onApply={applySearchPhrase} />
       <section ref={results} className="product-results" aria-label="상품 검색 결과"
         aria-busy={products.isFetching} tabIndex={-1} data-catalog-results="true">
       {invalidUrlFilters ? (
