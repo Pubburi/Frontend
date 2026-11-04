@@ -76,106 +76,33 @@ API에는 제출 시점의 상품·수량·요청을 올바르게 보냈지만, 
 
 [상품 행·전송 수량·폼 소유 처리](src/state/cart.ts)
 
-행을 새로 담을 때 소유를 만들고 삭제할 때 끝낸다. 토큰은 기존 저장 배열이나 API에 추가하지 않는다.
-
-```ts
-const lineOwners = new Map(restored.map((item) => [item.product.id, Symbol()]))
-```
-
-```ts
-add(product, quantity = 1) {
-  const amount = normalizeQuantity(quantity)
-  const items = get().items
-  if (!items.some((item) => item.product.id === product.id))
-    lineOwners.set(product.id, Symbol())
-  save(
-    items.some((item) => item.product.id === product.id)
-      ? items.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: Math.min(99, item.quantity + amount) }
-            : item,
-        )
-      : [...items, { product, quantity: amount }],
-  )
-},
-```
-
-```ts
-remove(id) {
-  lineOwners.delete(id)
-  save(get().items.filter((item) => item.product.id !== id))
-},
-```
-
 전송 후에는 같은 행의 제출량만 정리하고 다음 폼은 남긴다.
 
 ```ts
-async checkout(userId) {
-  const { items, orderForm } = get()
-  const submitted = new Map(
-    items.map((item) => [
-      item.product.id,
-      { quantity: item.quantity, owner: lineOwners.get(item.product.id) },
-    ]),
-  )
-  const order = await api.createOrder({
-    userId,
-    orderType: orderForm.orderType,
-    orderTable: orderForm.orderTable.trim(),
-    details: items.map((item) => ({
-      productId: item.product.id,
-      quantity: item.quantity,
-    })),
-  })
-  save(
-    get().items.flatMap((item) => {
-      const original = submitted.get(item.product.id)
-      if (!original || lineOwners.get(item.product.id) !== original.owner)
-        return [item]
-      const quantity = Math.max(0, item.quantity - original.quantity)
-      if (quantity > 0) return [{ ...item, quantity }]
-      lineOwners.delete(item.product.id)
-      return []
-    }),
-  )
-  if (get().orderForm === orderForm)
-    set({ orderForm: { ...orderForm, orderTable: '' } })
-  return order
-},
+save(
+  get().items.flatMap((item) => {
+    const original = submitted.get(item.product.id)
+    if (!original || lineOwners.get(item.product.id) !== original.owner)
+      return [item]
+    const quantity = Math.max(0, item.quantity - original.quantity)
+    if (quantity > 0) return [{ ...item, quantity }]
+    lineOwners.delete(item.product.id)
+    return []
+  }),
+)
+if (get().orderForm === orderForm)
+  set({ orderForm: { ...orderForm, orderTable: '' } })
 ```
 
 [원래 화면의 성공 후 이동 경계](src/pages/AccountPages.tsx)
 
 ```tsx
-const location = useLocation()
-const currentLocation = useRef(location.key)
-currentLocation.current = location.key
-const mounted = useRef(false)
-useEffect(() => {
-  mounted.current = true
-  return () => { mounted.current = false }
-}, [])
-async function checkout(event: FormEvent) {
-  event.preventDefault()
-  if (!session.data) {
-    ui.error(new Error('주문하려면 먼저 로그인해 주세요.'))
-    navigate('/account?redirect=/cart')
-    return
-  }
-  const userId = session.data.id
-  const submittedLocation = location.key
-  const result = await ui.run(
-    'checkout',
-    () => cart.checkout(userId),
-    '주문이 접수되었습니다.',
-  )
-  if (result.ok) {
-    // The order succeeded. A later profile/list refresh must not turn it into a failed order.
-    void client.invalidateQueries({ queryKey: ['account', userId] })
-    void client.invalidateQueries({ queryKey: ['catalog', 'popular'] })
-    if (mounted.current && currentLocation.current === submittedLocation)
-      navigate('/profile')
-  }
+if (result.ok) {
+  // The order succeeded. A later profile/list refresh must not turn it into a failed order.
+  void client.invalidateQueries({ queryKey: ['account', userId] })
+  void client.invalidateQueries({ queryKey: ['catalog', 'popular'] })
+  if (mounted.current && currentLocation.current === submittedLocation)
+    navigate('/profile')
 }
 ```
 
@@ -208,23 +135,25 @@ TanStack Query에서 검색 조건 전체·상품 ID·후기 페이지를 query 
 
 ```tsx
 const products = useQuery<Page<Product>>({
-    queryKey: ['catalog', 'products', filters],
-    queryFn: () => api.products(filters),
-  })
+  queryKey: ['catalog', 'products', filters],
+  queryFn: () => api.products(filters),
+  enabled: !invalidUrlFilters,
+  refetchOnReconnect: (query) => !(query.state.error instanceof ApiClientError && query.state.error.status === 400),
+})
 ```
 
 상세와 후기에도 현재 상품·페이지를 key에 포함한다.
 
 ```tsx
 const product = useQuery<Product>({
-    queryKey: ['catalog', 'product', id],
-    queryFn: () => api.product(id),
-  })
-  const comments = useQuery<Page<Review>>({
-    queryKey: ['reviews', id, page],
-    queryFn: () => api.comments(id, { page, size: 10 }),
-    enabled: product.isSuccess,
-  })
+  queryKey: ['catalog', 'product', id],
+  queryFn: () => api.product(id),
+})
+const comments = useQuery<Page<Review>>({
+  queryKey: ['reviews', id, page],
+  queryFn: () => api.comments(id, { page, size: 10 }),
+  enabled: product.isSuccess,
+})
 ```
 
 ### 3. 삭제 처리 중 활성 버튼이 없어도 확인창의 키보드 포커스 유지하기
@@ -254,56 +183,20 @@ const product = useQuery<Product>({
 [공통 확인창의 포커스·listener 수명](https://github.com/Pubburi/Frontend/blob/main/src/components/ui.tsx)
 
 ```tsx
-  const dialog = useRef<HTMLElement>(null)
-  const titleId = useId()
-  const current = useRef({ pending, onCancel })
-  current.current = { pending, onCancel }
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    dialog.current?.focus()
-    function handleKeyDown(event: KeyboardEvent) {
-      const root = dialog.current
-      if (!root) return
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        event.stopPropagation()
-        if (!current.current.pending) {
-          current.current.onCancel()
-        }
-        return
-      }
-      if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey)
-        return
-      const buttons = Array.from(
-        root.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
-      )
-      const first = buttons[0]
-      const last = buttons.at(-1)
-      const focused = document.activeElement
-      if (!first || !last) {
-        event.preventDefault()
-        root.focus()
-      } else if (!root.contains(focused) || focused === root) {
-        event.preventDefault()
-        const target = event.shiftKey ? last : first
-        target.focus()
-      } else if (event.shiftKey && focused === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && focused === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown, true)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true)
-      if (previous?.isConnected) previous.focus()
-    }
-  }, [])
-  useEffect(() => {
-    if (pending) dialog.current?.focus()
-  }, [pending])
+if (!first || !last) {
+  event.preventDefault()
+  root.focus()
+} else if (!root.contains(focused) || focused === root) {
+  event.preventDefault()
+  const target = event.shiftKey ? last : first
+  target.focus()
+} else if (event.shiftKey && focused === first) {
+  event.preventDefault()
+  last.focus()
+} else if (!event.shiftKey && focused === last) {
+  event.preventDefault()
+  first.focus()
+}
 ```
 
 ### 4. 인증 캐시 초기화와 진행 중인 취향 쓰기의 수명 분리
@@ -333,91 +226,29 @@ const product = useQuery<Product>({
 [미완료 요청 소유](https://github.com/Pubburi/Frontend/blob/main/src/state/preferenceWrites.ts) · [새 GET의 시작 조건과 세션·초안 검사](https://github.com/Pubburi/Frontend/blob/main/src/pages/PreferencesPage.tsx) · [인증 캐시 초기화](https://github.com/Pubburi/Frontend/blob/main/src/pages/AccountPages.tsx)
 
 ```ts
-import { create } from 'zustand'
-
-interface PreferenceWrites {
-  owners: Map<string, symbol>
-  begin: (userId: string) => symbol | null
-  finish: (userId: string, owner: symbol) => void
-}
-// HTTP writes may still finish after logout clears the account query/mutation cache.
-// Keep only transient ownership here; never store preferences or credentials.
-export const usePreferenceWrites = create<PreferenceWrites>((set, get) => ({
-  owners: new Map(),
-  begin(userId) {
-    if (get().owners.has(userId)) return null
-    const owner = Symbol()
-    set({ owners: new Map(get().owners).set(userId, owner) })
-    return owner
-  },
-  finish(userId, owner) {
-    if (get().owners.get(userId) !== owner) return
-    const next = new Map(get().owners)
-    next.delete(userId)
-    set({ owners: next })
-  },
-}))
+begin(userId) {
+  if (get().owners.has(userId)) return null
+  const owner = Symbol()
+  set({ owners: new Map(get().owners).set(userId, owner) })
+  return owner
+},
+finish(userId, owner) {
+  if (get().owners.get(userId) !== owner) return
+  const next = new Map(get().owners)
+  next.delete(userId)
+  set({ owners: next })
+},
 ```
 
 ```tsx
-  const pending = usePreferenceWrites((state) => state.owners.has(user.id))
-  const [initial, setInitial] = useState<ExplicitPreferences | null>(null)
-  const query = useQuery({
-    queryKey: preferenceQueryKey(user.id),
-    queryFn: api.ownPreferences,
-    enabled: !initial && !pending,
-    refetchOnReconnect: false,
-  })
-  useEffect(() => {
-    if (!initial && !pending && query.isSuccess && !query.isFetching)
-      setInitial(query.data)
-  }, [initial, pending, query.data, query.isSuccess, query.isFetching])
-```
-
-```tsx
-  const sameSession = () => client.getQueryData(['session']) === user
-  async function save(surveyStatus: SurveyStatus) {
-    const submitted = draft
-    let payload: ExplicitPreferences
-    try {
-      payload =
-        surveyStatus === 'COMPLETED'
-          ? buildPreferencePayload(submitted)
-          : emptyPreferences(surveyStatus)
-    } catch (error) {
-      ui.error(error)
-      return
-    }
-    const owner = usePreferenceWrites.getState().begin(user.id)
-    if (!owner) return
-    ui.clear()
-    try {
-      const saved = await api.replaceOwnPreferences(payload)
-      if (!sameSession()) return
-      client.setQueryData(preferenceQueryKey(user.id), saved)
-      if (!mounted.current) return
-      setDraft((current) =>
-        current === submitted ? preferencesToDraft(saved) : current,
-      )
-      setConfirm(null)
-      ui.status(
-        surveyStatus === 'COMPLETED'
-          ? '취향이 저장되었습니다.'
-          : surveyStatus === 'SKIPPED'
-            ? '설문을 건너뛰었습니다.'
-            : '취향 입력을 초기화했습니다.',
-      )
-    } catch (error) {
-      if (!sameSession()) return
-      if (error instanceof ApiClientError && error.status === 401) {
-        client.removeQueries({ queryKey: ['account', user.id] })
-        client.setQueryData(['session'], null)
-      }
-      if (mounted.current) ui.error(error)
-    } finally {
-      usePreferenceWrites.getState().finish(user.id, owner)
-    }
-  }
+const pending = usePreferenceWrites((state) => state.owners.has(user.id))
+const [initial, setInitial] = useState<ExplicitPreferences | null>(null)
+const query = useQuery({
+  queryKey: preferenceQueryKey(user.id),
+  queryFn: api.ownPreferences,
+  enabled: !initial && !pending,
+  refetchOnReconnect: false,
+})
 ```
 
 <a id="technology"></a>
