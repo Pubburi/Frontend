@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import { ApiClientError } from '../services/api'
-import { searchPhrasePrivacy } from './searchPhrasePrivacy'
+import { searchPhrasePrivacy } from './authReadPrivacy'
 
 describe('search phrase unauthorized request ownership', () => {
   it('retains the actual auth/query401 across manual data but scopes it to one view and optin revision', async () => {

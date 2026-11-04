@@ -1,52 +1,27 @@
 # Frontend working guide
 
-- Current stack is Vite, React, TypeScript, React Router, TanStack Query and Zustand. All customer/admin routes use React; do not reintroduce a Vue bridge. Preserve the feature-parity checklist in docs/plans/2026-10-31-react-migration.md.
-- Keep API calls in src/services/api.js with credentials: include and existing /api contracts.
-- Keep server/session data in TanStack Query with route parameters and account ownership in keys. Keep the raw pubburi-cart storage format in Zustand. Clear private query data on login/logout and preserve lazy admin loading and product URL state.
-- Keep local style.css primitives, ink/forest/gold/cream palette and WebP images.
-- Root validation: npm run check (including strict TypeScript, API/state unit tests and production Chromium flows). Image tooling: npm run optimize:images.
-- Do not commit node_modules/, dist/, credentials or .env. Update docs with changes.
-- Use PRs and Conventional Commits. Mobile implementation is separately owned.
+## Product and code
 
-## Commit messages and units
+- Use Vite·React·TypeScript·React Router·TanStack Query·Zustand. Customer/admin routes are React; do not add a Vue bridge.
+- Keep API calls in `src/services/api.js`, `/api`/ApiResponse contracts and `credentials: include`. Backend owns business/API/DB rules; Recommendation owns models/data. Do not duplicate their implementation docs.
+- Keep session/server data in Query with current account/route ownership. Preserve auth/HTTP lifetimes, latest requests, draft/quantity ownership, lazy admin loading, raw `pubburi-cart` storage, keyboard access and the existing CSS/WebP assets.
+- Current scope/status and deadlines live in [ROADMAP](docs/ROADMAP.md): all 20 MVP features by 2026-12-31 KST; extra improvements from 2027-01-01 after MVP; final 2027-02-05; no implementation/commits/merges from 2027-02-06. Mandatory permission/error/data/keyboard acceptance is part of each MVP feature.
+- Prioritize remaining mandatory work and acceptance defects. AWS·mobile implementation·real payment/shipping·chatbots require separate scope/authorization. Do not invent product results, contribution or performance.
 
-- Follow CONTRIBUTING.md. Use an English Conventional Commit type (`feat`, `fix`, `refactor`, `perf`, `test`, `ci`, `build`, `docs`, `chore`, `revert`) with an optional scope, then a Korean subject. Write any necessary body in Korean; keep identifiers and product names in their original form.
-- Keep each commit to one reviewable purpose, including its required implementation, tests and docs. Split unrelated features, refactors or dependency updates into separate commits/PRs. Every commit should remain buildable and verifiable; avoid WIP, empty commits and artificial file-by-file splitting.
-- Keep Squash merge. Use separate coherent PRs for independent units that must remain distinct on main. PR titles and the final squash title/body must be Korean Conventional Commits; explicitly check the final merge message.
-- Apply this rule to new work without rewriting already merged history.
+## Work and review
 
-## Repository responsibilities
+- Follow [CONTRIBUTING](CONTRIBUTING.md), [TESTING](docs/TESTING.md) and the coordinator's file/Git ownership. Use one writer per repo; never overwrite user work or take an active lease. Shared runtime and Notion belong to the coordinator. Common ownership rules are in [Backend AGENTS](https://github.com/Pubburi/Backend/blob/main/AGENTS.md).
+- Keep `node_modules`/`dist`/credentials/`.env` and `.pubburi` out of Git. Preserve private context; never print secrets or private planning URLs.
+- `npm run check` is required. Keep required `frontend-ci`, completed latest-head Codex review, no unresolved findings, Korean Conventional squash, main CI and only fully merged branch cleanup. Pending/failed/quota-limited review is not approval. Review correctness/ownership/API issues in Korean; do not weaken protection.
+- Work in this same scheduled chat (four hours, gpt-6.1-sol/ultra); do not create duplicate chats/schedules. Coordinator manages shared integration and merge gates.
 
-- Frontend owns web UI, routing, client state, API consumption, browser tests, static assets, and frontend documentation and PRs.
-- Backend owns business APIs, database changes, authentication/authorization and search indexing. Coordinate through its API contracts and search documents.
-- Recommendation owns data acquisition/cleaning, feature processing, model training/evaluation and their detailed documentation. Use its [data and model plan](https://github.com/Pubburi/Recommendation/blob/main/docs/DATA-AND-MODEL-PLAN.md) as the canonical source.
-- Shared contracts and links to other repositories are allowed. Do not duplicate another area's detailed plans in Frontend or mix Backend/Recommendation implementation into a Frontend PR. Put each area's changes and verification in its owning repository and link related PRs when needed.
+## Documentation
 
-## Delivery and automation
+- Maintain existing current docs only when behavior, contracts, commands or status change. Do not create dated run logs, repeated plans/measurements/audit docs or append a new Notion entry for routine execution. Put change-specific rationale/results in the PR; Git preserves removed history. One ignored handoff is enough when needed.
+- Do not add/edit comments, body, assignees or labels on closed/merged PRs. Keep necessary follow-up work in GitHub Projects/Discussions and Notion to-do/done items; do not create unused records.
+- Keep README's four real cases and source evidence. Replace only for a stronger independent problem; do not force a per-run comparison/update or copy tests/CI totals into README. Historical proof may link to its PR or immutable Git commit.
+- Keep source provenance. Do not restore unrelated-project/developer sections, responsibility tables, planning-link collections or mobile narration in README. Use verified real screens only.
 
-- Follow the approved planning referenced by this chat/private context and this Frontend guide. The canonical frontend plan is docs/plans/2026-10-31-react-migration.md; its current schedule and feature acceptance are detailed in docs/plans/2026-11-03-mvp-deadline.md. Backend docs/DELIVERY-PLAN.md is a reference for shared API integration, not the canonical frontend plan.
-- All R01–R08 and F01–F12 are required. Complete implementation, customer/admin UI and API connections, and mandatory real-server MVP acceptance for all 20 by 2026-12-31 Asia/Seoul. P1/P2 determines order only; do not defer required features or basic keyboard, permission, error and data-consistency checks to January. React code migration completion is separate from FE03/C04 and the 20-feature acceptance status.
-- Keep the 2026-11-22 FE03/DB transition target and the 2026-12-13 P1 connection target. Complete P2 connections and all-20 mandatory MVP acceptance during 2026-12-14–31. Start additional accessibility/rendering improvements, optimization and extended validation from 2027-01-01; reserve 2027-01-25–02-05 for final verification, fixes, documentation and handoff. Final deadline remains 2027-02-05 inclusive Asia/Seoul; no new implementation, commits or merges from 2027-02-06 00:00.
-- Before MVP acceptance, prioritize remaining mandatory features, their prerequisites and defects that block implementation or acceptance. Do not delay feature delivery for independent case-study discovery or optional improvements. C05 measured optimization requires completion of the all-20 MVP first. Keep chatbot, mobile implementation, real payments/shipping and AWS resource creation outside this work. AWS requires a later user instruction.
-- Resume this same chat every four hours with gpt-6.1-sol and ultra reasoning. Read latest planning, docs/plans, Git, PR reviews and CI. Prefer finishing verifiable product work over repeated audits; do not create duplicate chats or schedules.
-- Check active task ownership and acquire this repo's ignored .pubburi/automation-lease using Backend/scripts/automation_lease.py. Never steal a live lease or overwrite user work. Preserve .pubburi/ and private context; never commit or print their sensitive contents.
-- Automated PRs require successful required CI, completed Codex review of the latest head, relevant manual validation and no unresolved findings before squash merge. Pending/failed/quota-limited review is not approval. Request review and reply to fixed findings in Korean with commit and validation evidence before native resolution; avoid duplicate replies.
-- Confirm merge and main CI, ff-only sync and remove only fully merged branches without extra work. Do not relax existing protection.
-- Record only observed completion and reproducible measurements. Keep private paths, credentials and private planning URLs out of new public evidence.
-- README describes current functionality. Do not add successor-project narration or invented results. Backend/Recommendation need no screenshot section; Frontend uses verified real screens only.
+## README 대표 사례 검토
 
-## Review guidelines
-
-- Write review findings in Korean. Focus on concrete correctness, ownership, data preservation and API compatibility issues introduced by the diff.
-- Do not treat future roadmap items as implemented or require out-of-scope product features in documentation/setup PRs.
-
-## Role agents, case studies and continuous improvement
-
-- Use coordinator + Backend/Frontend/Recommendation workers in this same chat on each scheduled run. See Backend/docs/AUTOMATION-PLAYBOOK.md (sibling checkout or GitHub main). No separate user chats or duplicate schedules.
-- Coordinator records atomic repository ownership and delegated files/Git owner. One writer per repo/file; no concurrent staging or branch changes. Workers stay inside their assigned repo. Coordinator owns shared API/ERD decisions, shared runtime integration, PR gates and the single Notion update. Internal worker coordination is allowed; messaging other user chats or external people is not.
-- Final README target is exactly four real, independently justified hiring-relevant problem-solving cases. Order: 문제 → 원인 → 해결 → 결과 → 대체안/회고 → 코드. Use substantial real code excerpts, displayed by default, and live source links.
-- Never invent past failures, personal contribution, model results or performance. Do not split one bootstrap/CI topic into filler cases. If evidence is insufficient, record the actual count and concrete acquisition tasks in docs/case-study-register.md and planning; fill the four only after implementation/verification.
-- On every run compare current cases with candidates from the work. Replace only when a genuinely stronger real problem-solving case is discovered for hiring reviewers, based on actual impact, state/async/data difficulty, cause evidence, alternatives, implementation contribution and reproducible outcomes. Replace stronger cases immediately, one or many; record why. No forced replacement; preserve cases when no better evidence exists. Do not select by novelty, code size, test totals or arbitrary scores.
-- Keep regression evidence, test counts/lists and CI aggregation in plans/PR/CI rather than README. Performance requires real comparable before/after measurements; correctness counts, audit reductions and CI time are not application performance.
-- Do not restore the README related-project/developer section, repository/responsibility or developer tables, planning/collaboration/provenance link collections, mobile-role narration or their ToC/anchors. Preserve source provenance documents themselves. Backend/Recommendation need no screenshots; Frontend uses verified real completed screens only.
-- Until all-20 MVP acceptance is complete, continue remaining mandatory implementation, connection and acceptance work; fix reproduced defects that affect that delivery first. Independent case-study discovery and optional improvements must not delay it. From 2027-01-01 after MVP acceptance, continue additional improvements and measured optimization until the final deadline. Coordinator adds deduplicated evidence-based tasks with owner, impact, priority and acceptance criteria. Do not stop at monitoring, expand commercial scope, invent issues or churn empty changes. Keep all existing CI/latest-review/manual-validation/merge/branch-cleanup and cost/account approval rules.
+대표 사례는 주기적으로 검토하며 **문제 → 원인 → 해결 → 결과 → 대체안/회고 → 코드** 순서를 유지한다. 실제 오류 개선·최적화의 원인/대안·전후 실측과 한계, 현재 핵심 코드로 설명할 수 있는 소재를 우선한다. 기존 사례보다 채용 관점에서 더 설득력 있는 근거를 확보했을 때만 해당 사례를 교체하고 나머지 내용/순서는 보존한다. 최신 작업·코드량·테스트/CI 수만으로 교체하거나 없는 성능/기여를 만들지 않는다. 코드 발췌는 기본으로 펼치고 현재 유효한 소스 링크를 붙인다. 비교는 계속하되 변경 없는 매회 유지 보고서는 만들지 않는다.

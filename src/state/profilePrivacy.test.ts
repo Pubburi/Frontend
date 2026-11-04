@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { onlineManager } from '@tanstack/react-query'
 import { createQueryClient } from '../queries'
 import { ApiClientError } from '../services/api'
-import { profilePrivacy } from './profilePrivacy'
+import { profilePrivacy } from './authReadPrivacy'
 
 const key = ['account', 'member', 'profile'] as const
 function deferred<T>() {

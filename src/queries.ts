@@ -1,7 +1,7 @@
 import { QueryClient, useQuery } from '@tanstack/react-query'
 import { api, ApiClientError } from './services/api'
 import type { User } from './types'
-import { profilePrivacy } from './state/profilePrivacy'
+import { profilePrivacy } from './state/authReadPrivacy'
 
 export const createQueryClient = () => {
   const client = new QueryClient({
