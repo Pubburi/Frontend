@@ -101,6 +101,8 @@ export const api = {
   ownPreferences: () => request('/users/me/preferences'),
   /** @param {import('../searchPhrases').SearchOptIn[]} searchOptInFields @returns {Promise<unknown>} */
   ownSearchPhrases: (searchOptInFields) => request('/users/me/search-phrases', { method: 'POST', body: JSON.stringify({ searchOptInFields, limit: 5 }) }),
+  /** @returns {Promise<unknown>} */
+  ownContentRecommendations: () => request('/users/me/recommendations/content', { method: 'POST', cache: 'no-store', body: JSON.stringify({ limit: 4 }) }),
   /** @param {import('../types').ExplicitPreferences} payload @returns {Promise<import('../types').ExplicitPreferences>} */
   replaceOwnPreferences: (payload) => request('/users/me/preferences', { method: 'PUT', body: JSON.stringify(payload) }),
   /** @param {{ page?: number, size?: number }} params @returns {Promise<import('../types').Page<import('../types').Product>>} */
