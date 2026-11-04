@@ -82,10 +82,10 @@ test('로딩 중 Shift+Tab으로 이동한 키보드 포커스를 응답이 되�
     await nextButton(page).focus(); await nextButton(page).press('Enter')
     await expect.poll(gate.started).toBe(true); await expect(results(page)).toBeFocused()
     await page.keyboard.press('Shift+Tab')
-    const reset = page.getByRole('button', { name: '전체 해제', exact: true })
-    await expect(reset).toBeFocused()
+    const previous = page.getByRole('region', { name: '취향 조건으로 검색', exact: true }).getByRole('link', { name: '전체 상품 보기', exact: true })
+    await expect(previous).toBeFocused()
     gate.release(); await expect(page.locator('.product-card')).toHaveCount(2)
-    await expect(reset).toBeFocused()
+    await expect(previous).toBeFocused()
   } finally { gate.release() }
 })
 
