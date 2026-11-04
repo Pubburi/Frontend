@@ -15,13 +15,15 @@ npm run check
 ```
 
 `npm run check`는 저장소 검사 → locked 설치 → audit → 이미지 도구 → strict TypeScript → Vitest →
-`/api` 기준 프로덕션 빌드 → Chromium 스모크를 순서대로 실행한다.
-독립 실행은 `npm run typecheck`, `npm run test`, `VITE_API_BASE_URL=/api npm run build`, `npm run test:browser`다.
+`/api` 기준 프로덕션 빌드 → API 격리 guard negative 계약 → Chromium 스모크를 순서대로 실행한다.
+독립 실행은 `npm run typecheck`, `npm run test`, `VITE_API_BASE_URL=/api npm run build`, `npm run test:browser:guard`, `npm run test:browser`다.
 Linux CI는 `npx playwright install --with-deps chromium`으로 시스템 의존성도 설치한다.
 
-preview는 127.0.0.1:4173에서 strict port로 실행하며 기존 서버를 재사용하지 않는다. 독립 checkout은 유효한 숫자 `PLAYWRIGHT_PORT`로 전용 loopback 포트를 지정할 수 있으며 CI 기본값은4173이다.
-해당 포트를 사용 중인 사용자 프로세스를 종료하지 말고 먼저 충돌 원인을 확인한다.
-Playwright는 자신이 시작한 서버만 실행 종료 시 정리한다.
+`npm run test:browser`의 Node runner가 preview와 Playwright 자식을 소유한다. 기본 preview는 127.0.0.1의 동적 포트이며 `PLAYWRIGHT_PORT`로 비어 있는 전용 검사 포트를 지정할 수 있다. 5173/9987/8000은 개발 서비스용으로 거부하고, 지정 포트 충돌은 다른 포트로 바꾸거나 기존 서버를 재사용하지 않고 실패한다. 사용자 프로세스는 종료하지 않는다.
+
+preview는 개발 Vite config/proxy를 상속하지 않는다. runner와 실제 서버의 임시 소유 marker를 확인한 뒤 Playwright에 loopback 주소를 전달하며 직접 `npx playwright test` 대신 npm 진입점을 사용한다. `/api`가 browser fixture에서 처리되지 않으면 서버 guard가 503을 반환하고 method/path만 기록한다. query·body·자격/헤더는 기록하지 않는다. 브라우저 testcase가 모두 통과해도 누락이 하나 이상이면 runner는 실패한다. 자식 실패/중단도 전파하고 runner가 만든 자식과 preview만 정리한다. 부모의 IPC 연결이 끊어져도 preview는 자신의 서버를 닫고 종료한다.
+
+`test:browser:guard`는 의도적으로 누락한 API 1건에서 실제 Chromium testcase 1개가 통과해도 runner가 exit 1인지 검사한다. 별도 소유 preview의 IPC를 직접 끊어 프로세스 exit 0과 소켓 종료도 확인한다. 같은 검사는 required `frontend-ci`에 포함한다. 별도 negative/수명 조건을 일반 browser 통과 수나 제품 실패/성능으로 더하지 않으며, 정상 실행의 `reports/browser-runner.json`과 negative의 `reports/browser-guard-probe.json`·브라우저 JSON/로그, 수명의 `reports/browser-guard-disconnect.json`을 구분한다. [격리 원인과 전후 근거](plans/2026-11-04-browser-fixture-isolation.md)를 따른다.
 
 ## 검증 범위
 
@@ -33,7 +35,7 @@ Playwright는 자신이 시작한 서버만 실행 종료 시 정리한다.
 
 - [F11 공개 매장 상세 증분](plans/2026-11-04-market-detail.md)은 홈 링크/직접 주소·현재 단건 GET·새로고침/Back, 엄격한 Java int 주소 무조회·응답 ID 불일치·좌표0/정밀도/미확인과 사진 미제공을 구분한다. 현재 query의 pending/paused/404/403/503·명시 재시도/중복 차단·캐시 재진입/늦은 이전 ID·포커스와1280/390px 전체 이름·키보드/원문 보관을 확인한다. fixture 제어와 별도 실제 GET 인수, 매장 상세 제공과 전체 F11/FE03/C04 완료는 구분한다.
 
-- [F09 본인 계정 설정](plans/2026-11-03-account-settings.md)은 현재 세션/경로 재확인·본인 이름/암호와 기존 취향 연결을 검사한다. 현재 암호의 짧은 기존 값·literal 공백/UTF-16/새 암호 확인·403 유효 세션·401 명시 복구, 승인/후속 읽기 실패·불확실 쓰기 무재전송을 구분한다. 다음 초안·비밀 입력 즉시/이탈 정리·같은 계정 HTTP/ABA·다른 계정/옛 응답·F05 권위 차폐와390px Tab/Enter/저장소 불기록을 확인한다. 허용100자 이름의 메뉴/프로필 전체 원문·문서/문자좌표 JSON도 검사하며 실제 legacy/JPA 세션 회수는 별도 인수다.
+- [F09 본인 계정 설정](plans/2026-11-03-account-settings.md)은 현재 세션/경로 재확인·본인 이름/암호와 기존 취향 연결을 검사한다. 현재 암호의 짧은 기존 값·literal 공백/UTF-16/새 암호 확인·403 유효 세션·401 명시 복구, 승인/후속 읽기 실패·불확실 쓰기 무재전송을 구분한다. 다음 초안·비밀 입력 즉시/이탈 정리·같은 계정 HTTP/ABA·다른 계정/옛 응답·F05 권위 차폐와390px Tab/Enter/저장소 불기록을 확인한다. 허용 100자 이름의 메뉴/프로필 전체 원문·문서/문자좌표 JSON도 검사하며 실제 legacy/JPA 세션 회수는 별도 인수다.
 
 - 검색 조건의 URL/API 전달, 상품 상세·실제 정적 이미지, 수량·장바구니 새로고침 보존과 비회원 주문 안내.
 - [F05 최근 본 상품](plans/2026-11-03-recent-products.md)은 비회원 ID/기기 시각20개·30일 복원과 회원 인증 세대 메모리/새로고침 초기화 정책을 구분한다. auth bootstrap/503/전환의 디스크·읽기·노출 차단, 계정/ABA·늦은 상세와 로그인·guest 삭제 거부 후 무재병합, malformed/과다/snapshot·만료/미래의 무조회, 저장 거부 메모리/안내·복구를 확인한다. 현재 Product7·개별404/403/503/ID불일치·명시 재시도·늦은 이전 결과·cached/offline과390px 삭제 포커스·F06/원문 장바구니를 보존하며 실제 서버 선택 검증과 fixture를 구분한다.
@@ -46,7 +48,7 @@ Playwright는 자신이 시작한 서버만 실행 종료 시 정리한다.
 - 같은 legacy API/80상품·불변 웹·응답 대체 없는 하네스의 실제 두 폭에서 BODY 손실2/2→0/2·별도 포인터/검색/이력 네 대조를 확인했다. 다음 Tab의 첫 상품 연결은 전후 모두 정상이었다. 후보만의 header 아래 region/첫 카드·outline·너비 진단은 전후 개선율/전체 보조기술 인수와 구분한다.
 - 비회원의 보호 경로 리다이렉트와 목적지 보존, 일반 회원의 관리자 화면/API 접근 차단.
 - 상품 API 실패 후 재시도 복구와 상품 404 직접 링크 안내.
-- 상세의 긴 ASCII 상품명은 원문 전체를 줄바꿈하고 그리드 밖으로 밀어내지 않는다. [FE09 계획](plans/2026-11-02-product-detail-long-name.md)의390px 동일 재현과320/720/721/980/1280px 허용100자명을 production Chromium에서 확인한다. 문서 너비뿐 아니라 제목 문자 조각의 실제 좌표·이미지 alt·가격·키보드 수량/담기·특성을 검사하고, 안전한 좌표 JSON을 보고서에 첨부한다. 실제 서버의 고정 한 조건/대조와 fixture 분모는 합산하지 않는다.
+- 상세의 긴 ASCII 상품명은 원문 전체를 줄바꿈하고 그리드 밖으로 밀어내지 않는다. [FE09 계획](plans/2026-11-02-product-detail-long-name.md)의390px 동일 재현과320/720/721/980/1280px 허용 100자명을 production Chromium에서 확인한다. 문서 너비뿐 아니라 제목 문자 조각의 실제 좌표·이미지 alt·가격·키보드 수량/담기·특성을 검사하고, 안전한 좌표 JSON을 보고서에 첨부한다. 실제 서버의 고정 한 조건/대조와 fixture 분모는 합산하지 않는다.
 - 응답을 보류한 검색 중 필터 해제·상세 재진입에서 최신 요청이 실행되고 늦은 이전 응답/오류가 현재 화면을 덮지 않는지 확인.
 - 가입·아이디 확인·로그인/로그아웃·계정 전환, 세션 조회 장애와 401의 구분·복귀 경로.
 - 마이페이지의 현재 본인 정보/주문 401은 캐시된 개인 내용을 숨기고 명시적 재로그인으로 복귀한다. 단독/동시 401·늦은 이전 계정/인증 세대·재연결 읽기 대기와 403/5xx의 일반 재시도를 구분하며, 장바구니/미제출 요청·390px Enter와 원래 query를 보존한다. 다른 페이지의 전역 인증 정책이나 PostgreSQL 이관 완료를 뜻하지 않는다.

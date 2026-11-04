@@ -8,4 +8,5 @@ npm run check:images
 npm run typecheck
 npm run test
 VITE_API_BASE_URL=/api npm run build
+npm run test:browser:guard
 npm run test:browser
