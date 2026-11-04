@@ -38,17 +38,39 @@ const first = (page, tab) => form(page).getByRole('textbox', { name: config[tab]
 const next = (page, tab) => form(page).getByRole(tab === 'products' ? 'combobox' : 'spinbutton', { name: config[tab].next, exact: true })
 const edit = (page, index = 0) => page.locator('.admin-table .table-row').filter({ has: page.getByRole('button', { name: '편집', exact: true }) }).nth(index).getByRole('button', { name: '편집', exact: true })
 async function open(page, tab) { await page.goto(`/admin?tab=${tab}&page=1`); await expect(edit(page)).toBeVisible() }
+async function longNameLayout(page, tab) {
+  return edit(page).locator('..').locator('..').evaluate((row) => {
+    const rect = (node) => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height } }
+    const name = row.querySelector(':scope > strong'), range = document.createRange(); range.selectNodeContents(name)
+    const style = getComputedStyle(name)
+    return { width: document.documentElement.scrollWidth, viewport: innerWidth, name: name.textContent, nameBox: rect(name), cells: [...row.children].filter((node) => node !== name).map(rect), fragments: [...range.getClientRects()].map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })), style: { textOverflow: style.textOverflow, overflow: style.overflow, visibility: style.visibility }, controls: [...row.querySelectorAll('button'), ...document.querySelectorAll('form.admin-form input,form.admin-form select,form.admin-form button')].map(rect) }
+  })
+}
+function expectLongNameFits(layout, expectedName, width) {
+  expect(layout.name).toBe(expectedName); expect(layout.width).toBeLessThanOrEqual(width)
+  expect(layout.style.textOverflow).not.toBe('ellipsis'); expect(['hidden', 'clip']).not.toContain(layout.style.overflow); expect(layout.style.visibility).toBe('visible')
+  for (const box of [...layout.fragments, ...layout.controls]) { expect(box.left).toBeGreaterThanOrEqual(-0.5); expect(box.right).toBeLessThanOrEqual(width + 0.5) }
+  for (const box of layout.controls) { expect(box.width).toBeGreaterThan(0); expect(box.height).toBeGreaterThan(0) }
+  for (const box of layout.fragments) {
+    expect(box.left).toBeGreaterThanOrEqual(layout.nameBox.left - 0.5); expect(box.right).toBeLessThanOrEqual(layout.nameBox.right + 0.5)
+    expect(layout.cells.some((cell) => Math.min(box.right, cell.right) - Math.max(box.left, cell.left) > 0.5 && Math.min(box.bottom, cell.bottom) - Math.max(box.top, cell.top) > 0.5)).toBe(false)
+  }
+}
 
 for (const tab of Object.keys(config)) {
   for (const width of [1280, 390]) {
     test(`keyboard entry ${tab} at${width} connects first current field and nextTab without submitting`, async ({ page }, info) => {
       await page.setViewportSize({ width, height: 900 }); await open(page, tab)
+      const listLayout = await longNameLayout(page, tab)
       await edit(page).focus(); await edit(page).press('Enter'); await expect(first(page, tab)).toHaveValue(config[tab].items[0].name); await expect(first(page, tab)).toBeFocused()
       const geometry = await first(page, tab).evaluate((node) => { const box = node.getBoundingClientRect(), header = document.querySelector('.topbar').getBoundingClientRect(); return { top: box.top, bottom: box.bottom, header: header.bottom, height: innerHeight, width: document.documentElement.scrollWidth } })
-      // The existing100-character table overflow is separately reproduced and
-      // tracked; this condition retains the full value and keyboard ownership.
       await info.attach('keyboard-form-geometry.json', { body: JSON.stringify(geometry), contentType: 'application/json' }); expect(geometry.top).toBeGreaterThanOrEqual(geometry.header); expect(geometry.bottom).toBeLessThanOrEqual(geometry.height)
       await page.keyboard.press('Tab'); await expect(next(page, tab)).toBeFocused()
+      const editorLayout = await longNameLayout(page, tab)
+      await info.attach('long-name-layout.json', { body: JSON.stringify({ list: listLayout, editor: editorLayout }), contentType: 'application/json' })
+      expectLongNameFits(listLayout, config[tab].items[0].name, width); expectLongNameFits(editorLayout, config[tab].items[0].name, width)
+      await first(page, tab).focus(); await page.keyboard.press('End'); await expect(first(page, tab)).toHaveValue(config[tab].items[0].name)
+      expect(await first(page, tab).evaluate((node) => node.selectionStart)).toBe(100)
     })
     test(`normal-name ${tab} input and document fit${width} with current keyboard focus`, async ({ page, fixture }, info) => {
       fixture.rows[tab].items = fixture.rows[tab].items.map((item, index) => ({ ...item, name: `편집 표본 ${index}` }))

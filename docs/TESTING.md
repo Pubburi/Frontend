@@ -27,6 +27,8 @@ preview는 개발 Vite config/proxy를 상속하지 않는다. runner와 실제 
 
 ## 검증 범위
 
+- [관리자 긴 이름 가로폭](plans/2026-11-04-admin-long-name-layout.md)은 상품·매장·회원의 허용100자 ASCII 이름을 1280/390px 목록·편집에서 검사한다. 문서폭과 전체 문자 조각·자기 셀/다른 열 경계, 입력/select/버튼 수용·이름/입력값·끝 문자 편집을 확인하며 ellipsis/clipping으로 숨기지 않는다. 기존 키보드·초안/인증 경계와 새 소유 행만 조회하는 실제 두 DB 관측은 구분한다.
+
 - [관리자 키보드 편집](plans/2026-11-04-admin-keyboard-edit-focus.md)은 상품·매장·회원의 Enter/Space 진입·현재 이름 입력/다음 Tab·1280/390px 가시성과 현재 draft/auth/account/경로 소유를 확인한다. 포인터·비활성 script·반복/다른 행/취소 재진입, 보류 조회 뒤 Tab 이탈/초안 보존을 구분하며 업무 쓰기 없이 폼 연결을 검사한다. 같은 하네스의 실제 두 DB 대조와 fixture 경합은 별도다.
 
 - [R06 취향 검색 문구](plans/2026-11-04-owned-search-phrases-ui.md)는 별도 opt-in·본인 POST/guest 기본 링크·엄격한 typed wire와 exact pair 적용을 확인한다.0/소수 표기·원자 태그·unknown/empty/conflict·400/401/409/503/UNAVAILABLE·기존 입력/URL 보존·명시 재요청과 늦은 me/POST·계정/ABA·실패 인증 쓰기·1280/390px 키보드를 검사한다. 자동 검색/조건 약화나 상품 수 추정 없이 실제 상품 GET·빈 결과/초기화를 연결하며 fixture와 실제 세 서버 인수는 구분한다.

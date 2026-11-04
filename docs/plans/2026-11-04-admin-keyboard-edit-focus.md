@@ -25,6 +25,8 @@ DOM 단위는 현재 revision/auth/account/location·ready·연결/disabled·Tab
 
 390px의 긴 이름은 입력 box도 확장시키므로 전체 가로 가시성은 아직 충족하지 않는다. 긴 값의 전체 원문·첫 focus/수직 가시성·다음 Tab 회귀는 유지하고, 정상 길이의 별도6조건에서 문서/입력 가로폭을 계속 검사한다. 폭 assert를 전체 통과나 단순 도구 오류로 바꾸지 않으며 허용100자 이름의 전체 폭 인수·전체 관리자 화면 완료를 주장하지 않는다. 포커스 PR의 최종 인계 뒤 깨끗한 main에서 이 폭 결함을 독립 단위로 보완한다.
 
+위 수치는 포커스 PR 당시의 미해결 상태다. 뒤의 [FE14 가로폭 보완](2026-11-04-admin-long-name-layout.md)은 현재 main에서 같은 문서폭과 추가 셀 겹침을 먼저 재현하고, 별도 변경·실제 두 DB/필수 검증으로 인수한다. 원 포커스 결과나 실패를 소급해 바꾸지 않는다.
+
 실제 하네스는 자체 ADMIN/회원과 기존 공개 상품·매장 GET, 관리자 회원 GET만 사용한다. 일반 인증·폼 열기/취소와 업무 쓰기를 구분하며 원본 상품/사용자 자료를 변경하지 않는다. 같은 불변 하네스·기준/후보 웹과 각 DB의 같은 Backend/Recommendation을 사용하고,3탭×2폭의 포커스 위반 및 별도 포인터/script 대조를 비교한다. fixture 경합과 실제 결과의 분모를 합산하지 않는다.
 
 최종 Node24.22.1 `npm run check`는 저장소·locked 설치·audit0·이미지·strict TypeScript·단위165개·production 빌드·Chromium381개를 통과해 exit0으로 끝났다. 새 단위7개와 browser24조건은 전체 수에 포함한다. 두 JUnit의 실제 testcase와 실패·오류·skip0/새 시각을 확인했다. 최종 source85/production100·테스트/설정16파일의 해시는 실제 실행용 불변 후보와 같다.
