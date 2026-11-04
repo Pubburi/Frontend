@@ -21,3 +21,7 @@
 - Do not add/edit comments, body, assignees or labels on closed/merged PRs. Keep necessary follow-up work in GitHub Projects/Discussions and Notion to-do/done items; do not create unused records.
 - Keep README's four real cases and source evidence. Replace only for a stronger independent problem; do not force a per-run comparison/update or copy tests/CI totals into README. Historical proof may link to its PR or immutable Git commit.
 - Keep source provenance. Do not restore unrelated-project/developer sections, responsibility tables, planning-link collections or mobile narration in README. Use verified real screens only.
+
+## README 대표 사례 검토
+
+대표 사례는 주기적으로 검토하며 **문제 → 원인 → 해결 → 결과 → 대체안/회고 → 코드** 순서를 유지한다. 실제 오류 개선·최적화의 원인/대안·전후 실측과 한계, 현재 핵심 코드로 설명할 수 있는 소재를 우선한다. 기존 사례보다 채용 관점에서 더 설득력 있는 근거를 확보했을 때만 해당 사례를 교체하고 나머지 내용/순서는 보존한다. 최신 작업·코드량·테스트/CI 수만으로 교체하거나 없는 성능/기여를 만들지 않는다. 코드 발췌는 기본으로 펼치고 현재 유효한 소스 링크를 붙인다. 비교는 계속하되 변경 없는 매회 유지 보고서는 만들지 않는다.
