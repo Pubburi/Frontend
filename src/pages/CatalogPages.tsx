@@ -32,6 +32,7 @@ import { buildProductQuery, parseProductQuery } from '../utils/productFilters'
 import { productRangeFields, validateProductRanges, type ProductRangeKey, type ProductRangeErrors } from '../productRanges'
 import { money, productImage } from '../utils/format'
 import type { Market, Page, Product, Review } from '../types'
+import { ContentRecommendations } from '../components/ContentRecommendations'
 
 export function HomePage() {
   const [active, setActive] = useState(0)
@@ -110,6 +111,7 @@ export function HomePage() {
           ))}
         </div>
       </section>
+      <ContentRecommendations />
       <section className="section-band">
         <div className="section-heading">
           <div>
