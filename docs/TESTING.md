@@ -1,12 +1,6 @@
-# 프론트 테스트와 CI
+# 프론트 검사
 
-React/TypeScript 앱의 타입·상태/계약 단위 검증과 실제 Chromium의 프로덕션 빌드 흐름 검증을 별도로 실행한다.
-브라우저 테스트는 `/api`에 직접 작성한 ApiResponse fixture를 제공하므로 Backend/DB를
-기동하지 않는다. 이는 프론트 화면·라우터·상태·응답 처리 검증이며 실제 서버 간 통합 E2E를 대신하지 않는다.
-
-## 실행
-
-Node 24에서 처음 한 번 브라우저를 준비한다.
+Node 24에서 실행한다. API fixture로 검증하는 production Chromium 흐름은 실제 Backend/DB 통합 인수와 별도다.
 
 ```bash
 npm ci
@@ -14,96 +8,41 @@ npx playwright install chromium
 npm run check
 ```
 
-`npm run check`는 저장소 검사 → locked 설치 → audit → 이미지 도구 → strict TypeScript → Vitest →
-`/api` 기준 프로덕션 빌드 → API 격리 guard negative 계약 → Chromium 스모크를 순서대로 실행한다.
-독립 실행은 `npm run typecheck`, `npm run test`, `VITE_API_BASE_URL=/api npm run build`, `npm run test:browser:guard`, `npm run test:browser`다.
-Linux CI는 `npx playwright install --with-deps chromium`으로 시스템 의존성도 설치한다.
+`check`는 저장소 검사 → locked 설치/audit → 이미지 도구 → strict TypeScript → Vitest → `/api` production 빌드 → guard 계약 → Chromium을 순서대로 실행한다. CI의 required `frontend-ci`도 같은 검증을 수행하며 Linux에서는 Chromium을 `--with-deps`로 설치한다. 실패 보고서·trace는 CI artifact로 보관한다.
 
-`npm run test:browser`의 Node runner가 preview와 Playwright 자식을 소유한다. 기본 preview는 127.0.0.1의 동적 포트이며 `PLAYWRIGHT_PORT`로 비어 있는 전용 검사 포트를 지정할 수 있다. 5173/9987/8000은 개발 서비스용으로 거부하고, 지정 포트 충돌은 다른 포트로 바꾸거나 기존 서버를 재사용하지 않고 실패한다. 사용자 프로세스는 종료하지 않는다.
+## 선택 실행과 자원 격리
 
-preview는 개발 Vite config/proxy를 상속하지 않는다. runner와 실제 서버의 임시 소유 marker를 확인한 뒤 Playwright에 loopback 주소를 전달하며 직접 `npx playwright test` 대신 npm 진입점을 사용한다. `/api`가 browser fixture에서 처리되지 않으면 서버 guard가 503을 반환하고 method/path만 기록한다. query·body·자격/헤더는 기록하지 않는다. 브라우저 testcase가 모두 통과해도 누락이 하나 이상이면 runner는 실패한다. 자식 실패/중단도 전파하고 runner가 만든 자식과 preview만 정리한다. 부모의 IPC 연결이 끊어져도 preview는 자신의 서버를 닫고 종료한다.
+```bash
+npm run typecheck
+npm run test
+VITE_API_BASE_URL=/api npm run build
+npm run test:browser:guard
+npm run test:browser -- tests/browser/admin-edit-focus.spec.js
+```
 
-`test:browser:guard`는 의도적으로 누락한 API 1건에서 실제 Chromium testcase 1개가 통과해도 runner가 exit 1인지 검사한다. 별도 소유 preview의 IPC를 직접 끊어 프로세스 exit 0과 소켓 종료도 확인한다. 같은 검사는 required `frontend-ci`에 포함한다. 별도 negative/수명 조건을 일반 browser 통과 수나 제품 실패/성능으로 더하지 않으며, 정상 실행의 `reports/browser-runner.json`과 negative의 `reports/browser-guard-probe.json`·브라우저 JSON/로그, 수명의 `reports/browser-guard-disconnect.json`을 구분한다. [격리 원인과 전후 근거](plans/2026-11-04-browser-fixture-isolation.md)를 따른다.
+- `test:browser` runner가 자신의 preview/Playwright 자식을 시작하고 종료한다. 기본은127.0.0.1 동적 포트다. `PLAYWRIGHT_PORT`는 비어 있는 전용 포트만 허용하며5173/9987/8000·기존 서버 재사용을 거부한다. 사용자 프로세스를 종료하지 않는다.
+- preview는 개발 config/proxy를 상속하지 않고 owner marker를 확인한다. fixture 밖 `/api`는503으로 거절하며 method/path만 기록한다. query·header/body·자격은 기록하지 않는다. 브라우저가 통과해도 누락이 있으면 runner는 실패한다.
+- `test:browser:guard`는 실제 browser pass에도 누락 API가 runner exit1을 만드는지, IPC 해제 때 소유 preview가 종료되는지 확인한다. negative와 정상 실행의 수를 합산하지 않는다.
+- 직접 `npx playwright test` 대신 npm 진입점을 사용한다. 같은 checkout의 설치·빌드·보고서 출력은 직렬로 실행한다. 실제 서버/DB는 조정자와 자원을 예약한다.
 
-## 검증 범위
+## 보존하는 회귀
 
-- [관리자 긴 이름 가로폭](plans/2026-11-04-admin-long-name-layout.md)은 상품·매장·회원의 허용100자 ASCII 이름을 1280/390px 목록·편집에서 검사한다. 문서폭과 전체 문자 조각·자기 셀/다른 열 경계, 입력/select/버튼 수용·이름/입력값·끝 문자 편집을 확인하며 ellipsis/clipping으로 숨기지 않는다. 기존 키보드·초안/인증 경계와 새 소유 행만 조회하는 실제 두 DB 관측은 구분한다.
+| 영역 | 핵심 계약 | 브라우저 소스 |
+|---|---|---|
+| 탐색·검색 | URL 적용/초안·페이지·Back·동일 URL 재적용·현재 요청, 범위0·리터럴 태그·Java 권위/400·무제약 fallback 금지 | [검색 문구](../tests/browser/search-phrases.spec.js), [범위](../tests/browser/product-ranges.spec.js), [태그](../tests/browser/product-tags.spec.js), [페이지 포커스](../tests/browser/catalog-pagination-focus.spec.js) |
+| 상세·찜·장바구니 | 현재 Product7/특성·null/[]/0, 별도 오류·출처, 수량/보관 거부·제출 이후 새 입력·찜 계정/페이지·키보드 | [기본 흐름](../tests/browser/smoke.spec.js) |
+| 계정·최근 상품 | 같은/다른 계정·ABA, 현재 query/location·cold401/paused·불확실 쓰기 차폐, 비밀 입력/72바이트·저장 거부·메모리 정책 | [계정 설정](../tests/browser/account-settings.spec.js), [최근 상품](../tests/browser/recent-products.spec.js) |
+| 상품 비교 | 반복 URL 최대4개·직접/잘못된 주소·현재 정보/개별 오류·빠른 Back·전체 해제·카트/기록 보존 | [비교](../tests/browser/product-comparison.spec.js) |
+| 매장·데모 주문 | strict Java int·현재 권위/소유·401/403/404·snapshot/삭제 이력·실제0/미확인·사진 미제공 | [매장](../tests/browser/market-detail.spec.js), [주문](../tests/browser/order-detail.spec.js) |
+| 관리자 | 탭/페이지·삭제/저장 이후 초안 수명·권한/오류·소수 입력·확인창 focus·허용100자 전체 이름과 조작 수용 | [편집](../tests/browser/admin-edit-focus.spec.js), [CRUD·경합](../tests/browser/smoke.spec.js) |
 
-- [관리자 키보드 편집](plans/2026-11-04-admin-keyboard-edit-focus.md)은 상품·매장·회원의 Enter/Space 진입·현재 이름 입력/다음 Tab·1280/390px 가시성과 현재 draft/auth/account/경로 소유를 확인한다. 포인터·비활성 script·반복/다른 행/취소 재진입, 보류 조회 뒤 Tab 이탈/초안 보존을 구분하며 업무 쓰기 없이 폼 연결을 검사한다. 같은 하네스의 실제 두 DB 대조와 fixture 경합은 별도다.
+## 핵심 데이터·권한 계약
 
-- [R06 취향 검색 문구](plans/2026-11-04-owned-search-phrases-ui.md)는 별도 opt-in·본인 POST/guest 기본 링크·엄격한 typed wire와 exact pair 적용을 확인한다.0/소수 표기·원자 태그·unknown/empty/conflict·400/401/409/503/UNAVAILABLE·기존 입력/URL 보존·명시 재요청과 늦은 me/POST·계정/ABA·실패 인증 쓰기·1280/390px 키보드를 검사한다. 자동 검색/조건 약화나 상품 수 추정 없이 실제 상품 GET·빈 결과/초기화를 연결하며 fixture와 실제 세 서버 인수는 구분한다.
+- 세션은 401만 비로그인으로 해석한다. pending/503·불확실 인증 쓰기는 권위 재확인 전 개인 조회·기록을 허용하지 않는다. 계정/query/경로와 HTTP 쓰기 수명은 캐시 초기화와 별도로 보존한다.
+- 검색은 현재 URL의 적용 조건과 미제출 초안을 구분한다. 가격·도수0, 반복 taste/aroma AND와 리터럴 쉼표/개행을 보존한다. 태그는 Java strip·ASCII 변환만 클라이언트가 수행하고 비ASCII 정규화/400은 제공자가 판단한다. 조건 실패에 무제약 검색으로 바꾸지 않는다.
+- F05는 비회원 ID/열람시각만 최대20개·30일 기기에 보관한다. 로그인 기록은 현재 인증 세대 메모리만 사용하고 새로고침/로그아웃/계정 전환에 초기화한다. 저장 거부 시 메모리로 동작하며 계정 ID·상품 snapshot을 디스크에 저장하지 않는다.
+- F06 비교는 `/compare`의 ordered 반복 productId 최대4개가 정본이다. 현재 Product7/특성을 다시 조회하고 잘못된/중복/과다 주소는 조회하지 않는다.
+- F09는 현재 암호를 literal NotBlank/max100으로 받고 새 암호만4–100 UTF-16·최대72 UTF-8바이트로 제한한다. 암호를 trim/변환하지 않는다. 성공 시 현재 세션 유지/다른 세션 회수,403 재입력과 불확실 결과의 권위 재확인을 구분한다.
+- 주문 금액은 서버 snapshot/추정/미확인을 구분하며 현재 상품 가격으로 과거 주문을 재계산하지 않는다. 삭제된 상품/회원의 이력과 실제0·null·검수[]를 보존한다. 매장 위치/주문 상태는 DEMO이며 사진·주소·재고·예약·결제를 만들어내지 않는다.
 
-- [F11 데모 주문 상세](plans/2026-11-04-demo-order-detail.md)는 Profile/Admin 링크·단건/상태 재조회와 현재 me/세션 query·view 수명,401/403/404/503·명시 복구·ID/소유 불일치·역할 회수·다른 계정/ABA·불확실 인증 쓰기를 검사한다. snapshot0/null/단가·금액 출처·삭제 이력/미확인 상태를 현재 상품으로 재계산하지 않으며 cached/offline/지연 응답·1280/390px 전체 이름/키보드·저장 거부를 확인한다. 실제 자체 시연 주문→기존 관리자 완료/상품 삭제→현재 상태/이력→타인·만료/재로그인→삭제404는 fixture와 별도다.
-
-- [F11 공개 매장 상세 증분](plans/2026-11-04-market-detail.md)은 홈 링크/직접 주소·현재 단건 GET·새로고침/Back, 엄격한 Java int 주소 무조회·응답 ID 불일치·좌표0/정밀도/미확인과 사진 미제공을 구분한다. 현재 query의 pending/paused/404/403/503·명시 재시도/중복 차단·캐시 재진입/늦은 이전 ID·포커스와1280/390px 전체 이름·키보드/원문 보관을 확인한다. fixture 제어와 별도 실제 GET 인수, 매장 상세 제공과 전체 F11/FE03/C04 완료는 구분한다.
-
-- [F09 본인 계정 설정](plans/2026-11-03-account-settings.md)은 현재 세션/경로 재확인·본인 이름/암호와 기존 취향 연결을 검사한다. 현재 암호의 짧은 기존 값·literal 공백/UTF-16/새 암호 확인·403 유효 세션·401 명시 복구, 승인/후속 읽기 실패·불확실 쓰기 무재전송을 구분한다. 다음 초안·비밀 입력 즉시/이탈 정리·같은 계정 HTTP/ABA·다른 계정/옛 응답·F05 권위 차폐와390px Tab/Enter/저장소 불기록을 확인한다. 허용 100자 이름의 메뉴/프로필 전체 원문·문서/문자좌표 JSON도 검사하며 실제 legacy/JPA 세션 회수는 별도 인수다.
-
-- 검색 조건의 URL/API 전달, 상품 상세·실제 정적 이미지, 수량·장바구니 새로고침 보존과 비회원 주문 안내.
-- [F05 최근 본 상품](plans/2026-11-03-recent-products.md)은 비회원 ID/기기 시각20개·30일 복원과 회원 인증 세대 메모리/새로고침 초기화 정책을 구분한다. auth bootstrap/503/전환의 디스크·읽기·노출 차단, 계정/ABA·늦은 상세와 로그인·guest 삭제 거부 후 무재병합, malformed/과다/snapshot·만료/미래의 무조회, 저장 거부 메모리/안내·복구를 확인한다. 현재 Product7·개별404/403/503/ID불일치·명시 재시도·늦은 이전 결과·cached/offline과390px 삭제 포커스·F06/원문 장바구니를 보존하며 실제 서버 선택 검증과 fixture를 구분한다.
-- [F06 상품 비교](plans/2026-11-03-product-comparison.md)는 목록/상세의 최대4개 ID 선택·반복 URL 순서/복원·해제와 현재 Product7/특성의 별도 조회를 검사한다. 가격/도수0·미확인 null/검수[]·원문 태그/안전한 출처를 보존하며, malformed/중복/과다 주소의 무조회·항목별404/503/특성 실패와 명시 재시도를 구분한다. 이전 응답·응답 ID 불일치·캐시/offline 재진입·장바구니/필터 URL 보존과390px 내부 표 이동·키보드 제거 포커스를 확인한다. 실제 서버 GET 참조 대조는 fixture와 별도이며 전체 F02/FE03/C04 인수나 추천/성능 근거로 합산하지 않는다.
-- [가격·도수 범위](plans/2026-11-03-catalog-price-abv-ranges.md)는 포함 경계/모든 조건 AND·실제0/빈 값·엄격한 숫자 문법/정밀도·초과 길이 보존·역전 범위와 오류 포커스를 확인한다. 잘못된/명시 빈/중복 직접 URL은 상품 GET 없이 수정/해제를 안내하며, 적용 범위와 초안·Enter/페이지/뒤로/새로고침·이전 응답/503·390px Tab/Enter를 구분한다. 같은 legacy API/폐기80상품·불변 웹/하네스의 실제 범위6개/독립 GET 일치·명시 좁히기/전체 해제·중복 URL 무조회는 fixture와 별도다. 태그 입력은 아래 별도 검증이며 OpenSearch·전체 F02 인수는 별도다.
-- [맛·향 태그 조건](plans/2026-11-03-catalog-literal-tags.md)은 행별 리터럴 쉼표/개행·반복 getAll/append·Java strip/ASCII 변환·비ASCII 원문/UTF-16·확정 가능한 빈/긴/중복/20개 허용·21개 거절과 직접 URL 무조회를 확인한다. 태그/범위 AND·미확인/검수[]/조건 생략·초안/적용·페이지/복원/해제·이전 응답/503·390px 행 포커스/Enter 개행·키보드 제출과 Product7/무추가수집을 구분한다. 제공자400은 새 초안/URL·명시 수정 포커스와 재연결 무재시도/늦은 이전 오류 비차폐를 확인한다. 원천 맛을 추정하거나 추천/전체 F02 완료로 표시하지 않는다.
-- 태그의 실제 연결은 원본80+별도6개 대조 상품의 반복 리터럴 AND(ID81)·쉼표 분리 대조(ID82)와, 별도80+1 Unicode DB의 초기 미병합/최종 후보 명시 검색을 구분한다. 직접 Unicode URL은 양쪽 모두 정상이며 명시 제출의 코드포인트 변경만 수정했다. 제공자 중복/변환 길이400의 입력·URL·포커스/무재전송도 별도 실제 조건이다. 각 근거를 fixture/전체 F02 완료로 합산하지 않는다.
-- 목록의 이전/다음은 미제출 검색어·주종·정렬 대신 현재 URL의 조건을 유지한다. [페이지 조건 계획](plans/2026-11-02-catalog-pagination-filters.md)의 Enter 검색 첫 페이지·뒤로 가기/전체 해제·늦은 이전 응답·390px 키보드를 확인하며 기존 초안 칩은 유지한다. 같은 legacy Backend/폐기 MySQL/80개 시연 상품·불변 웹과 하네스의 실제 한 조건 위반1/1→0/1·별도 정상 대조0/1→0/1은 fixture 세 조건과 구분한다.
-- [고객 페이지 키보드 포커스](plans/2026-11-03-catalog-pagination-focus.md)는1280/390px의 동기적 결과 region·로딩/완료·가시성/다음 Tab·cached Previous Space를 확인한다. Shift+Tab·포인터·script/다른 경로의 포커스 비탈취,400/503 명시 동작, 같은URL 새 key와 region이 집중된 POP의 단일 이동 스크롤 소유를 구분한다. 실제 native Tab이 이미 첫 상품으로 연결되는 대조를 실패로 포장하지 않는다.
-- 같은 legacy API/80상품·불변 웹·응답 대체 없는 하네스의 실제 두 폭에서 BODY 손실2/2→0/2·별도 포인터/검색/이력 네 대조를 확인했다. 다음 Tab의 첫 상품 연결은 전후 모두 정상이었다. 후보만의 header 아래 region/첫 카드·outline·너비 진단은 전후 개선율/전체 보조기술 인수와 구분한다.
-- 비회원의 보호 경로 리다이렉트와 목적지 보존, 일반 회원의 관리자 화면/API 접근 차단.
-- 상품 API 실패 후 재시도 복구와 상품 404 직접 링크 안내.
-- 상세의 긴 ASCII 상품명은 원문 전체를 줄바꿈하고 그리드 밖으로 밀어내지 않는다. [FE09 계획](plans/2026-11-02-product-detail-long-name.md)의390px 동일 재현과320/720/721/980/1280px 허용 100자명을 production Chromium에서 확인한다. 문서 너비뿐 아니라 제목 문자 조각의 실제 좌표·이미지 alt·가격·키보드 수량/담기·특성을 검사하고, 안전한 좌표 JSON을 보고서에 첨부한다. 실제 서버의 고정 한 조건/대조와 fixture 분모는 합산하지 않는다.
-- 응답을 보류한 검색 중 필터 해제·상세 재진입에서 최신 요청이 실행되고 늦은 이전 응답/오류가 현재 화면을 덮지 않는지 확인.
-- 가입·아이디 확인·로그인/로그아웃·계정 전환, 세션 조회 장애와 401의 구분·복귀 경로.
-- 마이페이지의 현재 본인 정보/주문 401은 캐시된 개인 내용을 숨기고 명시적 재로그인으로 복귀한다. 단독/동시 401·늦은 이전 계정/인증 세대·재연결 읽기 대기와 403/5xx의 일반 재시도를 구분하며, 장바구니/미제출 요청·390px Enter와 원래 query를 보존한다. 다른 페이지의 전역 인증 정책이나 PostgreSQL 이관 완료를 뜻하지 않는다.
-- 데이터 없는 최초401의 pending/paused 재검증도 같은 인증/query에 속한 관측을 유지해 다른 개인200 캐시가 재노출되지 않게 한다. 보류 중 화면 재진입·뒤503·새 권위 성공·query 제거/동일ID 재로그인을 구분한다. [추가 차폐 검증](plans/2026-11-01-profile-cold-revalidation-privacy.md)의 독립 동적 포트 전후1조건은 기존 실제 서버 두 복구 조건과 별도 fixture 근거다.
-- 가입 201 뒤 자동 로그인 실패를 가입 실패와 구분한다. 중복 생성 없이 비밀번호 재입력으로 로그인 복구하고, 가입 자체 실패/중복 ID·늦은 확인·pending 자격/단일 전송·이탈/다른 계정·390px 키보드와 자동 완성 속성을 확인한다.
-- 로그인/가입 후 자동 로그인 성공이 늦게 와도 이미 이탈한 폼의 옛 redirect로 강제 이동하지 않는다. 실제 전역 인증 반영은 유지하고 동일URL/새 redirect 재진입·같은 폼의 redirect 변경과 정상 목적지를 구분한다. [완료 경로 소유 계획](plans/2026-11-01-auth-completion-route-ownership.md)의 고정 두 조건과 추가 경계는 별도 집계한다.
-- 후기 등록·편집·확인 뒤 삭제, 관리자 상품/매장 등록·편집·삭제와 회원 편집/삭제·자기 삭제 차단·후기 삭제·주문 완료/삭제.
-- API의 기존 소수 평점과 편집 선택값을 일치시킨다. 본문만 PUT·정수 후 원래값 복귀·재연결/거절의 시작값·초안 보존과 권한/UI 조작, 390px Tab/Enter 저장을 구분한다. 정수 생성 선택 정책은 유지하며 native popup 화살표/전체 보조기술 인수를 완료로 표시하지 않는다.
-- 후기 등록/수정 응답을 보류한 동안 새 입력·취소 후 같은/다른 후기 재편집을 시작해도 이전 성공이 현재 초안을 지우지 않는지 확인. 서버에는 제출 시점의 내용만 전송하고, 거절 뒤 초안·명시적 재제출과 수정하지 않은 성공 후 초기화를 구분.
-- 관리자 상품·매장·회원 저장의 제출 대상/폼 소유를 확인한다. 같은 폼의 새 입력·다른 행·취소 후 새/동일값 재편집·신규 등록의 다음 초안을 보존하고, 거절 후 명시적 다음 저장과 변경 없는 성공 초기화를 구분한다.
-- 현재 편집의 확인 삭제200은 그대로인 폼만 정리하며, 같은ID 새revision은 입력 보존/저장 차단·다른 행/새 작성/취소/실패는 보존한다. [삭제 편집 소유 계획](plans/2026-11-01-admin-deleted-editor-ownership.md)에 탭 재진입·actor/session 세대·후속 읽기 실패·같은ID 새 편집과 비활성 늦은GET 취소를 별도 검증한다. 고정3조건과 검토 후보1조건·실제 서버 분모를 합산하지 않는다.
-- 관리자 주문·후기·회원 읽기의 현재401은 비공개 목록/카운트/폼을 감추고 명시적 로그인으로 현재 tab/query에 복귀한다. [관리자 세션 복구](plans/2026-11-02-admin-session-recovery.md)의 cold/paused 재검증·다른 탭·새 인증의 늦은 오류,403/5xx 일반 재시도, 장바구니/미제출 주문·390px Enter를 구분한다. 본인 조회의 기존 관측 의미를 유지하며 고정 fixture2조건·검토 후보1조건·실제 서버 결과는 별도다.
-- 관리자 도수/좌표의 API 허용 소수값은 이름만 편집해도 native step 제약으로 차단하지 않는다. 기존 값/소수 생성·재진입·범위/필수·가격 정수·서버 거절 초안과390px Enter를 확인한다. [입력 계약 계획](plans/2026-11-01-admin-decimal-input-validation.md)의 고정 두 조건과 추가 경계를 구분하며 제공자의 float/double 정밀도를 확장한 것으로 표시하지 않는다.
-- 관리자 다섯 탭의 마지막 페이지 삭제·외부 삭제·범위 밖 직접 링크는 성공한 현재 조회의 총 페이지로 복귀한다. 읽기/삭제 실패·늦은 이전 응답·캐시 재진입·새 초안 보존과 정상 빈 목록을 구분하고 URL 보정의 뒤로 가기 경계를 확인한다.
-- 관리자 상품 특성의 별도 GET/전체 PUT, 미확인 null·검수 완료 빈 태그·태그 입력, 출처 필수/공개 메모·정규화·전체 지우기와 기존 상품 CRUD 계약 보존. 조회·권한/필드 오류와 GET/PUT 대기 중 상품 전환·새 초안 보존을 확인.
-- 특성 편집 중 offline→online 재연결에 초안을 유지하고, 기존 단일 태그 안의 개행을 설명만 수정하는 전체 PUT에서 다른 태그로 나누지 않는지 확인.
-- 공개 상세의 상품 특성은 별도 GET으로 읽고 mL·원문·태그 내부 개행을 보존한다. null과 검수한 []·안전한 절대 HTTP(S) 출처 링크를 구분하고, HTML 같은 문자열은 텍스트로 표시한다. [공개 특성 소비 계획](plans/2026-11-02-public-product-features.md)의 로딩/실패/명시 재시도·이전 상품 응답/productId 불일치·관리자 저장 후 재진입·390px을 검증하며 가격·담기·후기와 실패를 분리한다. 새 소비자 기능이며 추천 이유나 과거 장애/성능 성과가 아니다.
-- 본인 취향 설문/수정·건너뛰기·초기화, 미선택/null·선호없음/[]·실제 0과 목표/필수 범위 분리. 최초 읽기 실패·필드 오류·세션 만료에서 초안을 기본값으로 덮어쓰지 않으며, 계정 전환의 늦은 GET/PUT 성공·401과 같은 경로 재진입·재연결을 검증.
-- 같은 계정으로 로그아웃/재로그인하는 동안 기존 취향 PUT이 남아 있어도 요청 소유를 잃지 않고, 완료 뒤 새 GET으로 최신 서버값을 편집하는지 확인. 다른 계정의 독립성·기존 auth 캐시 초기화를 유지.
-- 본인 찜 상세·목록·페이지와 현재 상품 링크, 조회 실패/빈 상태·삭제 뒤 페이지 보정. 단건 상태 GET으로 첫 페이지 밖 상품도 확인하고 카탈로그 N+1/전체 수집을 하지 않는다. PUT/DELETE 대기 중 중복 차단·같은 계정 재로그인·다른 계정의 늦은 GET/DELETE 성공·401·이전 목록 GET을 분리하고, 저장 후 응답 실패도 권위 재조회한다.
-- 찜 목록에서 키보드 해제 후 같은/인접 항목·빈 목록·재조회로 포커스를 연결한다. 마지막 페이지 보정·쓰기 거절·읽기 실패를 구분하고, 전송 중 Tab 이동·화면 재진입에서는 이전 의도로 포커스를 빼앗지 않으며 아래 행의 임시 포커스가 화면을 위로 당기지 않는지 확인한다.
-- 공개 기본 주류 목록의 BASELINE/FALLBACK·빈/실패/로딩·명시 재조회·현재 상세 링크. 건너뛰기 저장 후 도달, 신규 NOT_STARTED의 무쓰기 진입, COMPLETED 보존과 늦은 공개 응답/계정 전환의 개인 폼 격리·390px 웹을 확인한다. source 코드를 제품화하거나 기본 목록을 개인 맞춤으로 표시하지 않는다.
-- 데모 주문 실패 시 장바구니 보존, 성공 후 서버 주문 금액과 ORDER_SNAPSHOT/LEGACY_ESTIMATE/미확인 출처·null 금액·삭제 상품/탈퇴 회원 표시.
-- 데모 주문 응답 대기 중 새 상품/추가 수량·삭제 후 다시 담기·새 요청사항·화면 이탈을 구분한다. 원래 제출 내용을 바꾸지 않고 해당 제출량만 정리하며 다음 입력을 보존하고, 거절 뒤 새 수량의 명시적 재주문·단일 submit·정상 성공 정리를 유지한다.
-- 일반/좁은 웹 화면의 삭제 확인창에서 처리 중 활성 버튼이 없어도 Tab·Shift+Tab 포커스를 유지하고, 실패 뒤 취소/복귀 및 단일 삭제 요청을 확인.
-- 처리하지 않은 API 요청과 브라우저 JavaScript 예외는 테스트 실패다. fixture 상품은 실상품/추천 학습 데이터가 아니다.
-
-Vitest는 브라우저 spec을 수집하지 않는다. 기존 유틸·상태·API 단위 검증과 production browser
-검증을 모두 `frontend-ci` 필수 검사 안에서 실행한다. 기존 Pinia/Vue Router 테스트를 Zustand·세션 query·관리자 API 선택과 React 브라우저 검증으로 옮겼다. 테스트 개수의 일치를 기능 동등성으로 간주하지 않고 사용자 결과·오류/권한 경계를 추적한다.
-
-[비교 URL 소유](plans/2026-11-03-comparison-url-ownership.md)는 중간 React commit 전 keyboard 해제/native Back의 task gate와 별도 정상 commit 대조를 분리한다. gate 사용/해제 뒤 URL·표·메뉴/목록 선택·F05/카트 보관을 확인하며 API fixture·자연 경쟁·시간 성능으로 합산하지 않는다.
-
-## F01 별도 실제 연동 확인
-
-[F01 작업 계획](plans/2026-11-01-account-favorites-ui.md)의 실제 서버 검증은 위 Chromium API fixture와 별도로 수행했다. 단건 상태 GET 포함 Backend jar·전용 MySQL 8.4·동결한 프로덕션 웹을 사용해 실제 로그인, 상세 저장/조회, 새로고침과 현재 상품 목록, 두 계정의 독립 저장/해제, 첫 계정 저장 보존, 390px 웹과 오류 수집을 확인했다. API route mocking은 사용하지 않았다. 이 수동 통합 결과가 CI의 fixture를 실제 Backend E2E로 바꾸거나 전체 FE03/C04 최종 인수를 완료한 것은 아니다.
-
-추가로 [찜 키보드 연속성 계획](plans/2026-11-01-favorites-keyboard-focus.md)에서는 같은 Backend jar·전용 MySQL·동일 harness와 기준/수정 웹의 불변 빌드를 사용해 실제 해제 뒤 포커스를 비교했다. 일반/좁은 웹의 첫·마지막 해제 뒤 다음 조작 연결과 정상 경로/계정 전환을 확인했다. 제어 지연·오류/Tab 이탈의 경합 검증은 fixture 근거로 유지하며 실제 서버 자연 경쟁·모든 보조 기술 검증으로 확대하지 않는다.
-
-## 공개 상품 특성의 별도 실제 연결
-
-[공개 특성 계획](plans/2026-11-02-public-product-features.md)은 동결한 같은 legacy Backend jar·기본 추천·별도 폐기 MySQL과 기준/후보 프로덕션 웹을 사용했다. 실제 관리자 인증·신규 시연 상품 POST·특성 PUT/공개 GET을 수행하고 1280px의 미확인/등록 값/검수한 빈 배열을 표시했다. 원문 태그·출처와 담기 버튼의 기존 계약을 확인했으며 성공 응답은 대체하지 않았다.
-
-최초 후보 검사의 390px 문서 가로 넘침은 기준 웹에도 동일한 긴 ASCII 상품명/grid 확장이 있었다. 이 관측과 후보에만 해당 조건을 검사했던 하네스의 비대칭 실패를 보존하고, 제품 소스를 바꾸지 않고 교정한 같은 하네스로 양쪽의 새 폐기 DB에서 위 세 상태를 확인했다. 실제 서버의 전체390px·전체 상세/시각 인수나 기존 가로 넘침 수정으로 표시하지 않는다. CI의 좁은 특성 원문 fixture, 실제 데스크톱 소비 확인, JPA 전체 전환은 각각 별도 근거다.
-
-## 결과 보관
-
-단위 JUnit은 `reports/unit.xml`, 브라우저 JUnit은 `reports/browser.xml`, HTML은
-`playwright-report/`, 실패 trace·스크린샷은 `test-results/`에 생성된다.
-CI는 성공/실패와 관계없이 생성된 보고서를 `frontend-test-reports` artifact로 7일 보관한다.
-보고서·trace·스크린샷은 ignore 및 저장소 생성물 검사 대상이며 Git에 올리지 않는다.
-테스트 통과 수·CI 시간은 서비스 성능 개선 수치가 아니다.
-
-공식 근거: [Playwright CI](https://playwright.dev/docs/ci),
-[webServer](https://playwright.dev/docs/test-webserver),
-[API mocking](https://playwright.dev/docs/mock),
-[Vitest JUnit output](https://v4.vitest.dev/config/outputfile).
+순수 계약·상태 검사는 `src/**/*.test.*`에 둔다. 응답 순서/오프라인/task gate는 결정적 회귀 조건이며 자연 오류율·시간 성능으로 표시하지 않는다. 현재 기능/인수 범위는 [계획](ROADMAP.md), 변경별 실행 결과와 과거 실제 서버 근거는 해당 Git/PR에서 확인한다. 문서에 테스트 총수·run별 완료 로그를 누적하지 않는다.

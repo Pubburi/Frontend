@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import { ApiClientError } from '../services/api'
-import { orderPrivacy } from './orderPrivacy'
+import { orderPrivacy } from './authReadPrivacy'
 
 describe('order detail unauthorized ownership', () => {
   it('binds401 to the actual account and mounted detail query;manual cache data is not fresh authority', async () => {

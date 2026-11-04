@@ -1,7 +1,7 @@
 import type { Query, QueryClient, QueryKey } from '@tanstack/react-query'
 import { ApiClientError } from '../services/api'
 
-export interface AuthReadFailure {
+interface AuthReadFailure {
   auth: Query
   account: unknown
   query: Query
@@ -10,7 +10,7 @@ export interface AuthReadFailure {
 
 // A cold refetch clears query.error before access has been confirmed. Keep the
 // observation with its actual query/auth owners, scoped by the calling feature.
-export function authReadPrivacy(owns: (key: QueryKey, id: string, account: object) => boolean) {
+function authReadPrivacy(owns: (key: QueryKey, id: string, account: object) => boolean) {
   const stores = new WeakMap<QueryClient, ReturnType<typeof createStore>>()
   function createStore(client: QueryClient) {
     const cache = client.getQueryCache()
@@ -71,3 +71,21 @@ export function authReadPrivacy(owns: (key: QueryKey, id: string, account: objec
     return store
   }
 }
+
+export const profilePrivacy = authReadPrivacy((key, id) =>
+  key[0] === 'account' && key[1] === id &&
+  ((key[2] === 'profile' && key.length === 3) || (key[2] === 'orders' && key.length === 4)),
+)
+
+export const adminPrivacy = authReadPrivacy((key, id, account) =>
+  'role' in account && account.role === 'ADMIN' && key[0] === 'admin' && key[1] === id && key.length === 4 &&
+  (key[2] === 'users' || key[2] === 'orders' || key[2] === 'comments'),
+)
+
+export const orderPrivacy = authReadPrivacy((key, id) =>
+  key[0] === 'account' && key[1] === id && key[2] === 'order-detail' && key.length === 5,
+)
+
+export const searchPhrasePrivacy = authReadPrivacy((key, id) =>
+  key[0] === 'account' && key[1] === id && key[2] === 'search-phrases' && key.length === 6,
+)
