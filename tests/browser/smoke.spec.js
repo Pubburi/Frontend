@@ -154,7 +154,12 @@ const test = base.extend({
       }
       if (request.method() === 'GET' && state.catalog.some((item) => path === `/products/${item.id}/comments`)) {
         const productId = Number(path.split('/')[2])
-        await route.fulfill({ json: success(pageOf(state.reviews.filter((review) => review.productId === productId), 10)) })
+        const reviews = state.reviews.filter((review) => review.productId === productId)
+        const sort = url.searchParams.get('sort') || 'latest'
+        const ordered = reviews.toSorted((a, b) => (sort === 'rating_desc' ? b.rating - a.rating : sort === 'rating_asc' ? a.rating - b.rating : 0) || b.id - a.id)
+        const data = pageOf(ordered, Number(url.searchParams.get('size') || 10), Number(url.searchParams.get('page') || 1))
+        if (url.searchParams.get('includeSummary') === 'true') data.ratingSummary = { count: reviews.length, average: reviews.length ? Math.round(reviews.reduce((sum, item) => sum + item.rating, 0) / reviews.length * 100) / 100 : null }
+        await route.fulfill({ json: success(data) })
         return
       }
       if (request.method() === 'GET' && /^\/products\/\d+$/.test(path)) {

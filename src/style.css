@@ -1066,6 +1066,10 @@ textarea.form-control {
 
 .comment-title h2 { margin: 0; font-size: 24px; }
 .comment-title h2 span { color: var(--forest); font-size: 15px; }
+.comment-title { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
+.review-summary { min-width: 0; overflow-wrap: anywhere; }
+.review-summary p { margin: 0; color: var(--ink-soft); }
+.review-summary strong { color: var(--forest-dark); }
 
 .comment-form {
   display: grid;
@@ -1104,6 +1108,7 @@ textarea.form-control {
 .comment-row p { margin: 0; line-height: 1.6; }
 .comment-head { justify-content: space-between; }
 .comment-head > div { display: grid; gap: 4px; }
+.comment-head strong { overflow-wrap: anywhere; }
 .rating-stars { color: var(--gold-dark); font-size: 13px; letter-spacing: 0.04em; }
 .comment-edit-form { display: grid; gap: 10px; }
 
