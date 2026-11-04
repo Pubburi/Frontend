@@ -6,8 +6,8 @@
 
 Frontend 일정 정본은 [React 이전·인수 계획](2026-10-31-react-migration.md)이며 이 문서는 새 기한의 세부 기준이다. Backend의 API/DB·검색 계약과 Recommendation의 데이터/모델 정본은 각 소유 저장소에서 관리한다. 여기서는 웹 소비·기능 인수·선행만 연결하며 다른 영역의 상세 계획을 복제하지 않는다.
 
-- 최근 제품 확인 main `e83333a`: Vite·React·TypeScript·Router·TanStack Query·Zustand의 실제 고객/관리 라우트 이전(FE02)은 완료했다. FE03/C04 전체 동등성·실제 조합 인수는 진행 중이다.
-- 기한 변경 당시3/20에서 [F06](https://github.com/Pubburi/Frontend/pull/36)·[F05](https://github.com/Pubburi/Frontend/pull/37)·[F09](https://github.com/Pubburi/Frontend/pull/39)·[F11 병합·검증](https://github.com/Pubburi/Frontend/pull/41) 뒤 현재 **7/20(R01·F01·F03·F05·F06·F09·F11)**로 갱신한다. 부분 제공자·선택 검증이나 진행 중 R06 연결을 미리 전체 완료로 올리지 않는다. DB 전환·검색 기술 작업과 FE 하위 수정은20개에 추가 합산하지 않는다.
+- 최근 제품 확인 main `f353464`: Vite·React·TypeScript·Router·TanStack Query·Zustand의 실제 고객/관리 라우트 이전(FE02)은 완료했다. FE03/C04 전체 동등성·실제 조합 인수는 진행 중이다.
+- 기한 변경 당시3/20에서 [F06](https://github.com/Pubburi/Frontend/pull/36)·[F05](https://github.com/Pubburi/Frontend/pull/37)·[F09](https://github.com/Pubburi/Frontend/pull/39)·[F11](https://github.com/Pubburi/Frontend/pull/41)·[R06 병합·검증](https://github.com/Pubburi/Frontend/pull/42) 뒤 현재 **8/20(R01·R06·F01·F03·F05·F06·F09·F11)**로 갱신한다. 부분 제공자·선택 검증이나 FE03/C04 하위 보완을 별도 기능 완료로 올리지 않는다. DB 전환·검색 기술 작업과 FE 하위 수정은20개에 추가 합산하지 않는다.
 - F02의 가격/도수·맛/향 리터럴 AND와 반복 URL은 연결됐다. 엔진·자동완성·검수 동의어/오타 등 전체 검색 인수는 남는다. 비ASCII의 제공자 정규화·400 입력 보존과 기존 적용/초안·페이지 소유를 유지한다.
 - PostgreSQL/JPA의 제공 API는 순차 검증 중이다. 과거 MySQL/fixture 근거를 전체 PostgreSQL 전환·현재 세 서버 인수로 바꾸지 않는다.
 
@@ -35,7 +35,7 @@ MVP 전에는 남은 필수 기능·선행 계약과 진행 중 구현/리뷰/�
 | R03 · 12-09 | 상세의 유사 후보와 현재 유효 상품 링크, 빈/미확인 기준 상품 처리. | AI01·F03, 유사 후보 API | 진행 중: 기준 상품 유사 후보 제공자; 웹 연결 미완료 |
 | R04 · 12-10 | 실제 점수·필터에 사용한 근거만 카드/상세에 표시. 없는 맛·선호 이유를 추정하지 않음. | R02·R03, 점수/근거 응답 계약 | 미착수 |
 | R05 · 12-12 | 맞음/관심 없음 저장·반영과 제외 확인, 직접 취향과 행동 신호 구분. | BE04·R02, 계정 피드백 API | 미착수 |
-| R06 · 12-13 | 취향/기본 문구 선택을 실제 검색 조건으로 연결하고 빈 결과·초기화 제공. | R01·F02의 현재 상품 검색·본인 문구 계약; 전체 엔진 인수와 독립 | [웹 연결/필수 인수 진행 중](2026-11-04-owned-search-phrases-ui.md); 최종 게이트 전 미완료 |
+| R06 · 12-13 | 취향/기본 문구 선택을 실제 검색 조건으로 연결하고 빈 결과·초기화 제공. | R01·F02의 현재 상품 검색·본인 문구 계약; 전체 엔진 인수와 독립 | [main 병합·검증 완료](https://github.com/Pubburi/Frontend/pull/42) |
 | R07 · 12-29 | 장바구니/데모 주문 맥락의 다음 탐색 후보, 유사/연관 근거를 구분. | F10·F11·AI01, 맥락 추천 API | 진행 중: 명시 다중 상품 맥락 제공자; 웹 연결 미완료 |
 | R08 · 12-30 | 현재 취향을 유지하는 별도 탐색 영역·후보·이유, 부족 후보의 대체 상태 표시. | R02·R05, 탐색 추천 API | 진행 중: 탐색 제공자 부분 구현; 웹 연결 미완료 |
 | F01 · 12-01 | 본인 찜 저장/해제·페이지 조회와 다른 세션의 동일 목록, 다른 계정 격리. | C03·BE03·FE03, 찜 API | main 병합·검증 완료 |
