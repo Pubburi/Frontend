@@ -423,6 +423,14 @@ textarea.form-control {
   gap: 8px;
 }
 
+.home-search {
+  align-items: end;
+  padding: 18px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
 .success-text {
   color: var(--forest) !important;
 }

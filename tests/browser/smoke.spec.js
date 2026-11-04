@@ -256,6 +256,76 @@ const test = base.extend({
   }, { auto: true }],
 })
 
+test('홈의 전체 둘러보기에서 기존 목록 검색도 그대로 사용할 수 있음', async ({ page, api }, info) => {
+  await page.goto('/')
+  await page.getByRole('link', { name: '전체 주류 둘러보기', exact: true }).click()
+  await expect(page).toHaveURL('/products')
+  await page.getByLabel('상품 검색', { exact: true }).fill('시험 탁주')
+  await page.getByRole('button', { name: '검색하기', exact: true }).click()
+  await expect(page.locator('.product-card')).toHaveCount(1)
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === '시험 탁주')
+  await info.attach('existing-search-path.json', { body: JSON.stringify({ path: ['/', '/products', '/products?q=시험 탁주'], keywordEntries: 1, productReads: api.calls.filter((call) => call.path === '/products').map((call) => call.query) }), contentType: 'application/json' })
+})
+
+for (const width of [1280, 390]) {
+  test(`홈 직접 검색 ${width}px는 제출 전 조회 없이 검색어를 결과 URL·입력·요청으로 연결`, async ({ page, api }, info) => {
+    const keyword = '시험 & 사케+100% / #?'
+    api.catalog[0].name = keyword
+    await page.setViewportSize({ width, height: 900 }); await page.goto('/')
+    await expect(page.getByRole('heading', { name: '취향과 순간에 어울리는 한 잔', exact: true })).toBeVisible()
+    await expect.poll(() => page.locator('.hero-slide.active img').evaluate((node) => node.naturalWidth)).toBeGreaterThan(0)
+    const screenshot = info.outputPath(`home-${width}.png`)
+    await page.screenshot({ path: screenshot }); await info.attach(`home-${width}`, { path: screenshot, contentType: 'image/png' })
+    const search = page.getByRole('search', { name: '홈 상품 검색', exact: true })
+    expect(await search.count()).toBe(1)
+    const input = search.getByLabel('상품 검색', { exact: true }), submit = search.getByRole('button', { name: '검색하기', exact: true })
+    await expect(input).toHaveAttribute('maxlength', '100')
+    await input.fill(`  ${keyword}  `); await input.press('Tab'); await expect(submit).toBeFocused()
+    await expect(page).toHaveURL('/')
+    expect(api.calls.filter((call) => call.path === '/products')).toEqual([])
+    const boxes = await search.evaluate((node) => ({ width: document.documentElement.scrollWidth, header: document.querySelector('.topbar').getBoundingClientRect().bottom, controls: [...node.querySelectorAll('input,button')].map((control) => { const r = control.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height } }) }))
+    expect(boxes.width).toBeLessThanOrEqual(width)
+    for (const box of boxes.controls) { expect(box.left).toBeGreaterThanOrEqual(0); expect(box.right).toBeLessThanOrEqual(width); expect(box.top).toBeGreaterThanOrEqual(boxes.header); expect(box.bottom).toBeLessThanOrEqual(900); expect(box.height).toBeGreaterThanOrEqual(44) }
+    if (width === 390) { await page.keyboard.press('Shift+Tab'); await expect(input).toBeFocused(); await input.press('Enter') } else await submit.click()
+    await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('q') === keyword && url.searchParams.get('sort') === 'popular' && url.searchParams.get('page') === '1')
+    await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue(keyword)
+    await expect(page.locator('.product-card')).toHaveCount(1)
+    expect(api.calls.filter((call) => call.path === '/products')).toEqual([expect.objectContaining({ method: 'GET', query: { q: keyword, sort: 'popular', page: '1', size: '12' } })])
+    await info.attach('direct-search-path.json', { body: JSON.stringify({ path: ['/', '/products?q=' + keyword], keywordEntries: 1, intermediateCatalogPage: false, boxes }), contentType: 'application/json' })
+  })
+}
+
+test('홈 검색의 빈 입력·빈 결과는 기존 전체 보기와 검색 수정·Back으로 복구', async ({ page }) => {
+  await page.goto('/')
+  const home = () => page.getByRole('search', { name: '홈 상품 검색', exact: true })
+  await home().getByLabel('상품 검색', { exact: true }).fill('   ')
+  await home().getByRole('button', { name: '검색하기', exact: true }).click()
+  await expect(page).toHaveURL((url) => url.pathname === '/products' && !url.searchParams.has('q') && url.searchParams.get('page') === '1')
+  await expect(page.locator('.product-card')).toHaveCount(2)
+  await page.getByRole('link', { name: '홈', exact: true }).click()
+  await home().getByLabel('상품 검색', { exact: true }).fill('없는 상품')
+  await home().getByRole('button', { name: '검색하기', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '조건에 맞는 상품이 없습니다', exact: true })).toBeVisible()
+  await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('없는 상품')
+  await page.getByLabel('상품 검색', { exact: true }).fill('시험 사케'); await page.getByLabel('상품 검색', { exact: true }).press('Enter')
+  await expect(page.locator('.product-card')).toHaveCount(1)
+  await page.reload(); await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('시험 사케')
+  await page.goBack(); await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('없는 상품')
+  await expect(page.getByRole('heading', { name: '조건에 맞는 상품이 없습니다', exact: true })).toBeVisible()
+})
+
+test('홈 검색 실패 뒤 같은 검색어를 다시 입력하지 않고 명시 재시도', async ({ page, api }) => {
+  api.catalogFailures = 1
+  await page.goto('/')
+  const search = page.getByRole('search', { name: '홈 상품 검색', exact: true })
+  await search.getByLabel('상품 검색', { exact: true }).fill('시험 탁주'); await search.getByRole('button', { name: '검색하기', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '상품을 불러오지 못했습니다', exact: true })).toBeVisible()
+  await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('시험 탁주')
+  const url = page.url(); await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  await expect(page.locator('.product-card')).toHaveCount(1); await expect(page).toHaveURL(url)
+  expect(api.calls.filter((call) => call.path === '/products').map((call) => call.query)).toEqual(Array(2).fill({ q: '시험 탁주', sort: 'popular', page: '1', size: '12' }))
+})
+
 test('상품 검색·상세·장바구니 저장과 비회원 주문 안내', async ({ page, api }) => {
   await page.goto('/products')
   await expect(page.getByRole('heading', { name: '전체 주류 둘러보기' })).toBeVisible()

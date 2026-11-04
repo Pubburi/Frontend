@@ -4,6 +4,12 @@
 
 전체 R01–R08·F01–F12의 MVP 구현·고객/관리 UI·API 연결·필수 실제 서버 인수 기한은 **2026-12-31 Asia/Seoul**이다. 현재 **8/20(R01·R06·F01·F03·F05·F06·F09·F11)**을 완료했다. React 코드 이전(FE02)은 완료했으며 전체 고객/관리 인수(FE03/C04)와 PostgreSQL 전환은 진행 중이다. 부분 제공자·하위 결함 수정은 새 기능 완료로 합산하지 않는다.
 
+## UX 기준
+
+현재 ink/forest/gold/cream 테마에서 핵심 행동을 명확히 하고 불필요한 이동·반복 입력을 줄인다. 홈 직접 검색은 기존 F02 결과로 연결하며 빈 결과·오류에서도 입력을 보존해 수정/재시도로 이어진다. 기본 키보드·명확한 label·1280/390px 조작을 인수하고 기능 범위를 임의로 늘리지 않는다.
+
+[NN/g](https://www.nngroup.com/articles/3-click-rule/)의 경로/상호작용 부담, [Baymard](https://baymard.com/research-articles/checkout-flow-average-form-fields)의 checkout 필드 부담, [토스](https://toss.tech/article/21023)의 가치가 명확한 행동, [스타벅스 공식 메뉴](https://www.starbucks.co.kr/menu/drink_list.do)의 분류 탐색을 참고한다. 임의 클릭 수 제한이나 다른 서비스의 성과 수치를 우리 성과로 사용하지 않는다.
+
 ## 일정
 
 | 기한·기간 (Asia/Seoul) | 완료 목표 |
