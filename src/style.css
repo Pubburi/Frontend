@@ -1066,6 +1066,10 @@ textarea.form-control {
 
 .comment-title h2 { margin: 0; font-size: 24px; }
 .comment-title h2 span { color: var(--forest); font-size: 15px; }
+.comment-title { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
+.review-summary { min-width: 0; overflow-wrap: anywhere; }
+.review-summary p { margin: 0; color: var(--ink-soft); }
+.review-summary strong { color: var(--forest-dark); }
 
 .comment-form {
   display: grid;

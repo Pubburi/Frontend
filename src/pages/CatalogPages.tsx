@@ -33,6 +33,7 @@ import { productRangeFields, validateProductRanges, type ProductRangeKey, type P
 import { money, productImage } from '../utils/format'
 import type { Market, Page, Product, Review } from '../types'
 import { ContentRecommendations } from '../components/ContentRecommendations'
+import { reviewSummary, type ReviewPage } from '../reviewSummary'
 
 export function HomePage() {
   const [active, setActive] = useState(0)
@@ -495,7 +496,10 @@ function ProductDetail({ id }: { id: string }) {
   const client = useQueryClient()
   const location = useLocation()
   const [quantity, setQuantity] = useState(1)
-  const [page, setPage] = useState(1)
+  const [reviewView, setReviewView] = useState({ page: 1, sort: 'latest' })
+  const { page, sort } = reviewView
+  const currentReviewView = useRef(reviewView)
+  currentReviewView.current = reviewView
   const [draft, setDraft] = useState({ rating: 5, comment: '' })
   const [editing, setEditing] = useState<ReviewEdit | null>(null)
   const [deleting, setDeleting] = useState<Review | null>(null)
@@ -503,11 +507,12 @@ function ProductDetail({ id }: { id: string }) {
     queryKey: ['catalog', 'product', id],
     queryFn: () => api.product(id),
   })
-  const comments = useQuery<Page<Review>>({
-    queryKey: ['reviews', id, page],
-    queryFn: () => api.comments(id, { page, size: 10 }),
+  const comments = useQuery<ReviewPage>({
+    queryKey: ['reviews', id, sort, page],
+    queryFn: () => api.comments(id, { page, size: 10, sort, includeSummary: true }),
     enabled: product.isSuccess,
   })
+  const summary = comments.data && !comments.isError && !comments.isFetching ? reviewSummary(comments.data) : null
   useRecordRecentVisit(product.data?.id === Number(id) ? product.data.id : undefined,
     product.isSuccess && !product.isFetching && !product.isPaused, location.key)
   async function refresh() {
@@ -553,16 +558,19 @@ function ProductDetail({ id }: { id: string }) {
   }
   async function removeReview() {
     if (!deleting) return
+    const submitted = deleting
+    const submittedView = reviewView
     const result = await ui.run(
       'comment-delete',
       async () => {
-        await api.deleteComment(deleting.id)
-        if (comments.data?.items.length === 1 && page > 1) setPage(page - 1)
+        await api.deleteComment(submitted.id)
+        if (currentReviewView.current === submittedView && comments.data?.items.length === 1 && page > 1)
+          setReviewView((current) => current === submittedView ? { ...current, page: page - 1 } : current)
         await refresh()
       },
       '후기가 삭제되었습니다.',
     )
-    if (result.ok) setDeleting(null)
+    if (result.ok) setDeleting((current) => current === submitted ? null : current)
   }
   if (product.isPending)
     return <Loading label="상품 상세를 불러오는 중입니다." />
@@ -635,9 +643,24 @@ function ProductDetail({ id }: { id: string }) {
               <div>
                 <p className="section-kicker">Reviews</p>
                 <h2>
-                  구매 후기 <span>{comments.data?.total || 0}</span>
+                  회원 후기 {!comments.isError && !comments.isFetching && comments.data && <span>{comments.data.total}</span>}
                 </h2>
               </div>
+              <label className="field-group compact-field">
+                <span>후기 정렬</span>
+                <select className="form-select" value={sort}
+                  onChange={(event) => setReviewView({ page: 1, sort: event.target.value })}>
+                  <option value="latest">최신순</option>
+                  <option value="rating_desc">평점 높은순</option>
+                  <option value="rating_asc">평점 낮은순</option>
+                </select>
+              </label>
+            </div>
+            <div className="review-summary" aria-live="polite">
+              {comments.isPending || comments.isFetching ? <p>전체 평점을 불러오는 중입니다.</p> : comments.isError ?
+                <p>전체 평점 정보를 불러오지 못했습니다.</p> : summary ?
+                  <p>{summary.average === null ? '아직 등록된 평점이 없습니다.' : <strong>평균 {summary.average.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}점</strong>} · 전체 후기 {summary.count}개</p> :
+                  <p>전체 평점 정보를 확인하지 못했습니다. <button className="text-button" onClick={() => comments.refetch()}>평점 집계 다시 확인</button></p>}
             </div>
             {session.data ? (
               <form className="comment-form" onSubmit={submit}>
@@ -803,7 +826,7 @@ function ProductDetail({ id }: { id: string }) {
                     )}
                   </article>
                 ))}
-                <Pagination page={comments.data} onChange={setPage} />
+                <Pagination page={comments.data} onChange={(nextPage) => setReviewView((current) => ({ ...current, page: nextPage }))} />
               </div>
             ) : (
               <Empty
