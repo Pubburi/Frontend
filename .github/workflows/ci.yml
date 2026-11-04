@@ -44,7 +44,9 @@ jobs:
         run: npm run build
       - name: Install Chromium and system dependencies
         run: npx playwright install --with-deps chromium
-      - name: Test production build in Chromium
+      - name: Verify browser API fixture guard
+        run: npm run test:browser:guard
+      - name: Test production browser flows
         run: npm run test:browser
       - name: Upload test reports and failure traces
         if: ${{ always() }}

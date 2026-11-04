@@ -1,10 +1,11 @@
 import { defineConfig, devices } from '@playwright/test'
+import { fileURLToPath } from 'node:url'
 
-// Isolated checkouts can reserve their own loopback port; CI keeps 4173.
-const port = process.env.PLAYWRIGHT_PORT || '4173'
-if (!/^[1-9]\d{0,4}$/.test(port) || Number(port) > 65535)
-  throw new Error('PLAYWRIGHT_PORT must be an integer from 1 to 65535')
-const previewUrl = `http://127.0.0.1:${port}`
+const rawUrl = process.env.PUBBURI_FIXTURE_URL
+if (!rawUrl || !/^[a-f0-9-]{36}$/.test(process.env.PUBBURI_FIXTURE_OWNER ?? '')) throw new Error('Use npm run test:browser to start an owned API-isolated preview.')
+const url = new URL(rawUrl)
+if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== '/' || url.search || url.hash || url.username || url.password || [5173, 9987, 8000].includes(Number(url.port)))
+  throw new Error('Browser tests require the owned loopback fixture URL.')
 
 export default defineConfig({
   testDir: './tests/browser',
@@ -13,6 +14,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   timeout: 30_000,
+  globalSetup: fileURLToPath(new URL('./scripts/browser-fixture-owner.mjs', import.meta.url)),
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
@@ -20,15 +22,9 @@ export default defineConfig({
   ],
   use: {
     ...devices['Desktop Chrome'],
-    baseURL: previewUrl,
+    baseURL: url.origin,
     serviceWorkers: 'block',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-  },
-  webServer: {
-    command: `npm run preview -- --host 127.0.0.1 --port ${port} --strictPort`,
-    url: previewUrl,
-    reuseExistingServer: false,
-    timeout: 30_000,
   },
 })

@@ -66,6 +66,14 @@ async function login(page, id) {
   await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
   await expect(page.getByRole('heading', { name: '최근 본 상품이 없습니다', exact: true })).toBeVisible()
 }
+async function logout(page) {
+  const response = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/auth/logout' && response.request().method() === 'POST')
+  await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+  expect((await response).status()).toBe(200)
+  await expect(page).toHaveURL('/')
+  await expect(page.locator('.user-name')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '취향과 순간에 어울리는 한 잔', exact: true })).toBeVisible()
+}
 
 test('유효한 상세만 최근 순서로 기록하고 재방문은 맨 앞으로 이동·비회원 새로고침은 시각 그대로 복원', async ({ page }) => {
   await page.goto('/products/7'); await expect(page.getByRole('heading', { name: '최근 표본 7', exact: true })).toBeVisible()
@@ -155,10 +163,10 @@ test('회원 기록은 디스크0·새로고침/로그아웃/다른계정/같은
   await expect(page.locator('.recent-item')).toHaveCount(1); expect(await page.evaluate((key) => localStorage.getItem(key), KEY)).toBeNull()
   await page.reload(); await expect(page.getByRole('heading', { name: '최근 본 상품이 없습니다', exact: true })).toBeVisible()
   await visit(page, 7); await navigate(page, '최근 본 상품'); await expect(page.locator('.recent-item')).toHaveCount(1)
-  await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await navigate(page, '최근 본 상품')
+  await logout(page); await navigate(page, '최근 본 상품')
   await expect(page.getByRole('heading', { name: '최근 본 상품이 없습니다', exact: true })).toBeVisible()
   await login(page, 'other'); await visit(page, 8); await navigate(page, '최근 본 상품'); await expect(page.locator('.recent-item')).toHaveCount(1); expect(await ids(page)).toEqual([8])
-  await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await login(page, 'member')
+  await logout(page); await login(page, 'member')
   expect(await page.evaluate((key) => localStorage.getItem(key), KEY)).toBeNull()
 })
 
@@ -169,7 +177,7 @@ test('guest 삭제 저장 거부에도 같은SPA의 로그인/로그아웃은 �
   await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
   await expect(page.getByRole('heading', { name: '최근 본 상품이 없습니다', exact: true })).toBeVisible()
   await visit(page, 8); await navigate(page, '최근 본 상품'); await expect(page.locator('.recent-item')).toHaveCount(1); expect(await ids(page)).toEqual([8])
-  await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await navigate(page, '최근 본 상품')
+  await logout(page); await navigate(page, '최근 본 상품')
   await expect(page.getByRole('heading', { name: '최근 본 상품이 없습니다', exact: true })).toBeVisible()
   expect(JSON.parse(await page.evaluate((key) => localStorage.getItem(key), KEY)).entries.map((entry) => entry.id)).toEqual([7])
   await page.reload(); await expect(page.locator('.recent-item')).toHaveCount(1); expect(await ids(page)).toEqual([7])
