@@ -119,7 +119,7 @@ if (result.ok) {
 
 **해결**
 
-TanStack Query에서 검색 조건 전체·상품 ID·후기 페이지를 query key에 포함한다. 화면은 현재 URL key를 구독하며 이전 응답은 이전 key의 캐시에만 저장된다. 상세 컴포넌트도 상품 ID로 구분해 수량·편집 상태가 다른 상품으로 섞이지 않게 하고, 읽기 오류는 해당 query의 화면에서 안내한다. 쓰기는 Zustand의 동기 pending 검사로 중복 실행을 차단한다.
+TanStack Query에서 검색 조건 전체·상품 ID·후기 정렬·페이지를 query key에 포함한다. 화면은 현재 URL key를 구독하며 이전 응답은 이전 key의 캐시에만 저장된다. 상세 컴포넌트도 상품 ID로 구분해 수량·편집 상태가 다른 상품으로 섞이지 않게 하고, 읽기 오류는 해당 query의 화면에서 안내한다. 쓰기는 Zustand의 동기 pending 검사로 중복 실행을 차단한다.
 
 **결과**
 
@@ -142,16 +142,16 @@ const products = useQuery<Page<Product>>({
 })
 ```
 
-상세와 후기에도 현재 상품·페이지를 key에 포함한다.
+상세와 후기에도 현재 상품·정렬·페이지를 key에 포함한다.
 
 ```tsx
 const product = useQuery<Product>({
   queryKey: ['catalog', 'product', id],
   queryFn: () => api.product(id),
 })
-const comments = useQuery<Page<Review>>({
-  queryKey: ['reviews', id, page],
-  queryFn: () => api.comments(id, { page, size: 10 }),
+const comments = useQuery<ReviewPage>({
+  queryKey: ['reviews', id, sort, page],
+  queryFn: () => api.comments(id, { page, size: 10, sort, includeSummary: true, includeTasteTags: true }),
   enabled: product.isSuccess,
 })
 ```
