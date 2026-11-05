@@ -57,6 +57,56 @@ function expectLongNameFits(layout, expectedName, width) {
   }
 }
 
+for (const width of [1280, 390]) {
+  test(`100자 회원 ID를 목록·편집·삭제 확인에서 잘림 없이 표시 ${width}px`, async ({ page, fixture }, info) => {
+    const id = 'a'.repeat(100)
+    fixture.rows.users.items[0].id = id
+    await page.setViewportSize({ width, height: 900 })
+    await open(page, 'users')
+    const observations = {}
+    const assertFits = async (surface, target, expected) => {
+      await expect(target).toHaveText(expected)
+      const layout = await target.evaluate((node) => {
+        const range = document.createRange()
+        range.selectNodeContents(node)
+        const bounds = node.getBoundingClientRect()
+        const row = node.closest('.table-row')
+        const adjacent = row ? [...row.children].filter((child) => child !== node).map((child) => child.getBoundingClientRect()) : []
+        const fragments = [...range.getClientRects()]
+        const style = getComputedStyle(node)
+        return {
+          documentWidth: document.documentElement.scrollWidth,
+          lines: new Set(fragments.map((fragment) => fragment.top)).size,
+          fullyVisible: style.visibility === 'visible' && style.textOverflow !== 'ellipsis' && !['hidden', 'clip'].includes(style.overflowX)
+            && fragments.every((fragment) => fragment.left >= Math.max(0, bounds.left) - 0.5 && fragment.right <= Math.min(innerWidth, bounds.right) + 0.5),
+          overlaps: fragments.some((fragment) => adjacent.some((cell) => Math.min(fragment.right, cell.right) - Math.max(fragment.left, cell.left) > 0.5
+            && Math.min(fragment.bottom, cell.bottom) - Math.max(fragment.top, cell.top) > 0.5)),
+        }
+      })
+      observations[surface] = layout
+    }
+    const row = page.locator('.admin-table .table-row').filter({ has: page.getByText(id, { exact: true }) })
+    const remove = row.getByRole('button', { name: '삭제', exact: true })
+    await assertFits('list', row.locator('[data-label="ID"]'), id)
+    await edit(page).focus(); await edit(page).press('Enter'); await expect(first(page, 'users')).toBeFocused()
+    await assertFits('edit', form(page).locator('.form-context strong'), `${id} 회원`)
+    const cancel = form(page).getByRole('button', { name: '편집 취소', exact: true })
+    await cancel.focus(); await cancel.press('Enter'); await expect(edit(page)).toBeFocused()
+    await page.keyboard.press('Tab'); await expect(remove).toBeFocused(); await remove.press('Enter')
+    const dialog = page.getByRole('alertdialog')
+    await expect(dialog).toBeFocused()
+    await assertFits('delete', dialog.locator('p').last(), `선택한 회원 #${id} 정보를 삭제합니다.`)
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(remove).toBeFocused()
+    await info.attach('long-member-id-layout.json', { body: JSON.stringify(observations), contentType: 'application/json' })
+    for (const [surface, layout] of Object.entries(observations)) {
+      expect(layout.documentWidth, surface).toBe(width)
+      expect(layout.lines, surface).toBeGreaterThan(1)
+      expect(layout.fullyVisible, surface).toBe(true)
+      expect(layout.overlaps, surface).toBe(false)
+    }
+  })
+}
+
 for (const tab of Object.keys(config)) {
   for (const width of [1280, 390]) {
     test(`keyboard entry ${tab} at${width} connects first current field and nextTab without submitting`, async ({ page }, info) => {
