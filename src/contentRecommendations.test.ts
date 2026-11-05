@@ -10,6 +10,22 @@ function wire() {
     } }],
   } }
 }
+function activityWire(visible = true) {
+  const value = wire(), item = value.result.items[0]
+  const category = { kind: 'category_match', label: '주종 일치', actual_value: '맥주', target_value: '맥주', contribution: 0.1 }
+  item.score = visible ? 0.5 : 0.73
+  item.contributions.push({ component: 'text', feature: 'category:맥주', contribution: category.contribution })
+  if (visible) item.explanation.score_evidence.push(category)
+  else {
+    for (const [atom, contribution] of [['고소함', 0.12], ['산뜻함', 0.11]] as const) {
+      item.contributions.push({ component: 'text', feature: `taste:${atom}`, contribution })
+      item.explanation.score_evidence.push({ kind: 'taste_match', label: '맛 태그 일치', actual_value: atom, target_value: atom, contribution })
+    }
+  }
+  item.explanation.total_positive_contributions = item.contributions.length
+  item.explanation.score_evidence_truncated = !visible
+  return { ...value, activityEvidence: { favoriteCategories: ['맥주'], highlyRatedCategories: ['맥주'] } }
+}
 describe('owned content typed display boundary', () => {
   it('keeps ordered current Product7, real0 and comma/newline atoms without transforming the provider', () => {
     const value = wire()
@@ -23,6 +39,43 @@ describe('owned content typed display boundary', () => {
     expect(parseContentResponse(empty).source).toBe('PROVIDER')
     expect(parseContentResponse({ source: 'UNAVAILABLE', catalogScope: 'REVIEWED_DEMO', products: [], result: null }).source).toBe('UNAVAILABLE')
     expect(() => parseContentResponse({ source: 'UNAVAILABLE', catalogScope: 'REVIEWED_FAMILY_BROWSE_DEMO', products: [], result: null })).toThrow()
+  })
+  it.each([true, false])('accepts a proven activity category whether the positive fact is visible or truncated (%s)', (visible) => {
+    const value = activityWire(visible)
+    expect(parseContentResponse(value)).toBe(value)
+  })
+  it.each([
+    ['null', null],
+    ['missing list', { favoriteCategories: ['맥주'] }],
+    ['both empty', { favoriteCategories: [], highlyRatedCategories: [] }],
+    ['duplicate in one source', { favoriteCategories: ['맥주', '맥주'], highlyRatedCategories: [] }],
+    ['unearned canonical category', { favoriteCategories: ['맥주'], highlyRatedCategories: ['탁주'] }],
+    ['noncanonical text', { favoriteCategories: ['맥주 '], highlyRatedCategories: [] }],
+    ['unknown field', { favoriteCategories: ['맥주'], highlyRatedCategories: [], memberId: 'unknown' }],
+    ['overlong list', { favoriteCategories: Array(9).fill('맥주'), highlyRatedCategories: [] }],
+  ])('rejects activity evidence with %s', (_name, activityEvidence) => {
+    expect(() => parseContentResponse({ ...activityWire(), activityEvidence })).toThrow()
+  })
+  it('rejects activity evidence without a positive category contribution tied to the returned product', () => {
+    const value = activityWire()
+    value.result.items[0].contributions[1].contribution = 0
+    expect(() => parseContentResponse(value)).toThrow()
+    value.result.items[0].contributions[1].contribution = 0.1
+    value.products[0].type = '탁주'
+    expect(() => parseContentResponse(value)).toThrow()
+    const { activityEvidence } = activityWire()
+    expect(() => parseContentResponse({ source: 'UNAVAILABLE', catalogScope: 'REVIEWED_DEMO', products: [], result: null, activityEvidence })).toThrow()
+  })
+  it('requires an activity source for every positively matched category when stored categories are unknown', () => {
+    const value = activityWire(), other = activityWire()
+    const item = other.result.items[0], product = other.products[0]
+    Object.assign(item, { product_id: 8 }); Object.assign(product, { id: 8, type: '탁주' })
+    item.contributions[1].feature = 'category:탁주'
+    Object.assign(item.explanation.score_evidence[1], { actual_value: '탁주', target_value: '탁주' })
+    value.result.items.push(item); value.products.push(product); value.result.eligible_count = 2
+    expect(() => parseContentResponse(value)).toThrow()
+    value.activityEvidence.highlyRatedCategories.push('탁주')
+    expect(parseContentResponse(value)).toBe(value)
   })
   it.each([['taste_match', '맛 태그 일치'], ['aroma_match', '향 태그 일치']])('family unknown %s is not a display fact', (kind, label) => {
     const value = wire(); value.catalogScope = 'REVIEWED_FAMILY_BROWSE_DEMO'

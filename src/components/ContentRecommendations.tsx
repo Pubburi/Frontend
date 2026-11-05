@@ -4,7 +4,7 @@ import { useQuery, useQueryClient, type Query } from '@tanstack/react-query'
 import { useSession } from '../queries'
 import { api, ApiClientError } from '../services/api'
 import { useUi } from '../state/ui'
-import { contentFallbacks, contentReasons, parseContentResponse, type ContentResponse, type FilterFact } from '../contentRecommendations'
+import { contentFallbacks, contentReasons, parseContentResponse, type ActivityEvidence, type ContentResponse, type FilterFact, type ScoreFact } from '../contentRecommendations'
 import { money } from '../utils/format'
 import { Empty } from './ui'
 import type { User } from '../types'
@@ -13,7 +13,7 @@ const owners = new WeakMap<object, number>()
 let nextOwner = 0
 let nextView = 0
 const authPending = () => ['login', 'join', 'logout', 'settings-password'].some((key) => useUi.getState().pending[key])
-const requestLabel = '저장한 취향으로 검수 DEMO 추천 보기'
+const requestLabel = '검수 DEMO 추천 보기'
 
 export function ContentRecommendations() {
   const session = useSession()
@@ -23,8 +23,8 @@ export function ContentRecommendations() {
   const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
   if (auth && !owners.has(auth)) owners.set(auth, ++nextOwner)
   return <section className="content-recommendations section-band" aria-labelledby="content-recommendations-title">
-    <h2 id="content-recommendations-title">저장한 취향으로 추천</h2>
-    <p>검수한 DEMO 후보 안에서 저장한 취향을 비교합니다. 평점·찜은 이번 결과에 반영하지 않습니다.</p>
+    <h2 id="content-recommendations-title">내 취향 추천</h2>
+    <p>저장한 취향과 검수 DEMO 후보를 비교합니다. 선호 주종을 아직 설정하지 않았다면 찜한 검수 상품과 상품별 최신 후기가 4점 이상인 검수 상품의 주종을 참고할 수 있습니다.</p>
     {transitioning || session.isPending || session.fetchStatus !== 'idle' ? <p role="status">현재 로그인 상태를 확인하는 중입니다.</p> : session.isError ?
       <><p role="status">로그인 상태를 확인하지 못했습니다.</p><button className="btn btn-outline-dark" onClick={() => session.refetch()}>추천 로그인 상태 다시 확인</button></> :
       !session.data ? <Link className="btn btn-dark" to="/account?redirect=/">로그인하고 취향 추천 보기</Link> : auth ?
@@ -84,7 +84,7 @@ function OwnedContentRecommendations({ user, auth }: { user: User; auth: Query }
   }
   return <>
     <button className="btn btn-dark" aria-disabled={busy || expired} onClick={request}>{requestLabel}</button>
-    {submitted === null ? null : busy ? <p role="status">현재 저장한 취향으로 추천을 확인하는 중입니다.</p> : expired ?
+    {submitted === null ? null : busy ? <p role="status">현재 취향 추천을 확인하는 중입니다.</p> : expired ?
       <Empty title="추천을 보려면 다시 로그인해 주세요" description="로그인 상태가 바뀌어 이전 추천은 표시하지 않았습니다."><button className="btn btn-dark" onClick={loginAgain}>추천 다시 로그인</button></Empty> : query.isError ?
         <Empty title={status === 409 ? '취향이나 검수 후보가 변경되었습니다' : status === 400 ? '추천 조건을 확인해 주세요' : '추천을 가져오지 못했습니다'} description={status === 409 ? '현재 취향으로 추천 보기를 다시 선택해 주세요.' : status === 400 ? '저장한 취향을 확인하거나 추천 보기를 다시 선택해 주세요.' : '잠시 후 추천 보기를 다시 선택해 주세요. 기본 목록은 별도로 볼 수 있습니다.'} /> :
         query.data?.source === 'UNAVAILABLE' ? <Empty title="검수 DEMO 추천을 준비하지 못했습니다" description="현재 추천을 제공할 수 없습니다. 다시 요청하거나 별도의 기본 목록을 이용해 주세요." /> : query.data?.source === 'PROVIDER' ? <ContentResults response={query.data} /> : null}
@@ -94,6 +94,15 @@ function FilterText({ fact }: { fact: FilterFact }) {
   if (fact.kind === 'availability_filter') return <>{fact.label} — 판매·재고 확인을 뜻하지 않습니다.</>
   if (fact.kind === 'category_filter') return <>{fact.label}: {fact.actual_value} (허용 주종 {fact.allowed_category_count}개)</>
   return <>{fact.label}: {fact.actual_value} {fact.unit} (최소 {fact.minimum === null ? '미지정' : `${fact.minimum} ${fact.unit}`}, 최대 {fact.maximum === null ? '미지정' : `${fact.maximum} ${fact.unit}`})</>
+}
+function ScoreText({ fact, category, activity }: { fact: ScoreFact; category: string; activity?: ActivityEvidence }) {
+  if (fact.kind === 'category_match' && fact.target_value === category && activity) {
+    const sources = []
+    if (activity.favoriteCategories.includes(fact.target_value)) sources.push('찜한 검수 상품의 주종')
+    if (activity.highlyRatedCategories.includes(fact.target_value)) sources.push('최근 4점 이상 후기를 남긴 검수 상품의 주종')
+    if (sources.length) return <>{fact.label}: {fact.actual_value} ({sources.join(' · ')})</>
+  }
+  return <>{fact.label}: 후보 {fact.actual_value}{fact.unit ? ` ${fact.unit}` : ''} / 저장 선호 {fact.target_value}{fact.unit ? ` ${fact.unit}` : ''}</>
 }
 function ContentResults({ response }: { response: Extract<ContentResponse, { source: 'PROVIDER' }> }) {
   const family = response.catalogScope === 'REVIEWED_FAMILY_BROWSE_DEMO'
@@ -110,7 +119,7 @@ function ContentResults({ response }: { response: Extract<ContentResponse, { sou
         <p>용량 미확인</p>
         <p>비교 점수 {item.score} (0–1)</p>
         <ul>{item.reasons.map((reason, i) => <li key={i}>{contentReasons[reason]}</li>)}</ul>
-        {facts.score_evidence.length > 0 && <><h4>저장 선호와 비교한 근거</h4><ul>{facts.score_evidence.map((fact, i) => <li className="content-fact" key={i}>{fact.label}: 후보 {fact.actual_value}{fact.unit ? ` ${fact.unit}` : ''} / 저장 선호 {fact.target_value}{fact.unit ? ` ${fact.unit}` : ''}</li>)}</ul></>}
+        {facts.score_evidence.length > 0 && <><h4>추천에 사용한 비교 근거</h4><ul>{facts.score_evidence.map((fact, i) => <li className="content-fact" key={i}><ScoreText fact={fact} category={product.type} activity={response.activityEvidence} /></li>)}</ul></>}
         {facts.score_evidence_truncated && <p>양수 비교 근거 {facts.total_positive_contributions}개 중 상위 {facts.score_evidence.length}개만 표시합니다.</p>}
         <h4>통과한 입력 조건</h4><ul>{facts.filter_evidence.map((fact, i) => <li className="content-fact" key={i}><FilterText fact={fact} /></li>)}</ul>
       </li>
