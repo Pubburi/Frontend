@@ -53,9 +53,13 @@
 | 분류 | 기술 스택 |
 |---|---|
 | 언어 | TypeScript · CSS |
-| 애플리케이션 | React · TanStack Query · Zustand · React Router |
-| 빌드·실행 | Vite · Node.js · npm · WebP · sharp |
-| 테스트·품질 | Vitest · jsdom · Playwright |
+| UI | React |
+| 라우팅 | React Router |
+| 서버 상태 | TanStack Query |
+| 클라이언트 상태 | Zustand |
+| 개발·빌드 | Vite · Node.js · npm |
+| 정적 자산 | WebP · sharp |
+| 테스트 | Vitest · jsdom · Playwright |
 | CI | GitHub Actions |
 
 <a id="architecture"></a>
