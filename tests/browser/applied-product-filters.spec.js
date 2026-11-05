@@ -137,8 +137,17 @@ for (const width of [1280, 390]) test(`키보드로 리터럴 태그·영점 범
   await info.attach('individual-removal.json', { body: JSON.stringify({ width, url: page.url(), active: await page.evaluate(() => document.activeElement.textContent), requests: catalogCalls(filtersApi), documentWidth: await page.evaluate(() => document.documentElement.scrollWidth) }), contentType: 'application/json' })
 })
 
-for (const width of [1280, 390]) test(`포인터 해제는 현재 조작 위치를 보존하고 다른 경로/Back은 정상 스크롤 ${width}px`, async ({ page }, info) => {
+for (const width of [1280, 390]) for (const restoration of ['auto', 'manual']) test(`포인터 해제·Back의 현재 URL과 스크롤 소유 ${width}px/history=${restoration}`, async ({ page }, info) => {
+  await page.addInitScript(() => {
+    const nativeScrollTo = window.scrollTo.bind(window)
+    window.__appliedScrollRequests = []
+    window.scrollTo = (...args) => {
+      window.__appliedScrollRequests.push({ args, destination: location.pathname + location.search })
+      return nativeScrollTo(...args)
+    }
+  })
   await page.setViewportSize({ width, height: 900 }); await page.goto(`/products?${applied()}`)
+  expect(await page.evaluate(() => history.scrollRestoration)).toBe('auto')
   await expect(page.locator('.product-card')).toHaveCount(2)
   const target = remove(page, '최대 가격(원) 12000 해제'); await target.scrollIntoViewIfNeeded()
   const source = await target.elementHandle(), before = await page.evaluate(() => window.scrollY)
@@ -149,11 +158,29 @@ for (const width of [1280, 390]) test(`포인터 해제는 현재 조작 위치�
   expect(observed.scrollY).toBeGreaterThan(0)
   expect(Math.abs(observed.scrollY - before)).toBeLessThanOrEqual(96)
   await fits(page)
+  // Only the explicit App-scroll check disables the browser's competing restoration.
+  if (restoration === 'manual') {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.evaluate(() => { history.scrollRestoration = 'manual' })
+  }
+  const backUrl = page.url()
+  await page.getByLabel('상품 검색', { exact: true }).fill('이탈 전 미제출 초안')
   if (width === 390) await remove(page, '메뉴 열기').click()
   await page.locator('header').getByRole('link', { name: '장바구니', exact: true }).click()
   await expect(page).toHaveURL(/\/cart$/); await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
-  await page.goBack(); await expect(page.locator('.product-card')).toHaveCount(12)
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await page.evaluate(() => { window.__appliedScrollRequests = [] })
+  await page.goBack(); await expect(page).toHaveURL(backUrl)
+  await expect(page.locator('.product-card')).toHaveCount(12)
+  await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('초기')
+  await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('')
+  await expect(page.getByLabel('최소 가격(원)', { exact: true })).toHaveValue('0')
+  await expect(page.getByLabel('맛 태그 조건 1', { exact: true })).toHaveValue('dry,sweet')
+  await expect(page.getByLabel('맛 태그 조건 2', { exact: true })).toHaveValue('line\nbreak')
+  await expect.poll(() => page.evaluate(() => window.__appliedScrollRequests.filter((call) => call.args[0]?.top === 0 && call.destination === location.pathname + location.search).length)).toBe(1)
+  expect(await page.evaluate(() => history.scrollRestoration)).toBe(restoration)
+  // In auto mode native history may restore a remembered position after App's request.
+  if (restoration === 'manual') await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await info.attach('back-scroll-owner.json', { body: JSON.stringify(await page.evaluate(() => ({ mode: history.scrollRestoration, scrollY, requests: window.__appliedScrollRequests, url: location.pathname + location.search }))), contentType: 'application/json' })
 })
 
 test.describe('터치 가능한 웹 브라우저', () => {
