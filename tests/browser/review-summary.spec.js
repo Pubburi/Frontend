@@ -343,3 +343,185 @@ test('auth-transition: 기존 본문·편집 초안은 인증 전환에 차폐�
     expect(reviewsApi.calls.filter((call) => ['POST', 'PUT'].includes(call.method) && call.path.startsWith('/api/comments'))).toHaveLength(0)
   } finally { release() }
 })
+
+for (const width of [1280, 390]) for (const key of ['Enter', 'Space']) test(`review-edit-keyboard: ${key} 진입과 다음 Tab은 현재 후기 입력으로 연결 ${width}px`, async ({ page, reviewsApi }, info) => {
+  reviewsApi.reviews = [{ ...review(1, 2.25), tasteTags: ['직접 느낀 맛'] }]
+  await page.setViewportSize({ width, height: 900 })
+  await page.goto('/products/901?from=review-edit-keyboard')
+  const edit = page.locator('.comment-row').getByRole('button', { name: '수정', exact: true })
+  await edit.focus(); await edit.press(key)
+  const active = () => page.evaluate(() => ({ tag: document.activeElement.tagName, label: document.activeElement.getAttribute('aria-label'), text: document.activeElement.textContent?.trim().slice(0, 70) }))
+  const initial = await active()
+  await page.keyboard.press('Tab')
+  const next = await active()
+  await info.attach('review-edit-focus.json', { body: JSON.stringify({ width, key, initial, next }), contentType: 'application/json' })
+  expect(initial).toMatchObject({ tag: 'SELECT', label: null })
+  await expect(page.locator('.comment-edit-form').getByLabel('후기 내용', { exact: true })).toBeFocused()
+  const geometry = await page.locator('.comment-edit-form').getByLabel('후기 내용', { exact: true }).evaluate((field) => {
+    const rect = field.getBoundingClientRect()
+    return { top: rect.top, bottom: rect.bottom, header: document.querySelector('.topbar').getBoundingClientRect().bottom, viewport: innerHeight }
+  })
+  expect(geometry.top).toBeGreaterThanOrEqual(geometry.header)
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewport)
+  expect(reviewsApi.calls.filter((call) => ['POST', 'PUT', 'DELETE'].includes(call.method) && call.path.startsWith('/api/comments'))).toEqual([])
+})
+
+for (const width of [1280, 390]) test(`review-edit-focus: 키보드 취소·저장 후 현재 후기 조작으로 돌아옴 ${width}px`, async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [{ ...review(1, 2.25), tasteTags: ['보존할 태그'] }]
+  await page.setViewportSize({ width, height: 900 })
+  await page.goto('/products/901?from=review-edit-return')
+  await page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true }).fill('3')
+  await page.getByRole('combobox', { name: '후기 정렬', exact: true }).selectOption('rating_asc')
+  const edit = page.locator('.comment-row').getByRole('button', { name: '수정', exact: true })
+  const editor = page.locator('.comment-edit-form')
+  await edit.focus(); await edit.press('Enter')
+  await editor.getByLabel('후기 내용', { exact: true }).fill('취소할 초안')
+  const cancel = editor.getByRole('button', { name: '취소', exact: true })
+  await cancel.focus(); await cancel.press('Enter')
+  await expect(edit).toBeFocused()
+  await expect(page.locator('.comment-row > p')).toHaveText('회원 평가 1')
+  expect(reviewsApi.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
+  await edit.press('Space')
+  await editor.getByLabel('후기 내용', { exact: true }).fill('키보드로 저장한 후기')
+  const save = editor.getByRole('button', { name: '저장', exact: true })
+  await save.focus(); await save.press('Enter')
+  await expect(page.locator('.comment-row > p')).toHaveText('키보드로 저장한 후기')
+  await expect(edit).toBeFocused()
+  await expect(page.locator('.review-summary')).toHaveText('평균 2.25점 · 전체 후기 1개')
+  await expect(page.locator('.review-taste-tags li')).toHaveText('보존할 태그')
+  await expect(page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true })).toHaveValue('3')
+  await expect(page.getByRole('combobox', { name: '후기 정렬', exact: true })).toHaveValue('rating_asc')
+  await expect(page).toHaveURL('/products/901?from=review-edit-return')
+  expect(reviewsApi.calls.filter((call) => call.method === 'PUT').map((call) => call.body)).toEqual([{ rating: 2.25, comment: '키보드로 저장한 후기' }])
+})
+
+test('review-edit-focus: 포인터·다른 조작에서의 합성 진입은 입력 focus를 강제하지 않음', async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [review(1, 3)]
+  await page.goto('/products/901')
+  const edit = page.locator('.comment-row').getByRole('button', { name: '수정', exact: true })
+  await edit.click()
+  await expect(page.locator('.comment-edit-form').getByRole('combobox', { name: '평점', exact: true })).not.toBeFocused()
+  await page.locator('.comment-edit-form').getByRole('button', { name: '취소', exact: true }).click()
+  const quantity = page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true })
+  await quantity.focus()
+  await edit.evaluate((node) => node.click())
+  await expect(page.locator('.comment-edit-form')).toBeVisible()
+  await expect(quantity).toBeFocused()
+})
+
+test('review-edit-focus: 쓰기 거절은 폼·소수평점·태그를 유지하고 키보드 재시도로 복구', async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [{ ...review(1, 2.25), tasteTags: ['원래 태그'] }]
+  let fail = true
+  await page.route('**/api/comments/1', (route) => fail ? route.fulfill({ status: 400, json: error('VALIDATION_FAILED') }) : route.fallback())
+  await page.goto('/products/901')
+  const edit = page.locator('.comment-row').getByRole('button', { name: '수정', exact: true }), editor = page.locator('.comment-edit-form')
+  await edit.focus(); await edit.press('Enter')
+  await editor.getByLabel('후기 내용', { exact: true }).fill('거절 뒤 재시도')
+  const save = editor.getByRole('button', { name: '저장', exact: true })
+  await save.focus(); await save.press('Enter')
+  await expect(page.getByRole('alert')).toContainText('입력한 내용을 다시 확인해 주세요.')
+  await expect(editor).toBeFocused()
+  await expect(editor.getByRole('combobox', { name: '평점', exact: true })).toHaveValue('2.25')
+  await expect(editor.getByLabel('느낀 맛 태그 1', { exact: true })).toHaveValue('원래 태그')
+  await expect(editor.getByLabel('후기 내용', { exact: true })).toHaveValue('거절 뒤 재시도')
+  await editor.press('Tab')
+  await expect(editor.getByRole('combobox', { name: '평점', exact: true })).toBeFocused()
+  fail = false; await save.focus(); await save.press('Enter')
+  await expect(edit).toBeFocused()
+  await expect(page.locator('.comment-row > p')).toHaveText('거절 뒤 재시도')
+})
+
+test('review-edit-focus: required 입력 검증은 현재 필드에 남고 쓰기 없이 수정·재시도', async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [review(1, 2.25)]
+  await page.goto('/products/901')
+  const edit = page.locator('.comment-row').getByRole('button', { name: '수정', exact: true }), editor = page.locator('.comment-edit-form')
+  await edit.focus(); await edit.press('Enter')
+  const body = editor.getByLabel('후기 내용', { exact: true }), save = editor.getByRole('button', { name: '저장', exact: true })
+  await body.fill(''); await save.focus(); await save.press('Enter')
+  await expect(body).toBeFocused()
+  expect(reviewsApi.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
+  await body.fill('검증 뒤 저장할 본문')
+  await editor.getByRole('button', { name: '느낀 맛 태그 추가', exact: true }).click()
+  await save.focus(); await save.press('Enter')
+  await expect(editor.getByLabel('느낀 맛 태그 1', { exact: true })).toBeFocused()
+  expect(reviewsApi.calls.filter((call) => call.method === 'PUT')).toHaveLength(0)
+  await editor.getByRole('button', { name: '느낀 맛 태그 1 삭제', exact: true }).click()
+  await save.focus(); await save.press('Enter')
+  await expect(edit).toBeFocused()
+  expect(reviewsApi.calls.filter((call) => call.method === 'PUT').map((call) => call.body)).toEqual([{ rating: 2.25, comment: '검증 뒤 저장할 본문', tasteTags: [] }])
+})
+
+test('review-edit-focus: 저장한 평점으로 현재 페이지를 벗어나면 후기 제목으로 복귀', async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = Array.from({ length: 11 }, (_, index) => review(index + 1, index === 0 ? 2.25 : 4.5))
+  await page.goto('/products/901')
+  await page.getByRole('combobox', { name: '후기 정렬', exact: true }).selectOption('rating_asc')
+  const edit = page.locator('.comment-row').filter({ has: page.getByText('회원 평가 11', { exact: true }) }).getByRole('button', { name: '수정', exact: true })
+  await edit.focus(); await edit.press('Enter')
+  const editor = page.locator('.comment-edit-form')
+  await editor.getByRole('combobox', { name: '평점', exact: true }).selectOption('5')
+  const save = editor.getByRole('button', { name: '저장', exact: true })
+  await save.focus(); await save.press('Enter')
+  await expect(editor).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '회원 후기 11', exact: true })).toBeFocused()
+  await expect(page.locator('.comment-row > p')).not.toContainText(['회원 평가 11'])
+  await expect(page.getByRole('combobox', { name: '후기 정렬', exact: true })).toHaveValue('rating_asc')
+  await expect(page.getByRole('navigation', { name: 'pagination', exact: true })).toContainText('1 / 2')
+  expect(reviewsApi.reviews.find((item) => item.id === 11).rating).toBe(5)
+})
+
+for (const mode of ['other-control', 'reopened', 'sort', 'page', 'same-url', 'route', 'account']) test(`review-edit-focus: 늦은 저장은 ${mode}의 현재 focus를 가져가지 않음`, async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = Array.from({ length: 11 }, (_, index) => ({ ...review(index + 1, index === 0 ? 2.25 : 4.5), tasteTags: ['유지할 태그'] }))
+  await page.goto('/products/901')
+  await page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true }).click()
+  const edit = page.locator('.comment-row').getByRole('button', { name: '수정', exact: true }), editor = page.locator('.comment-edit-form')
+  await edit.focus(); await edit.press('Enter')
+  await editor.getByLabel('후기 내용', { exact: true }).fill('이미 접수된 수정')
+  let release, started
+  const held = new Promise((resolve) => { release = resolve }), began = new Promise((resolve) => { started = resolve })
+  await page.route('**/api/comments/1', async (route) => {
+    const body = route.request().postDataJSON(), item = reviewsApi.reviews.find((item) => item.id === 1)
+    Object.assign(item, body)
+    reviewsApi.calls.push({ path: '/api/comments/1', method: 'PUT', body })
+    const { tasteTags, ...legacy } = item
+    started(); await held; return route.fulfill({ json: ok(legacy) })
+  })
+  const save = editor.getByRole('button', { name: '저장', exact: true })
+  try {
+    await save.focus(); await save.press('Enter'); await began
+    let target
+    if (mode === 'reopened') {
+      const cancel = editor.getByRole('button', { name: '취소', exact: true })
+      await cancel.focus(); await cancel.press('Enter'); await edit.press('Enter')
+      target = editor.getByLabel('후기 내용', { exact: true }); await target.fill('새 편집 초안')
+    } else if (mode === 'sort') {
+      target = page.getByRole('combobox', { name: '후기 정렬', exact: true }); await target.focus(); await target.selectOption('rating_desc')
+      await expect(page.getByRole('navigation', { name: 'pagination', exact: true })).toContainText('1 / 2')
+    } else if (mode === 'page') {
+      await page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '이전', exact: true }).click()
+      target = page.getByRole('combobox', { name: '후기 정렬', exact: true }); await target.focus()
+    } else if (mode === 'same-url') {
+      await page.evaluate(() => { history.pushState({ key: 'review-focus-same-url' }, '', location.href); dispatchEvent(new PopStateEvent('popstate')) })
+      target = page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true }); await target.focus()
+    } else if (mode === 'route') {
+      await page.evaluate(() => { history.pushState({ key: 'review-focus-next' }, '', '/products/902?from=focus-route'); dispatchEvent(new PopStateEvent('popstate')) })
+      target = page.getByRole('spinbutton', { name: '후기 표본 902 수량', exact: true }); await target.focus()
+    } else if (mode === 'account') {
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect(page).toHaveURL('/')
+      await page.evaluate(() => { history.pushState({ key: 'review-focus-login' }, '', '/account?redirect=%2Fproducts%2F901'); dispatchEvent(new PopStateEvent('popstate')) })
+      await page.getByLabel('아이디', { exact: true }).fill('next-member'); await page.getByLabel('비밀번호', { exact: true }).fill('password')
+      await page.locator('form').getByRole('button', { name: '로그인', exact: true }).click()
+      target = page.locator('.comment-form').getByLabel('후기', { exact: true }); await target.focus()
+    } else {
+      target = page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true }); await target.focus()
+    }
+    const reads = reviewsApi.calls.filter((call) => call.method === 'GET' && call.path === '/api/products/901/comments').length
+    const delivered = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/comments/1' && response.request().method() === 'PUT')
+    release(); await delivered
+    if (mode === 'account') await expect.poll(() => reviewsApi.calls.filter((call) => call.method === 'GET' && call.path === '/api/products/901/comments').length).toBeGreaterThan(reads)
+    else await expect(page.getByRole('status').filter({ hasText: '후기가 수정되었습니다.' })).toHaveCount(1)
+    await page.evaluate(() => new Promise(requestAnimationFrame))
+    await expect(target).toBeFocused()
+    if (mode === 'reopened') await expect(target).toHaveValue('새 편집 초안')
+    if (mode === 'account') await expect(target).toHaveValue('')
+  } finally { release() }
+})

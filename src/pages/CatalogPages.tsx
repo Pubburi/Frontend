@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import {
   Link,
   useLocation,
@@ -491,6 +491,7 @@ export function ProductDetailPage() {
   return <ProductDetail key={id} id={id} />
 }
 type ReviewEdit = Review & { initialRating: number; tagsDraft?: string[] }
+type ReviewFocus = { editing: ReviewEdit | null; account: object; view: object; locationKey: string; source: HTMLElement; row: HTMLElement }
 function ProductDetail({ id }: { id: string }) {
   const session = useSession()
   const ui = useUi()
@@ -510,10 +511,35 @@ function ProductDetail({ id }: { id: string }) {
     !['login', 'join', 'logout', 'settings-password'].some((key) => ui.pending[key])
   const [account, setAccount] = useState({ auth, id: session.data?.id, role: session.data?.role, writable })
   const currentAccount = useRef(account)
+  const reviewHeading = useRef<HTMLHeadingElement>(null)
+  const focusIntent = useRef<ReviewFocus | null>(null)
+  const saveFocus = useRef<{ editing: ReviewEdit; form: HTMLFormElement; row: HTMLElement } | null>(null)
+  const currentContext = useRef({ account, view: reviewView, locationKey: location.key, editing })
+  currentContext.current = { account, view: reviewView, locationKey: location.key, editing }
+  useLayoutEffect(() => {
+    const intent = focusIntent.current
+    focusIntent.current = null
+    if (!intent || !writable || intent.editing !== editing || intent.account !== currentAccount.current ||
+        intent.view !== reviewView || intent.locationKey !== location.key) return
+    const active = document.activeElement
+    if (active !== intent.source && (intent.source.isConnected || active !== document.body)) return
+    const control = intent.editing ? intent.row.querySelector<HTMLElement>('.comment-edit-form select') :
+      intent.row.querySelector<HTMLElement>('button[data-review-edit]')
+    const target = control?.isConnected ? control : !intent.editing ? reviewHeading.current : null
+    target?.focus({ preventScroll: true })
+    target?.scrollIntoView({ block: 'center', behavior: 'instant' })
+  }, [editing, account, writable, reviewView, location.key])
+  function rememberFocus(event: MouseEvent<HTMLButtonElement>, next: ReviewEdit | null) {
+    const source = event.currentTarget, row = source.closest<HTMLElement>('.comment-row')
+    focusIntent.current = event.detail === 0 && document.activeElement === source && row ?
+      { editing: next, account, view: reviewView, locationKey: location.key, source, row } : null
+  }
   // Discard account-owned drafts before rendering a changed/uncertain session; public view and quantity survive.
   if (account.auth !== auth || account.id !== session.data?.id || account.role !== session.data?.role || account.writable !== writable) {
     const next = { auth, id: session.data?.id, role: session.data?.role, writable }
     currentAccount.current = next
+    focusIntent.current = null
+    saveFocus.current = null
     setAccount(next)
     setDraft({ rating: 5, comment: '', tasteTags: [] })
     setEditing(null)
@@ -563,6 +589,11 @@ function ProductDetail({ id }: { id: string }) {
     event.preventDefault()
     if (!editing || !writable) return
     const submitted = editing
+    const keyboard = saveFocus.current
+    saveFocus.current = null
+    let anchor: HTMLHeadingElement | null = null
+    const ownsFocus = () => currentContext.current.account === account && currentContext.current.view === reviewView &&
+      currentContext.current.locationKey === location.key && currentContext.current.editing === submitted
     let tasteTags: string[] | undefined
     try { tasteTags = submitted.tagsDraft === undefined ? undefined : buildReviewTasteTags(submitted.tagsDraft) } catch (error) { ui.error(error); return }
     const result = await ui.run(
@@ -573,11 +604,17 @@ function ProductDetail({ id }: { id: string }) {
           comment: submitted.comment.trim(),
           ...(tasteTags === undefined ? {} : { tasteTags }),
         })
+        if (keyboard?.editing === submitted && ownsFocus() && keyboard.form.isConnected && keyboard.form.contains(document.activeElement)) {
+          anchor = reviewHeading.current
+          anchor?.focus({ preventScroll: true })
+        }
         await refresh()
       },
     )
     if (result.ok && currentAccount.current === account) {
       ui.status('후기가 수정되었습니다.')
+      if (anchor && document.activeElement === anchor && keyboard && ownsFocus())
+        focusIntent.current = { editing: null, account, view: reviewView, locationKey: location.key, source: anchor, row: keyboard.row }
       setEditing((current) => (current === submitted ? null : current))
     }
   }
@@ -669,7 +706,7 @@ function ProductDetail({ id }: { id: string }) {
             <div className="comment-title">
               <div>
                 <p className="section-kicker">Reviews</p>
-                <h2>
+                <h2 ref={reviewHeading} tabIndex={-1}>
                   회원 후기 {!comments.isError && !comments.isFetching && comments.data && <span>{comments.data.total}</span>}
                 </h2>
               </div>
@@ -776,7 +813,7 @@ function ProductDetail({ id }: { id: string }) {
                       </span>
                     </div>
                     {writable && editing?.id === comment.id ? (
-                      <form className="comment-edit-form" onSubmit={saveReview}>
+                      <form className="comment-edit-form" onSubmit={saveReview} tabIndex={-1} aria-label="후기 수정">
                         <label className="field-group compact-field">
                           <span>평점</span>
                           <select
@@ -829,13 +866,19 @@ function ProductDetail({ id }: { id: string }) {
                           <button
                             type="button"
                             className="btn btn-sm btn-outline-secondary"
-                            onClick={() => setEditing(null)}
+                            onClick={(event) => { rememberFocus(event, null); setEditing(null) }}
                           >
                             취소
                           </button>
                           <button
                             className="btn btn-sm btn-dark"
                             disabled={ui.pending[`comment-edit-${comment.id}`]}
+                            onClick={(event) => {
+                              const form = event.currentTarget.form, row = event.currentTarget.closest<HTMLElement>('.comment-row')
+                              saveFocus.current = event.detail === 0 && document.activeElement === event.currentTarget && form && row ?
+                                { editing, form, row } : null
+                              if (saveFocus.current) form?.focus({ preventScroll: true })
+                            }}
                           >
                             저장
                           </button>
@@ -853,10 +896,12 @@ function ProductDetail({ id }: { id: string }) {
                           <div className="button-row">
                             <button
                               className="text-button"
-                              onClick={() => setEditing({
-                                ...comment,
-                                initialRating: comment.rating,
-                              })}
+                              data-review-edit
+                              onClick={(event) => {
+                                const next = { ...comment, initialRating: comment.rating }
+                                rememberFocus(event, next)
+                                setEditing(next)
+                              }}
                             >
                               수정
                             </button>
