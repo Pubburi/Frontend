@@ -94,15 +94,13 @@ API에는 제출 시점의 상품·수량·요청을 올바르게 보냈지만, 
 
 #### 결과
 
-접수된 원래 주문을 바꾸지 않으면서 추가 상품·수량과 새 요청사항으로 다음 주문을 이어갈 수 있다. 로컬 실제 서버 연동에서도 원래 제출 내용과 다음 입력을 함께 보존했고, 다른 화면이나 다시 연 장바구니를 이전 성공이 이동시키지 않는다. 변경하지 않은 정상 주문은 정리하고 거절된 주문의 현재 입력은 남긴다. [적용 조건과 한계](https://github.com/Pubburi/Frontend/blob/3cfefbae0a3002515c0ae63d29a8797c582e24d0/docs/plans/2026-11-01-checkout-submission-ownership.md)는 작업 기록으로 구분했다.
+접수된 원래 주문을 바꾸지 않으면서 추가 상품·수량과 새 요청사항으로 다음 주문을 이어갈 수 있다. 로컬 실제 서버 연동에서도 원래 제출 내용과 다음 입력을 함께 보존했고, 다른 화면이나 다시 연 장바구니를 이전 성공이 이동시키지 않는다. 변경하지 않은 정상 주문은 정리하고 거절된 주문의 현재 입력은 남긴다. 적용 조건과 한계는 작업 기록으로 구분했다.
 
 #### 대체안/회고
 
 주문 중 모든 담기·편집·이동을 막는 대신 이미 보낸 주문과 다음 선택의 소유를 나눴다. 값 비교나 전체 초기화로는 수량 추가·삭제 후 재추가·새 폼을 함께 다루지 못한다. 전송 후 수량을 줄여도 접수된 주문을 취소하는 것은 아니며 잔여량을 음수로 만들지 않는다. 전체 새로고침·여러 창의 주문 조정, 서버 멱등성과 계정 장바구니 병합은 별도 과제다. 브라우저 보관이 막힌 동안 새로고침 복원을 보장하지 않는다.
 
 #### 코드
-
-[상품 행·전송 수량·폼 소유 처리](src/state/cart.ts)
 
 전송 후에는 같은 행의 제출량만 정리하고 다음 폼은 남긴다.
 
@@ -121,8 +119,6 @@ save(
 if (get().orderForm === orderForm)
   set({ orderForm: { ...orderForm, orderTable: '' } })
 ```
-
-[원래 화면의 성공 후 이동 경계](src/pages/AccountPages.tsx)
 
 ```tsx
 if (result.ok) {
@@ -151,15 +147,13 @@ TanStack Query에서 검색 조건 전체·상품 ID·후기 정렬·페이지�
 
 #### 결과
 
-검색 중 해제한 URL의 새 목록을 읽고, 떠난 상세의 늦은 성공·실패가 현재 상품이나 전역 오류를 바꾸지 않는다. 이전 읽기의 종료가 현재 읽기의 로딩 상태를 먼저 끄지도 않는다. 이는 응답 순서의 정확성 결과이며 네트워크 속도 개선 수치가 아니다. [이전 결함 재현](https://github.com/Pubburi/Frontend/blob/3cfefbae0a3002515c0ae63d29a8797c582e24d0/docs/plans/2026-10-31-latest-product-requests.md) · [React 전환 검증 범위](https://github.com/Pubburi/Frontend/blob/3cfefbae0a3002515c0ae63d29a8797c582e24d0/docs/plans/2026-10-31-react-migration.md)
+검색 중 해제한 URL의 새 목록을 읽고, 떠난 상세의 늦은 성공·실패가 현재 상품이나 전역 오류를 바꾸지 않는다. 이전 읽기의 종료가 현재 읽기의 로딩 상태를 먼저 끄지도 않는다. 이는 응답 순서의 정확성 결과이며 네트워크 속도 개선 수치가 아니다.
 
 #### 대체안/회고
 
 전역 catalog에 응답을 복사하고 버전을 다시 관리하는 대신 query key가 서버 상태를 소유하게 했다. 고객/관리자 key와 개인 주문의 계정 ID도 분리한다. 현재 이전 GET 전송 자체는 취소하지 않으므로 사용하지 않는 서버 작업은 계속될 수 있다. 실제 서버 통합과 재시도 정책은 API별로 검증을 더한다.
 
 #### 코드
-
-[상품·후기 query와 라우트 상태](https://github.com/Pubburi/Frontend/blob/main/src/pages/CatalogPages.tsx)
 
 ```tsx
 const products = useQuery<Page<Product>>({
@@ -200,15 +194,13 @@ const comments = useQuery<ReviewPage>({
 
 #### 결과
 
-일반·좁은 웹 화면에서 삭제 처리 중 포커스가 확인창 안에 남고, 실패 응답 뒤에는 취소·키보드 순환·Escape 닫기·원래 버튼 복귀가 동작한다. 처리 중 Escape를 막는 기존 정책과 단일 삭제 요청을 유지한다. [재현 조건·오류 결과·한계](https://github.com/Pubburi/Frontend/blob/3cfefbae0a3002515c0ae63d29a8797c582e24d0/docs/plans/2026-11-01-pending-dialog-focus.md)
+일반·좁은 웹 화면에서 삭제 처리 중 포커스가 확인창 안에 남고, 실패 응답 뒤에는 취소·키보드 순환·Escape 닫기·원래 버튼 복귀가 동작한다. 처리 중 Escape를 막는 기존 정책과 단일 삭제 요청을 유지한다.
 
 #### 대체안/회고
 
 버튼 disabled나 ARIA 속성만으로 포커스 소유권이 보장되지는 않았다. section 조건 하나를 보완하는 대신, 이미 밖으로 이동한 포커스도 복원할 수 있는 수명 관리 범위를 선택했다. 네이티브 dialog나 라이브러리 전환은 대안으로 남기고 현재 공통 확인창의 레이아웃·삭제 정책을 보존했다. 현재는 버튼으로 구성한 단일 확인창의 키보드 범위이며 중첩 모달·전체 보조기술 조합·삭제된 trigger의 대체 복귀까지 완료했다는 뜻은 아니다.
 
 #### 코드
-
-[공통 확인창의 포커스·listener 수명](https://github.com/Pubburi/Frontend/blob/main/src/components/ui.tsx)
 
 ```tsx
 if (!first || !last) {
@@ -243,15 +235,13 @@ if (!first || !last) {
 
 #### 결과
 
-동일 계정으로 다시 로그인하면 진행 중인 취향 쓰기의 응답을 기다린 뒤 새 GET으로 서버 저장값과 편집 초기값을 일치시킨다. 다른 계정은 독립적으로 읽고 편집하며, 이전 세션의 늦은 응답은 새 세션에 적용하지 않는다. 같은 화면에서 저장 중 새로 입력한 초안도 유지한다. 이 동작은 같은 웹 실행 안의 계정 이동에 적용되며, 브라우저 종료·전체 재로딩을 넘는 미확정 저장까지 보장하지 않는다. [조건과 한계](https://github.com/Pubburi/Frontend/blob/3cfefbae0a3002515c0ae63d29a8797c582e24d0/docs/plans/2026-11-01-explicit-preferences-ui.md)
+동일 계정으로 다시 로그인하면 진행 중인 취향 쓰기의 응답을 기다린 뒤 새 GET으로 서버 저장값과 편집 초기값을 일치시킨다. 다른 계정은 독립적으로 읽고 편집하며, 이전 세션의 늦은 응답은 새 세션에 적용하지 않는다. 같은 화면에서 저장 중 새로 입력한 초안도 유지한다. 이 동작은 같은 웹 실행 안의 계정 이동에 적용되며, 브라우저 종료·전체 재로딩을 넘는 미확정 저장까지 보장하지 않는다.
 
 #### 대체안/회고
 
 미완료 쓰기를 기억하려고 로그아웃 시 개인 캐시를 남기는 대신, 취향값을 담지 않는 요청 소유만 분리했다. 저장 중 로그아웃을 막는 방법은 계정 이동까지 묶으며, 전송 취소만으로 이미 시작한 서버 작업의 취소를 보장할 수도 없다. 이 Map은 같은 웹 실행 안에서만 유효하다. 브라우저 종료·전체 재로딩 뒤 미확정 커밋 조정과 여러 창의 수정 충돌에는 별도 서버 계약이 필요하다. 초기 구현에서 재현한 결함과 확인한 한계를 기록하며 운영 장애나 모든 동시성 문제의 해결로 표현하지 않는다.
 
 #### 코드
-
-[미완료 요청 소유](https://github.com/Pubburi/Frontend/blob/main/src/state/preferenceWrites.ts) · [새 GET의 시작 조건과 세션·초안 검사](https://github.com/Pubburi/Frontend/blob/main/src/pages/PreferencesPage.tsx) · [인증 캐시 초기화](https://github.com/Pubburi/Frontend/blob/main/src/pages/AccountPages.tsx)
 
 ```ts
 begin(userId) {
