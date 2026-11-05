@@ -70,6 +70,7 @@ export interface Review {
   userId: string
   rating: number
   comment: string
+  tasteTags?: unknown
 }
 export interface OrderDetail {
   id: number

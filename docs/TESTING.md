@@ -31,7 +31,7 @@ npm run test:browser -- tests/browser/admin-edit-focus.spec.js
 |---|---|---|
 | 탐색·검색 | URL 적용/초안·페이지·Back·동일 URL 재적용·현재 요청, 범위0·리터럴 태그·Java 권위/400·무제약 fallback 금지 | [검색 문구](../tests/browser/search-phrases.spec.js), [범위](../tests/browser/product-ranges.spec.js), [태그](../tests/browser/product-tags.spec.js), [페이지 포커스](../tests/browser/catalog-pagination-focus.spec.js) |
 | 상세·찜·장바구니 | 현재 Product7/특성·null/[]/0, 별도 오류·출처, 수량/보관 거부·제출 이후 새 입력·찜 계정/페이지·키보드 | [기본 흐름](../tests/browser/smoke.spec.js) |
-| 회원 후기 | 전체 평점·0/소수·빈 집계, 정렬/페이지·현재 응답·쓰기 후 갱신·집계 오류와 초안 보존 | [후기 집계·정렬](../tests/browser/review-summary.spec.js) |
+| 회원 후기 | 전체 평점·0/소수·정렬/페이지, 선택 맛 태그·원문·수정 보존/비움·오류/늦은 응답, 인증 전환의 초안 차폐와 공개 상태 보존 | [후기 집계·정렬·태그](../tests/browser/review-summary.spec.js) |
 | 계정·최근 상품 | 같은/다른 계정·ABA, 현재 query/location·cold401/paused·불확실 쓰기 차폐, 비밀 입력/72바이트·저장 거부·메모리 정책 | [계정 설정](../tests/browser/account-settings.spec.js), [최근 상품](../tests/browser/recent-products.spec.js) |
 | 상품 비교 | 반복 URL 최대4개·직접/잘못된 주소·현재 정보/개별 오류·빠른 Back·전체 해제·카트/기록 보존 | [비교](../tests/browser/product-comparison.spec.js) |
 | 매장·데모 주문 | strict Java int·현재 권위/소유·401/403/404·snapshot/삭제 이력·실제0/미확인·사진 미제공 | [매장](../tests/browser/market-detail.spec.js), [주문](../tests/browser/order-detail.spec.js) |

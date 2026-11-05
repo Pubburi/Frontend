@@ -13,7 +13,8 @@ const test = base.extend({
       const productId = Number(url.pathname.split('/').at(-2)), sort = url.searchParams.get('sort') || 'latest'
       const all = state.reviews.filter((item) => item.productId === productId)
       const items = all.toSorted((a, b) => (sort === 'rating_desc' ? b.rating - a.rating : sort === 'rating_asc' ? a.rating - b.rating : 0) || b.id - a.id)
-      const data = pageOf(items, Number(url.searchParams.get('page') || 1), Number(url.searchParams.get('size') || 10))
+      const visible = items.map(({ tasteTags, ...item }) => url.searchParams.get('includeTasteTags') === 'true' ? { ...item, tasteTags: tasteTags ?? [] } : item)
+      const data = pageOf(visible, Number(url.searchParams.get('page') || 1), Number(url.searchParams.get('size') || 10))
       if (!state.omitSummary && url.searchParams.get('includeSummary') === 'true') data.ratingSummary = state.summaryOverride ?? { count: all.length, average: all.length ? Math.round(all.reduce((sum, item) => sum + item.rating, 0) / all.length * 100) / 100 : null }
       return data
     }
@@ -24,6 +25,9 @@ const test = base.extend({
       state.calls.push({ path, method, query: Object.fromEntries(url.searchParams), body })
       if (path === '/api/auth/me') return route.fulfill({ status: state.user ? 200 : 401, json: state.user ? ok(state.user) : error('UNAUTHORIZED') })
       if (path === '/api/auth/logout') { state.user = null; return route.fulfill({ json: ok(true) }) }
+      if (path === '/api/auth/login') { state.user = { id: body.id, name: body.id, role: 'USER', stamps: 0 }; return route.fulfill({ json: ok(state.user) }) }
+      if (path === '/api/products/popular') return route.fulfill({ json: ok([]) })
+      if (path === '/api/markets') return route.fulfill({ json: ok(pageOf([], 1, 10)) })
       if (/^\/api\/users\/me\/favorites\/\d+$/.test(path)) return route.fulfill({ json: ok({ productId: Number(path.split('/').at(-1)), favorited: false }) })
       if (/^\/api\/products\/(901|902)$/.test(path)) return route.fulfill({ json: ok(product(Number(path.split('/').at(-1)))) })
       if (/^\/api\/products\/(901|902)\/features$/.test(path)) return route.fulfill({ json: ok({ productId: Number(path.split('/').at(-2)), volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null }) })
@@ -32,14 +36,17 @@ const test = base.extend({
         return route.fulfill({ json: ok(state.response(url)) })
       }
       if (path === '/api/comments' && method === 'POST') {
-        const item = { ...body, id: Math.max(1000, ...state.reviews.map((item) => item.id)) + 1, userId: state.user.id }
-        state.reviews.push(item); return route.fulfill({ status: 201, json: ok(item) })
+        const item = { ...body, tasteTags: (body.tasteTags ?? []).toSorted(), id: Math.max(1000, ...state.reviews.map((item) => item.id)) + 1, userId: state.user.id }
+        state.reviews.push(item)
+        const { tasteTags, ...legacy } = item
+        return route.fulfill({ status: 201, json: ok(legacy) })
       }
       if (/^\/api\/comments\/\d+$/.test(path) && ['PUT', 'DELETE'].includes(method)) {
         const id = Number(path.split('/').at(-1)), item = state.reviews.find((item) => item.id === id)
-        if (method === 'PUT') Object.assign(item, body)
+        if (method === 'PUT') Object.assign(item, body, body.tasteTags ? { tasteTags: body.tasteTags.toSorted() } : {})
         else state.reviews = state.reviews.filter((item) => item.id !== id)
-        return route.fulfill({ json: ok(method === 'PUT' ? item : true) })
+        const { tasteTags, ...legacy } = item
+        return route.fulfill({ json: ok(method === 'PUT' ? legacy : true) })
       }
       state.unexpected.push(`${method} ${path}`)
       return route.fulfill({ status: 501, json: error('UNEXPECTED_TEST_REQUEST') })
@@ -74,7 +81,7 @@ for (const width of [1280, 390]) test(`전체평균·후기수·평점정렬과 
   await expect(page.locator('.comment-row > p')).toHaveText(Array.from({ length: 10 }, (_, index) => `회원 평가 ${101 + index}`))
   const reads = reviewsApi.calls.filter((call) => call.path.endsWith('/comments') && call.method === 'GET')
   expect(reads.every((call) => call.query.includeSummary === 'true')).toBe(true)
-  expect(reads.at(-1).query).toEqual({ page: '1', size: '10', sort: 'rating_asc', includeSummary: 'true' })
+  expect(reads.at(-1).query).toEqual({ page: '1', size: '10', sort: 'rating_asc', includeSummary: 'true', includeTasteTags: 'true' })
   await expect(page.locator('.comment-head strong')).toHaveText(Array.from({ length: 10 }, () => memberId))
   const bounds = await page.locator('.comment-row').evaluateAll((rows) => rows.map((row) => {
     const card = row.getBoundingClientRect(), name = row.querySelector('.comment-head strong').getBoundingClientRect(), badge = row.querySelector('.comment-head > .badge').getBoundingClientRect()
@@ -184,4 +191,155 @@ test('현재 정렬의 오류는 이전 집계를 노출하지 않고 초안을 
   await page.getByRole('button', { name: '다시 시도', exact: true }).click()
   await expect(page.locator('.review-summary')).toHaveText('평균 3점 · 전체 후기 1개')
   expect(reviewsApi.calls.filter((call) => call.path.endsWith('/comments') && call.method === 'GET').at(-1).query.sort).toBe('rating_asc')
+})
+
+for (const width of [1280, 390]) test(`선택 후기 맛 태그를 같은 화면에서 키보드 작성·수정·비움, ${width}px`, async ({ page, reviewsApi }) => {
+  await page.setViewportSize({ width, height: 1000 })
+  reviewsApi.reviews = [{ ...review(1, 2.25), tasteTags: ['기존 맛'] }]
+  await page.goto('/products/901?from=review-tags')
+  const form = page.locator('.comment-form'), add = form.getByRole('button', { name: '느낀 맛 태그 추가', exact: true })
+  await expect(form.getByRole('combobox', { name: /확인 상태/ })).toHaveCount(0)
+  await form.getByLabel('후기', { exact: true }).fill('내가 느낀 맛')
+  await add.focus(); await page.keyboard.press('Enter')
+  const first = form.getByLabel('느낀 맛 태그 1', { exact: true })
+  await expect(first).toBeFocused(); await first.fill('  SWEET  ')
+  await add.click(); await expect(form.getByLabel('느낀 맛 태그 2', { exact: true })).toBeFocused()
+  await form.getByLabel('느낀 맛 태그 2', { exact: true }).fill('grain\nsmoke,finish')
+  await page.keyboard.press('Tab')
+  await expect(form.getByRole('button', { name: '느낀 맛 태그 2 삭제', exact: true })).toBeFocused()
+  await form.getByRole('button', { name: '후기 등록', exact: true }).click()
+  const row = page.locator('.comment-row').filter({ has: page.getByText('내가 느낀 맛', { exact: true }) })
+  await expect(row.getByRole('list', { name: '후기 맛 태그', exact: true }).locator('li')).toHaveText(['grain\nsmoke,finish', 'sweet'])
+  await expect(row).toContainText('회원이 느낀 맛')
+  expect(reviewsApi.calls.find((call) => call.path === '/api/comments' && call.method === 'POST').body).toEqual({ productId: 901, rating: 5, comment: '내가 느낀 맛', tasteTags: ['sweet', 'grain\nsmoke,finish'] })
+  await expect(first).toHaveCount(0)
+  await row.getByRole('button', { name: '수정', exact: true }).click()
+  const editor = page.locator('.comment-edit-form')
+  await editor.getByLabel('느낀 맛 태그 2', { exact: true }).fill('<b>직접 느낀 맛</b>')
+  await editor.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(row.getByRole('list', { name: '후기 맛 태그', exact: true }).locator('li')).toHaveText(['<b>직접 느낀 맛</b>', 'grain\nsmoke,finish'])
+  await expect(row.locator('.review-taste-tags b')).toHaveCount(0)
+  await row.getByRole('button', { name: '수정', exact: true }).click()
+  await editor.getByRole('button', { name: '느낀 맛 태그 1 삭제', exact: true }).click()
+  await expect(editor.getByLabel('느낀 맛 태그 1', { exact: true })).toBeFocused()
+  await editor.getByRole('button', { name: '느낀 맛 태그 1 삭제', exact: true }).click()
+  await expect(editor.getByRole('button', { name: '느낀 맛 태그 추가', exact: true })).toBeFocused()
+  await editor.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(row.getByRole('list', { name: '후기 맛 태그', exact: true })).toHaveCount(0)
+  expect(reviewsApi.calls.filter((call) => call.method === 'PUT').at(-1).body.tasteTags).toEqual([])
+  await expect(page).toHaveURL('/products/901?from=review-tags')
+  await expect(page.locator('.review-summary')).toHaveText('평균 3.63점 · 전체 후기 2개')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await test.info().attach(`review-tags-${width}`, { body: await page.locator('.comment-box').screenshot(), contentType: 'image/png' })
+})
+
+test('태그 검증·쓰기 오류는 본문과 태그를 보존하고 같은 입력으로 재시도', async ({ page, reviewsApi }) => {
+  await page.goto('/products/901')
+  const form = page.locator('.comment-form'), add = form.getByRole('button', { name: '느낀 맛 태그 추가', exact: true })
+  await form.getByLabel('후기', { exact: true }).fill('실패해도 남을 초안')
+  await add.click(); await form.getByLabel('느낀 맛 태그 1', { exact: true }).fill('SWEET')
+  await add.click(); await form.getByLabel('느낀 맛 태그 2', { exact: true }).fill(' sweet ')
+  await form.getByRole('button', { name: '후기 등록', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('중복')
+  expect(reviewsApi.calls.filter((call) => call.method === 'POST' && call.path === '/api/comments')).toHaveLength(0)
+  await form.getByRole('button', { name: '느낀 맛 태그 2 삭제', exact: true }).click()
+  let fail = true
+  await page.route('**/api/comments', async (route) => fail ? route.fulfill({ status: 400, json: error('INVALID_TASTE_TAGS') }) : route.fallback())
+  await form.getByRole('button', { name: '후기 등록', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('입력한 내용을 다시 확인해 주세요.')
+  await expect(form.getByLabel('후기', { exact: true })).toHaveValue('실패해도 남을 초안')
+  await expect(form.getByLabel('느낀 맛 태그 1', { exact: true })).toHaveValue('SWEET')
+  fail = false
+  await form.getByRole('button', { name: '후기 등록', exact: true }).click()
+  await expect(page.locator('.comment-row .review-taste-tags li')).toHaveText('sweet')
+})
+
+for (const invalid of [undefined, [null]]) test(`태그 응답 ${JSON.stringify(invalid)}에도 본문만 수정하면 태그를 비우지 않음`, async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [{ ...review(1, 2.25), tasteTags: ['서버에 보존할 맛'] }]
+  await page.route('**/api/products/901/comments?**', async (route) => {
+    const data = reviewsApi.response(new URL(route.request().url()))
+    for (const item of data.items) {
+      if (invalid === undefined) delete item.tasteTags
+      else item.tasteTags = invalid
+    }
+    return route.fulfill({ json: ok(data) })
+  })
+  await page.goto('/products/901')
+  const row = page.locator('.comment-row')
+  await expect(row).toContainText('후기 맛 태그를 확인하지 못했습니다.')
+  await row.getByRole('button', { name: '수정', exact: true }).click()
+  const editor = page.locator('.comment-edit-form')
+  await expect(editor).toContainText('태그를 바꾸지 않으면 기존 값을 유지합니다.')
+  await editor.getByLabel('후기 내용', { exact: true }).fill('본문만 수정')
+  await editor.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(row.locator(':scope > p')).toHaveText('본문만 수정')
+  expect(reviewsApi.calls.find((call) => call.method === 'PUT').body).toEqual({ rating: 2.25, comment: '본문만 수정' })
+  expect(reviewsApi.reviews[0].tasteTags).toEqual(['서버에 보존할 맛'])
+})
+
+test('제출 뒤 입력한 새 태그는 늦은 등록 성공이 지우지 않음', async ({ page, reviewsApi }) => {
+  await page.goto('/products/901')
+  const form = page.locator('.comment-form')
+  await form.getByLabel('후기', { exact: true }).fill('먼저 제출')
+  await form.getByRole('button', { name: '느낀 맛 태그 추가', exact: true }).click()
+  await form.getByLabel('느낀 맛 태그 1', { exact: true }).fill('first')
+  let release, started
+  const held = new Promise((resolve) => { release = resolve }), began = new Promise((resolve) => { started = resolve })
+  await page.route('**/api/comments', async (route) => { started(); await held; return route.fallback() })
+  try {
+    await form.getByRole('button', { name: '후기 등록', exact: true }).click(); await began
+    await form.getByLabel('느낀 맛 태그 1', { exact: true }).fill('next')
+    release()
+    await expect(page.locator('.comment-row .review-taste-tags li')).toHaveText('first')
+    await expect(form.getByLabel('느낀 맛 태그 1', { exact: true })).toHaveValue('next')
+    await expect(form.getByLabel('후기', { exact: true })).toHaveValue('먼저 제출')
+  } finally { release() }
+})
+
+test('로그아웃 진행 중 후기 초안을 즉시 차폐하고 다른 계정에 복원하지 않음', async ({ page, reviewsApi }) => {
+  await page.goto('/products/901?source=private-tags')
+  const form = page.locator('.comment-form')
+  await form.getByLabel('후기', { exact: true }).fill('이전 계정 초안')
+  await form.getByRole('button', { name: '느낀 맛 태그 추가', exact: true }).click()
+  await form.getByLabel('느낀 맛 태그 1', { exact: true }).fill('private-tag')
+  let release, started
+  const held = new Promise((resolve) => { release = resolve }), began = new Promise((resolve) => { started = resolve })
+  await page.route('**/api/auth/logout', async (route) => { started(); await held; return route.fallback() })
+  try {
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await began
+    await expect(form).toHaveCount(0)
+    await expect(page.getByText('private-tag', { exact: true })).toHaveCount(0)
+    release(); await expect(page).toHaveURL('/')
+    await page.goto('/account?redirect=' + encodeURIComponent('/products/901?source=private-tags'))
+    await page.getByLabel('아이디', { exact: true }).fill('another-member')
+    await page.getByLabel('비밀번호', { exact: true }).fill('password')
+    await page.locator('form').getByRole('button', { name: '로그인', exact: true }).click()
+    await expect(form.getByLabel('후기', { exact: true })).toHaveValue('')
+    await expect(form.getByLabel('느낀 맛 태그 1', { exact: true })).toHaveCount(0)
+    expect(reviewsApi.calls.filter((call) => call.method === 'POST' && call.path === '/api/comments')).toHaveLength(0)
+  } finally { release() }
+})
+
+test('auth-transition: 기존 본문·편집 초안은 인증 전환에 차폐하고 공개 상태는 보존', async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [review(1, 2.25)]
+  await page.goto('/products/901?source=auth-boundary')
+  const quantity = page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true })
+  await quantity.fill('3')
+  await page.getByRole('combobox', { name: '후기 정렬', exact: true }).selectOption('rating_asc')
+  await page.locator('.comment-form').getByLabel('후기', { exact: true }).fill('계정 소유 본문 초안')
+  await page.locator('.comment-row').getByRole('button', { name: '수정', exact: true }).click()
+  await page.locator('.comment-edit-form').getByLabel('후기 내용', { exact: true }).fill('계정 소유 수정 초안')
+  let release, started
+  const held = new Promise((resolve) => { release = resolve }), began = new Promise((resolve) => { started = resolve })
+  await page.route('**/api/auth/logout', async (route) => { started(); await held; return route.fallback() })
+  try {
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await began
+    await expect(page.locator('.comment-form')).toHaveCount(0)
+    await expect(page.locator('.comment-edit-form')).toHaveCount(0)
+    await expect(quantity).toHaveValue('3')
+    await expect(page.getByRole('combobox', { name: '후기 정렬', exact: true })).toHaveValue('rating_asc')
+    await expect(page.locator('.review-summary')).toHaveText('평균 2.25점 · 전체 후기 1개')
+    await expect(page).toHaveURL('/products/901?source=auth-boundary')
+    expect(reviewsApi.calls.filter((call) => ['POST', 'PUT'].includes(call.method) && call.path.startsWith('/api/comments'))).toHaveLength(0)
+  } finally { release() }
 })
