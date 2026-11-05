@@ -1073,7 +1073,7 @@ textarea.form-control {
 
 .comment-form {
   display: grid;
-  grid-template-columns: 110px 1fr auto;
+  grid-template-columns: 110px 1fr;
   gap: 10px;
   align-items: end;
   padding: 15px;
@@ -1081,6 +1081,10 @@ textarea.form-control {
   border-radius: 8px;
 }
 
+.review-tag-input { grid-column: 1 / -1; min-width: 0; }
+.comment-form > .btn { grid-column: 1 / -1; justify-self: end; }
+.review-tag-input p { margin: 0 0 10px; }
+.review-taste-tags { display: grid; gap: 5px; min-width: 0; }
 .comment-input small { text-align: right; }
 .comment-form textarea { min-height: 70px; }
 

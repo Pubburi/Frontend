@@ -14,6 +14,8 @@ import { useCart } from '../state/cart'
 import { useUi } from '../state/ui'
 import { ProductFavorite } from '../components/FavoriteAction'
 import { SearchTagFields } from '../components/SearchTagFields'
+import { TagEditor } from '../components/TagEditor'
+import { buildReviewTasteTags, readReviewTasteTags } from '../reviewTasteTags'
 import { SearchPhrases } from '../components/SearchPhrases'
 import { productTagFields, buildProductTags, normalizeProductTag, validateProductTags, type ProductTagKey, type ProductTagIssues } from '../productTags'
 import { ProductFeatureDetails } from '../components/ProductFeatureDetails'
@@ -488,7 +490,7 @@ export function ProductDetailPage() {
   const { id = '' } = useParams()
   return <ProductDetail key={id} id={id} />
 }
-type ReviewEdit = Review & { initialRating: number }
+type ReviewEdit = Review & { initialRating: number; tagsDraft?: string[] }
 function ProductDetail({ id }: { id: string }) {
   const session = useSession()
   const ui = useUi()
@@ -500,16 +502,30 @@ function ProductDetail({ id }: { id: string }) {
   const { page, sort } = reviewView
   const currentReviewView = useRef(reviewView)
   currentReviewView.current = reviewView
-  const [draft, setDraft] = useState({ rating: 5, comment: '' })
+  const [draft, setDraft] = useState({ rating: 5, comment: '', tasteTags: [] as string[] })
   const [editing, setEditing] = useState<ReviewEdit | null>(null)
   const [deleting, setDeleting] = useState<Review | null>(null)
+  const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+  const writable = session.isSuccess && session.fetchStatus === 'idle' && Boolean(session.data) &&
+    !['login', 'join', 'logout', 'settings-password'].some((key) => ui.pending[key])
+  const [account, setAccount] = useState({ auth, id: session.data?.id, role: session.data?.role, writable })
+  const currentAccount = useRef(account)
+  // Discard account-owned drafts before rendering a changed/uncertain session; public view and quantity survive.
+  if (account.auth !== auth || account.id !== session.data?.id || account.role !== session.data?.role || account.writable !== writable) {
+    const next = { auth, id: session.data?.id, role: session.data?.role, writable }
+    currentAccount.current = next
+    setAccount(next)
+    setDraft({ rating: 5, comment: '', tasteTags: [] })
+    setEditing(null)
+    setDeleting(null)
+  }
   const product = useQuery<Product>({
     queryKey: ['catalog', 'product', id],
     queryFn: () => api.product(id),
   })
   const comments = useQuery<ReviewPage>({
     queryKey: ['reviews', id, sort, page],
-    queryFn: () => api.comments(id, { page, size: 10, sort, includeSummary: true }),
+    queryFn: () => api.comments(id, { page, size: 10, sort, includeSummary: true, includeTasteTags: true }),
     enabled: product.isSuccess,
   })
   const summary = comments.data && !comments.isError && !comments.isFetching ? reviewSummary(comments.data) : null
@@ -520,7 +536,10 @@ function ProductDetail({ id }: { id: string }) {
   }
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (!writable) return
     const submitted = draft
+    let tasteTags: string[]
+    try { tasteTags = buildReviewTasteTags(submitted.tasteTags) } catch (error) { ui.error(error); return }
     const result = await ui.run(
       'comment-create',
       async () => {
@@ -528,36 +547,42 @@ function ProductDetail({ id }: { id: string }) {
           productId: Number(id),
           rating: submitted.rating,
           comment: submitted.comment.trim(),
+          ...(tasteTags.length ? { tasteTags } : {}),
         })
         await refresh()
       },
-      '후기가 등록되었습니다.',
     )
-    if (result.ok)
+    if (result.ok && currentAccount.current === account) {
+      ui.status('후기가 등록되었습니다.')
       setDraft((current) =>
-        current === submitted ? { ...current, comment: '' } : current,
+        current === submitted ? { ...current, comment: '', tasteTags: [] } : current,
       )
+    }
   }
   async function saveReview(event: FormEvent) {
     event.preventDefault()
-    if (!editing) return
+    if (!editing || !writable) return
     const submitted = editing
+    let tasteTags: string[] | undefined
+    try { tasteTags = submitted.tagsDraft === undefined ? undefined : buildReviewTasteTags(submitted.tagsDraft) } catch (error) { ui.error(error); return }
     const result = await ui.run(
       `comment-edit-${submitted.id}`,
       async () => {
         await api.updateComment(submitted.id, {
           rating: submitted.rating,
           comment: submitted.comment.trim(),
+          ...(tasteTags === undefined ? {} : { tasteTags }),
         })
         await refresh()
       },
-      '후기가 수정되었습니다.',
     )
-    if (result.ok)
+    if (result.ok && currentAccount.current === account) {
+      ui.status('후기가 수정되었습니다.')
       setEditing((current) => (current === submitted ? null : current))
+    }
   }
   async function removeReview() {
-    if (!deleting) return
+    if (!deleting || !writable) return
     const submitted = deleting
     const submittedView = reviewView
     const result = await ui.run(
@@ -568,9 +593,11 @@ function ProductDetail({ id }: { id: string }) {
           setReviewView((current) => current === submittedView ? { ...current, page: page - 1 } : current)
         await refresh()
       },
-      '후기가 삭제되었습니다.',
     )
-    if (result.ok) setDeleting((current) => current === submitted ? null : current)
+    if (result.ok && currentAccount.current === account) {
+      ui.status('후기가 삭제되었습니다.')
+      setDeleting((current) => current === submitted ? null : current)
+    }
   }
   if (product.isPending)
     return <Loading label="상품 상세를 불러오는 중입니다." />
@@ -662,7 +689,7 @@ function ProductDetail({ id }: { id: string }) {
                   <p>{summary.average === null ? '아직 등록된 평점이 없습니다.' : <strong>평균 {summary.average.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}점</strong>} · 전체 후기 {summary.count}개</p> :
                   <p>전체 평점 정보를 확인하지 못했습니다. <button className="text-button" onClick={() => comments.refetch()}>평점 집계 다시 확인</button></p>}
             </div>
-            {session.data ? (
+            {writable ? (
               <form className="comment-form" onSubmit={submit}>
                 <label className="field-group compact-field">
                   <span>평점</span>
@@ -695,6 +722,11 @@ function ProductDetail({ id }: { id: string }) {
                   />
                   <small>{draft.comment.length} / 200</small>
                 </label>
+                <div className="review-tag-input">
+                  <p className="muted">맛 태그는 선택입니다. 회원이 느낀 맛이며 상품의 검수 정보와 다를 수 있습니다.</p>
+                  <TagEditor label="느낀 맛 태그" optional value={{ status: 'tags', values: draft.tasteTags }}
+                    onChange={(value) => setDraft({ ...draft, tasteTags: value.values })} />
+                </div>
                 <button
                   className="btn btn-dark"
                   disabled={ui.pending['comment-create']}
@@ -702,6 +734,10 @@ function ProductDetail({ id }: { id: string }) {
                   후기 등록
                 </button>
               </form>
+            ) : session.data || session.isPending || session.isError ? (
+              <p role="status">후기를 쓰려면 현재 로그인 상태를 확인해 주세요.
+                {session.isError && <button className="text-button" onClick={() => session.refetch()}>로그인 상태 다시 확인</button>}
+              </p>
             ) : (
               <div className="login-prompt">
                 <p>로그인하고 이 상품의 후기를 남겨보세요.</p>
@@ -721,7 +757,9 @@ function ProductDetail({ id }: { id: string }) {
               </Empty>
             ) : comments.data.items.length ? (
               <div className="comment-list">
-                {comments.data.items.map((comment) => (
+                {comments.data.items.map((comment) => {
+                  const tasteTags = readReviewTasteTags(comment.tasteTags)
+                  return (
                   <article key={comment.id} className="comment-row">
                     <div className="comment-head">
                       <div>
@@ -737,7 +775,7 @@ function ProductDetail({ id }: { id: string }) {
                         {Number(comment.rating).toFixed(1)}점
                       </span>
                     </div>
-                    {editing?.id === comment.id ? (
+                    {writable && editing?.id === comment.id ? (
                       <form className="comment-edit-form" onSubmit={saveReview}>
                         <label className="field-group compact-field">
                           <span>평점</span>
@@ -783,6 +821,10 @@ function ProductDetail({ id }: { id: string }) {
                             }
                           />
                         </label>
+                        {readReviewTasteTags(editing.tasteTags) === null && <p className="muted">기존 맛 태그를 확인하지 못했습니다. 태그를 바꾸지 않으면 기존 값을 유지합니다.</p>}
+                        <TagEditor label="느낀 맛 태그" optional
+                          value={{ status: 'tags', values: editing.tagsDraft ?? readReviewTasteTags(editing.tasteTags) ?? [] }}
+                          onChange={(value) => setEditing({ ...editing, tagsDraft: value.values })} />
                         <div className="button-row">
                           <button
                             type="button"
@@ -802,7 +844,11 @@ function ProductDetail({ id }: { id: string }) {
                     ) : (
                       <>
                         <p>{comment.comment}</p>
-                        {(session.data?.role === 'ADMIN' ||
+                        {tasteTags === null ? <small className="muted">후기 맛 태그를 확인하지 못했습니다.</small> :
+                          tasteTags.length > 0 ? <div className="review-taste-tags"><small>회원이 느낀 맛</small><ul className="product-feature-tags" aria-label="후기 맛 태그">
+                            {tasteTags.map((tag) => <li key={tag}>{tag}</li>)}
+                          </ul></div> : null}
+                        {writable && (session.data?.role === 'ADMIN' ||
                           session.data?.id === comment.userId) && (
                           <div className="button-row">
                             <button
@@ -825,7 +871,7 @@ function ProductDetail({ id }: { id: string }) {
                       </>
                     )}
                   </article>
-                ))}
+                )})}
                 <Pagination page={comments.data} onChange={(nextPage) => setReviewView((current) => ({ ...current, page: nextPage }))} />
               </div>
             ) : (
@@ -837,7 +883,7 @@ function ProductDetail({ id }: { id: string }) {
           </div>
         </div>
       </section>
-      {deleting && (
+      {writable && deleting && (
         <Confirm
           title="후기를 삭제할까요?"
           description="삭제한 후기는 복구할 수 없습니다."

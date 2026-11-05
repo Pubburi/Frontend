@@ -157,7 +157,8 @@ const test = base.extend({
         const reviews = state.reviews.filter((review) => review.productId === productId)
         const sort = url.searchParams.get('sort') || 'latest'
         const ordered = reviews.toSorted((a, b) => (sort === 'rating_desc' ? b.rating - a.rating : sort === 'rating_asc' ? a.rating - b.rating : 0) || b.id - a.id)
-        const data = pageOf(ordered, Number(url.searchParams.get('size') || 10), Number(url.searchParams.get('page') || 1))
+        const visible = ordered.map(({ tasteTags, ...item }) => url.searchParams.get('includeTasteTags') === 'true' ? { ...item, tasteTags: tasteTags ?? [] } : item)
+        const data = pageOf(visible, Number(url.searchParams.get('size') || 10), Number(url.searchParams.get('page') || 1))
         if (url.searchParams.get('includeSummary') === 'true') data.ratingSummary = { count: reviews.length, average: reviews.length ? Math.round(reviews.reduce((sum, item) => sum + item.rating, 0) / reviews.length * 100) / 100 : null }
         await route.fulfill({ json: success(data) })
         return
@@ -2858,6 +2859,9 @@ test('390px 웹에서 소수 평점을 보존하고 Tab과 Enter로 후기 폼�
   await expect(text).toBeFocused()
   await text.fill('키보드로 보존한 후기')
   await text.press('Tab')
+  const addTag = form.getByRole('button', { name: '느낀 맛 태그 추가', exact: true })
+  await expect(addTag).toBeFocused()
+  await addTag.press('Tab')
   const cancel = form.getByRole('button', { name: '취소', exact: true })
   await expect(cancel).toBeFocused()
   await cancel.press('Tab')

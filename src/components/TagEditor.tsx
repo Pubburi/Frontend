@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { TagDraft, TagStatus } from '../tagDraft'
 
 export function TagEditor({
@@ -7,6 +8,7 @@ export function TagEditor({
   unknownLabel = '미확인',
   emptyLabel = '검수 완료 · 선언할 태그 없음',
   tagsLabel = '확인한 태그 입력',
+  optional = false,
 }: {
   label: string
   value: TagDraft
@@ -14,11 +16,22 @@ export function TagEditor({
   unknownLabel?: string
   emptyLabel?: string
   tagsLabel?: string
+  optional?: boolean
 }) {
+  const inputs = useRef<(HTMLTextAreaElement | null)[]>([])
+  const add = useRef<HTMLButtonElement>(null)
+  const focus = useRef<number | null>(null)
+  useEffect(() => {
+    if (focus.current === null) return
+    const index = Math.min(focus.current, value.values.length - 1)
+    focus.current = null
+    const target = inputs.current[index] ?? add.current
+    target?.focus()
+  }, [value.values])
   return (
     <fieldset className="feature-tags">
       <legend>{label}</legend>
-      <label className="field-group">
+      {!optional && <label className="field-group">
         <span>확인 상태</span>
         <select
           className="form-select"
@@ -39,8 +52,8 @@ export function TagEditor({
           <option value="empty">{emptyLabel}</option>
           <option value="tags">{tagsLabel}</option>
         </select>
-      </label>
-      {value.status === 'tags' && (
+      </label>}
+      {(optional || value.status === 'tags') && (
         <div className="feature-tag-items">
           {value.values.map((tag, index) => (
             <div className="feature-tag-item" key={index}>
@@ -52,6 +65,7 @@ export function TagEditor({
                   className="form-control"
                   aria-label={`${label} ${index + 1}`}
                   required
+                  ref={(element) => { inputs.current[index] = element }}
                   maxLength={40}
                   rows={1}
                   value={tag}
@@ -69,12 +83,13 @@ export function TagEditor({
                 type="button"
                 className="btn btn-sm btn-outline-secondary"
                 aria-label={`${label} ${index + 1} 삭제`}
-                onClick={() =>
+                onClick={() => {
+                  if (optional) focus.current = index
                   onChange({
                     ...value,
                     values: value.values.filter((_, i) => i !== index),
                   })
-                }
+                }}
               >
                 삭제
               </button>
@@ -84,9 +99,11 @@ export function TagEditor({
             type="button"
             className="btn btn-sm btn-outline-dark"
             disabled={value.values.length >= 20}
-            onClick={() =>
+            ref={add}
+            onClick={() => {
+              if (optional) focus.current = value.values.length
               onChange({ ...value, values: [...value.values, ''] })
-            }
+            }}
           >
             {label} 추가
           </button>
