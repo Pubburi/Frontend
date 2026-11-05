@@ -20,3 +20,21 @@ export function buildProductQuery(filters = {}, page = 1) {
     page: Math.max(1, Number.parseInt(page, 10) || 1),
   }
 }
+
+export function removeProductCondition(search, applied, draft, key, index = -1) {
+  const next = new URLSearchParams(search)
+  const form = { ...draft, page: 1 }
+  if (Array.isArray(applied[key])) {
+    const values = next.getAll(key)
+    if (!Number.isInteger(index) || index < 0 || index >= values.length) return null
+    next.delete(key)
+    values.filter((_, i) => i !== index).forEach((value) => next.append(key, value))
+    if (JSON.stringify(draft[key]) === JSON.stringify(applied[key]))
+      form[key] = draft[key].filter((_, i) => i !== index)
+  } else {
+    next.delete(key)
+    if (draft[key] === applied[key]) form[key] = ''
+  }
+  next.set('page', '1')
+  return { search: next, form }
+}

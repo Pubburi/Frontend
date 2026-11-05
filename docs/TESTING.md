@@ -29,7 +29,7 @@ npm run test:browser -- tests/browser/admin-edit-focus.spec.js
 
 | 영역 | 핵심 계약 | 브라우저 소스 |
 |---|---|---|
-| 탐색·검색 | URL 적용/초안·페이지·Back·동일 URL 재적용·현재 요청, 범위0·리터럴 태그·Java 권위/400·무제약 fallback 금지 | [검색 문구](../tests/browser/search-phrases.spec.js), [범위](../tests/browser/product-ranges.spec.js), [태그](../tests/browser/product-tags.spec.js), [페이지 포커스](../tests/browser/catalog-pagination-focus.spec.js) |
+| 탐색·검색 | 적용 조건 표시/개별 해제·수정 초안 보존·키보드 연결, URL·페이지·Back·동일 URL 재적용·현재 요청, 범위0·리터럴 태그·Java 권위/400·무제약 fallback 금지 | [적용 조건](../tests/browser/applied-product-filters.spec.js), [검색 문구](../tests/browser/search-phrases.spec.js), [범위](../tests/browser/product-ranges.spec.js), [태그](../tests/browser/product-tags.spec.js), [페이지 포커스](../tests/browser/catalog-pagination-focus.spec.js) |
 | 상세·찜·장바구니 | 현재 Product7/특성·null/[]/0, 별도 오류·출처, 수량/보관 거부·제출 이후 새 입력·찜 계정/페이지·키보드 | [기본 흐름](../tests/browser/smoke.spec.js) |
 | 회원 후기 | 전체 평점·0/소수·정렬/페이지, 선택 맛 태그·원문·수정 보존/비움, 키보드 편집 진입/복귀·검증/오류와 현재 focus, 늦은 응답·인증 전환의 초안 차폐 | [후기 집계·정렬·태그](../tests/browser/review-summary.spec.js) |
 | 계정·최근 상품 | 같은/다른 계정·ABA, 현재 query/location·cold401/paused·불확실 쓰기 차폐, 비밀 입력/72바이트·저장 거부·메모리 정책 | [계정 설정](../tests/browser/account-settings.spec.js), [최근 상품](../tests/browser/recent-products.spec.js) |
@@ -40,7 +40,7 @@ npm run test:browser -- tests/browser/admin-edit-focus.spec.js
 ## 핵심 데이터·권한 계약
 
 - 세션은 401만 비로그인으로 해석한다. pending/503·불확실 인증 쓰기는 권위 재확인 전 개인 조회·기록을 허용하지 않는다. 계정/query/경로와 HTTP 쓰기 수명은 캐시 초기화와 별도로 보존한다.
-- 검색은 현재 URL의 적용 조건과 미제출 초안을 구분한다. 가격·도수0, 반복 taste/aroma AND와 리터럴 쉼표/개행을 보존한다. 태그는 Java strip·ASCII 변환만 클라이언트가 수행하고 비ASCII 정규화/400은 제공자가 판단한다. 조건 실패에 무제약 검색으로 바꾸지 않는다.
+- 검색은 현재 URL의 적용 조건과 미제출 초안을 구분한다. 개별 해제는 선택한 URL 조건만 제거하고 첫 페이지로 이동하며 다른 입력과 수정한 해당 입력은 보존한다. 전체 해제·명시 검색·Back은 각 동작의 URL 복원 규칙을 따른다. 가격·도수0, 반복 taste/aroma AND와 리터럴 쉼표/개행을 보존한다. 태그는 Java strip·ASCII 변환만 클라이언트가 수행하고 비ASCII 정규화/400은 제공자가 판단한다. 조건 실패에 무제약 검색으로 바꾸지 않는다.
 - F05는 비회원 ID/열람시각만 최대20개·30일 기기에 보관한다. 로그인 기록은 현재 인증 세대 메모리만 사용하고 새로고침/로그아웃/계정 전환에 초기화한다. 저장 거부 시 메모리로 동작하며 계정 ID·상품 snapshot을 디스크에 저장하지 않는다.
 - F06 비교는 `/compare`의 ordered 반복 productId 최대4개가 정본이다. 현재 Product7/특성을 다시 조회하고 잘못된/중복/과다 주소는 조회하지 않는다.
 - F09는 현재 암호를 literal NotBlank/max100으로 받고 새 암호만4–100 UTF-16·최대72 UTF-8바이트로 제한한다. 암호를 trim/변환하지 않는다. 성공 시 현재 세션 유지/다른 세션 회수,403 재입력과 불확실 결과의 권위 재확인을 구분한다.

@@ -30,7 +30,7 @@ import {
   ProductCard,
   Quantity,
 } from '../components/ui'
-import { buildProductQuery, parseProductQuery } from '../utils/productFilters'
+import { buildProductQuery, parseProductQuery, removeProductCondition } from '../utils/productFilters'
 import { productRangeFields, validateProductRanges, type ProductRangeKey, type ProductRangeErrors } from '../productRanges'
 import { money, productImage } from '../utils/format'
 import type { Market, Page, Product, Review } from '../types'
@@ -233,9 +233,21 @@ export function ProductsPage() {
   const [form, setForm] = useState(filters)
   const [rangeErrors, setRangeErrors] = useState<ProductRangeErrors>(urlRangeErrors)
   const [tagIssues, setTagIssues] = useState<ProductTagIssues>(urlTagIssues)
+  const hasAppliedFilters = Boolean(filters.type || filters.q || productRangeFields.some(({ key }) => filters[key] !== '') || productTagFields.some(({ key }) => filters[key].length) || invalidUrlFilters)
+  const hasDraftFilters = Boolean(form.type || form.q.trim() || productRangeFields.some(({ key }) => form[key] !== '') || productTagFields.some(({ key }) => form[key].length))
   const tagInputs = useRef<Partial<Record<ProductTagKey, (HTMLTextAreaElement | null)[]>>>({})
   const rangeInputs = useRef<Partial<Record<ProductRangeKey, HTMLInputElement | null>>>({})
+  const filterRoot = useRef<HTMLElement>(null)
+  const clearFilters = useRef<HTMLButtonElement>(null)
+  const removalNumber = useRef(0)
+  type Removal = { token: number; fromLocationKey: string; destination: string }
+  const removalDraft = useRef<Removal | null>(null)
+  const removalFocus = useRef<(Removal & { source: HTMLButtonElement; index: number }) | null>(null)
   useEffect(() => {
+    const removal = removalDraft.current
+    removalDraft.current = null
+    if (removal && location.state?.catalogFilterRemoval?.token === removal.token &&
+        location.pathname + location.search === removal.destination) return
     setForm(filters)
     setRangeErrors(urlRangeErrors)
     setTagIssues(urlTagIssues)
@@ -250,6 +262,36 @@ export function ProductsPage() {
     productTagFields.some(({ key }) => filters[key].length > 0)
   const searchButton = useRef<HTMLButtonElement>(null)
   const results = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const intent = removalFocus.current
+    removalFocus.current = null
+    if (!intent || location.state?.catalogFilterRemoval?.token !== intent.token ||
+        location.pathname + location.search !== intent.destination) return
+    const active = document.activeElement
+    if (active !== intent.source && (intent.source.isConnected || active !== document.body)) return
+    const controls = filterRoot.current?.querySelectorAll<HTMLButtonElement>('button[data-applied-remove]')
+    const target = controls?.[Math.min(intent.index, controls.length - 1)] ?? clearFilters.current ?? searchButton.current
+    target?.focus({ preventScroll: true })
+    target?.scrollIntoView({ block: 'center', behavior: 'instant' })
+  }, [location.key, search.toString()])
+  function removeCondition(event: MouseEvent<HTMLButtonElement>, key: 'type' | 'q' | ProductRangeKey | ProductTagKey, index?: number) {
+    const removed = removeProductCondition(search, filters, form, key, index)
+    if (!removed) return
+    const intent = { token: ++removalNumber.current, fromLocationKey: location.key,
+      destination: location.pathname + '?' + removed.search.toString() }
+    removalDraft.current = intent
+    const source = event.currentTarget
+    const position = Array.from(filterRoot.current?.querySelectorAll<HTMLButtonElement>('button[data-applied-remove]') ?? []).indexOf(source)
+    removalFocus.current = event.detail === 0 && document.activeElement === source && position >= 0 ? { ...intent, source, index: position } : null
+    setForm(removed.form)
+    const unchangedRanges = productRangeFields.filter(({ key }) => removed.form[key] === filters[key])
+    setRangeErrors(validateProductRanges(removed.form, {
+      provided: unchangedRanges.filter(({ key }) => removed.search.has(key)).map(({ key }) => key),
+      duplicates: unchangedRanges.filter(({ key }) => removed.search.getAll(key).length > 1).map(({ key }) => key),
+    }))
+    setTagIssues(validateProductTags(removed.form))
+    setSearch(removed.search, { state: { catalogFilterRemoval: intent } })
+  }
   function editRange(key: ProductRangeKey, value: string) {
     const next = { ...form, [key]: value }
     setForm(next)
@@ -316,7 +358,7 @@ export function ProductsPage() {
     setRangeErrors({}); setTagIssues({})
   }
   return (
-    <section className="view products-view">
+    <section ref={filterRoot} className="view products-view">
       <div className="shop-intro">
         <div>
           <p className="section-kicker">Bottle Shop</p>
@@ -404,11 +446,13 @@ export function ProductsPage() {
         }} />
         <button
           ref={searchButton}
+          data-catalog-filter-control="true"
           className="btn btn-dark filter-submit"
           aria-busy={products.isFetching}
         >
           검색하기
         </button>
+        {!hasAppliedFilters && hasDraftFilters && <button type="button" className="text-link" onClick={reset}>입력 초기화</button>}
       </form>
       <p className="applied-range-summary" aria-label="현재 적용된 가격·도수 범위">
         <strong>현재 적용 범위</strong>{' '}
@@ -421,17 +465,25 @@ export function ProductsPage() {
         <strong>현재 적용 태그</strong>
         {invalidUrlFilters || rejectedTags ? <span>검색 조건을 확인해 주세요.</span> :
           productTagFields.some(({ key }) => filters[key].length) ? productTagFields.map(({ key, label }) => filters[key].length > 0 &&
-            <span key={key}>{label}: {filters[key].map((tag, index) => <span className="search-tag-value" key={index}>{normalizeProductTag(tag)}</span>)}</span>
+            <span key={key}>{label}: {filters[key].map((tag, index) => <button type="button" className="search-tag-value applied-tag-remove" key={index}
+              data-applied-remove data-catalog-filter-control="true" aria-label={`${label} 태그 ${normalizeProductTag(tag)} 해제`}
+              onClick={(event) => removeCondition(event, key, index)}>{normalizeProductTag(tag)} ×</button>)}</span>
           ) : <span>태그 제한 없음</span>}
       </div>
-      {(form.type || form.q.trim() || productRangeFields.some(({ key }) => form[key] !== '') || productTagFields.some(({ key }) => form[key].length || filters[key].length) || invalidUrlFilters) && (
+      {hasAppliedFilters && (
         <div className="active-filters" aria-label="적용된 필터">
-          {form.type && <span>{form.type}</span>}
-          {form.q.trim() && <span>검색: {form.q.trim()}</span>}
-          {productRangeFields.filter(({ key }) => form[key] !== '').map(({ key, label }) => <span key={key}>{label}: {form[key]}</span>)}
-          <button className="text-link" onClick={reset}>
+          {filters.type && <button type="button" className="active-filter-chip" data-applied-remove data-catalog-filter-control="true"
+            aria-label={`주종 ${filters.type} 해제`} onClick={(event) => removeCondition(event, 'type')}>{filters.type} ×</button>}
+          {filters.q && <button type="button" className="active-filter-chip" data-applied-remove data-catalog-filter-control="true"
+            aria-label={`검색 ${filters.q} 해제`} onClick={(event) => removeCondition(event, 'q')}>검색: {filters.q} ×</button>}
+          {productRangeFields.filter(({ key }) => filters[key] !== '').map(({ key, label }) => urlRangeErrors[key] ?
+            <span key={key}>{label}: {filters[key]}</span> : <button type="button" className="active-filter-chip" key={key}
+              data-applied-remove data-catalog-filter-control="true" aria-label={`${label} ${filters[key]} 해제`}
+              onClick={(event) => removeCondition(event, key)}>{label}: {filters[key]} ×</button>)}
+          <button ref={clearFilters} data-catalog-filter-control="true" className="text-link" onClick={reset}>
             전체 해제
           </button>
+          <small className="applied-filter-help">개별 해제는 현재 결과에 반영하며, 수정 중인 입력은 유지합니다.</small>
         </div>
       )}
       <SearchPhrases onApply={applySearchPhrase} />

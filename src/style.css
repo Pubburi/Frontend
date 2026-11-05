@@ -823,7 +823,8 @@ textarea.form-control {
   gap: 8px;
 }
 
-.active-filters span {
+.active-filters > span,
+.active-filter-chip {
   padding: 7px 11px;
   color: var(--forest-dark);
   background: var(--success-soft);
@@ -832,6 +833,9 @@ textarea.form-control {
   font-size: 13px;
   font-weight: 800;
 }
+.active-filter-chip { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
+.applied-tag-remove { background: transparent; color: inherit; font: inherit; text-align: left; max-width: 100%; }
+.applied-filter-help { flex-basis: 100%; color: var(--ink-soft); }
 
 .pagination-bar {
   display: flex;
