@@ -35,7 +35,7 @@ npm run test:browser -- tests/browser/admin-edit-focus.spec.js
 | 계정·최근 상품 | 같은/다른 계정·ABA, 현재 query/location·cold401/paused·불확실 쓰기 차폐, 비밀 입력/72바이트·저장 거부·메모리 정책 | [계정 설정](../tests/browser/account-settings.spec.js), [최근 상품](../tests/browser/recent-products.spec.js) |
 | 상품 비교 | 반복 URL 최대4개·직접/잘못된 주소·현재 정보/개별 오류·빠른 Back·전체 해제·카트/기록 보존 | [비교](../tests/browser/product-comparison.spec.js) |
 | 매장·데모 주문 | strict Java int·현재 권위/소유·401/403/404·snapshot/삭제 이력·실제0/미확인·사진 미제공 | [매장](../tests/browser/market-detail.spec.js), [주문](../tests/browser/order-detail.spec.js) |
-| 관리자 | 탭/페이지·삭제/저장 이후 초안 수명·권한/오류·소수 입력·확인창 focus·허용100자 전체 이름과 조작 수용 | [편집](../tests/browser/admin-edit-focus.spec.js), [CRUD·경합](../tests/browser/smoke.spec.js) |
+| 관리자 | 탭/페이지·삭제/저장 이후 초안 수명·권한/오류·소수 입력·회원 편집 취소/저장 후 현재 행 복귀·확인창 focus·허용100자 전체 이름과 조작 수용 | [편집 진입](../tests/browser/admin-edit-focus.spec.js), [회원 편집 복귀](../tests/browser/admin-member-return.spec.js), [CRUD·경합](../tests/browser/smoke.spec.js) |
 
 ## 핵심 데이터·권한 계약
 
