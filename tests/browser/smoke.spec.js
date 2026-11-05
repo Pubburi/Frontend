@@ -517,12 +517,12 @@ test('390px 키보드 페이지 이동도 미제출 검색 대신 적용 조건�
   await expect(page.getByRole('button', { name: '이전', exact: true })).toBeEnabled()
 })
 
-test('기본 검색 URL에서 미제출 입력을 해제해도 입력과 칩을 초기화', async ({ page }) => {
+test('기본 검색 URL의 미제출 입력은 적용 칩 없이 명시적으로 초기화', async ({ page }) => {
   await page.goto('/products?sort=popular&page=1')
   await expect(page.locator('.product-card')).toHaveCount(2)
   await page.getByLabel('상품 검색', { exact: true }).fill('아직 제출하지 않은 검색어')
-  await expect(page.getByText('검색: 아직 제출하지 않은 검색어', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '전체 해제', exact: true }).click()
+  await expect(page.getByLabel('적용된 필터', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '입력 초기화', exact: true }).click()
   await expect(page).toHaveURL('/products?sort=popular&page=1')
   await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('')
   await expect(page.getByLabel('적용된 필터', { exact: true })).toHaveCount(0)

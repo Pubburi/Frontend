@@ -90,7 +90,11 @@ export function App() {
       intent?.fromLocationKey === previous.key && intent?.destination === destination &&
       document.activeElement instanceof HTMLElement &&
       document.activeElement.dataset.catalogResults === 'true'
-    if (!focusedResults) window.scrollTo({ top: 0 })
+    const removal = location.state?.catalogFilterRemoval
+    const focusedFilter = navigationType === 'PUSH' && previous && removal?.fromLocationKey === previous.key &&
+      removal?.destination === destination && document.activeElement instanceof HTMLElement &&
+      document.activeElement.dataset.catalogFilterControl === 'true'
+    if (!focusedResults && !focusedFilter) window.scrollTo({ top: 0 })
   }, [location.key, location.pathname, location.search, navigationType])
   async function logout() {
     const result = await ui.run(
