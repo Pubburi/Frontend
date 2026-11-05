@@ -128,6 +128,11 @@ function AdminPanel({
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const editInput = useRef<HTMLInputElement>(null)
   const editFocus = useRef<AdminEditFocusIntent | null>(null)
+  const memberEditTrigger = useRef<HTMLButtonElement | null>(null)
+  const memberHeading = useRef<HTMLHeadingElement>(null)
+  const memberSaveFocus = useRef<{ draft: Draft; source: HTMLElement; submitter: HTMLButtonElement; form: HTMLFormElement; target: HTMLButtonElement | null } | null>(null)
+  const currentEditor = useRef({ draft, locationKey: location.key })
+  currentEditor.current = { draft, locationKey: location.key }
   const { form, editing } = draft
   useLayoutEffect(() => {
     const intent = editFocus.current
@@ -159,7 +164,21 @@ function AdminPanel({
   function updateForm(form: ReturnType<typeof blankForm>) {
     setDraft((current) => ({ ...current, form, revision: Symbol() }))
   }
-  function reset() {
+  function ownsMemberEdit(submitted: Draft, account = user) {
+    const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+    return tab === 'users' && currentEditor.current.draft === submitted && currentEditor.current.locationKey === location.key &&
+      auth === authOwner && auth?.state.data === account && auth?.state.status === 'success' && auth.state.fetchStatus === 'idle' &&
+      account?.role === 'ADMIN' && !['login', 'join', 'logout', 'settings-password'].some((key) => useUi.getState().pending[key])
+  }
+  function returnMemberFocus(trigger: HTMLButtonElement | null) {
+    const target = trigger?.isConnected ? trigger : memberHeading.current
+    target?.focus({ preventScroll: true })
+    target?.scrollIntoView({ block: 'center', behavior: 'instant' })
+  }
+  function reset(event: MouseEvent<HTMLButtonElement>) {
+    if (event.detail === 0 && document.activeElement === event.currentTarget && ownsMemberEdit(draft))
+      returnMemberFocus(memberEditTrigger.current)
+    memberEditTrigger.current = null
     setDraft(emptyDraft())
   }
   function edit(item: Item, event: MouseEvent<HTMLButtonElement>) {
@@ -171,6 +190,7 @@ function AdminPanel({
         )
     }
     const updated = { form: next, editing: item, revision: Symbol() }
+    if (tab === 'users') memberEditTrigger.current = event.currentTarget
     const keyboard = event.detail === 0 && document.activeElement === event.currentTarget
     editFocus.current = keyboard ? { revision: updated.revision, trigger: event.currentTarget, auth: authOwner, account: user ?? undefined, locationKey: location.key } : null
     setDraft(updated)
@@ -189,6 +209,15 @@ function AdminPanel({
     }
     const submitted = draft
     const { form, editing } = submitted
+    const intent = memberSaveFocus.current
+    memberSaveFocus.current = null
+    const keyboard = event.isTrusted && intent?.draft === submitted && intent.form === event.currentTarget &&
+      (event.nativeEvent as SubmitEvent).submitter === intent.submitter && document.activeElement === intent.source &&
+      ownsMemberEdit(submitted) ? intent : null
+    // The pending submit button becomes disabled; this owned form stays focusable.
+    if (keyboard) keyboard.form.focus({ preventScroll: true })
+    let anchor: HTMLHeadingElement | null = null
+    let savedAccount = user
     const result = await ui.run(
       saveKey,
       async () => {
@@ -222,17 +251,29 @@ function AdminPanel({
           await client.invalidateQueries({
             queryKey: ['account', idOf(editing)],
           })
-          if (idOf(editing) === user?.id)
+          if (idOf(editing) === user?.id) {
             await client.invalidateQueries({ queryKey: ['session'] })
+            const currentAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+            const refreshed = currentAuth?.state.data as User | undefined
+            if (currentAuth === authOwner && user && refreshed?.id === user.id && refreshed.role === 'ADMIN')
+              savedAccount = refreshed
+          }
+        }
+        if (keyboard && ownsMemberEdit(submitted, savedAccount) && keyboard.form.isConnected && document.activeElement === keyboard.form) {
+          anchor = memberHeading.current
+          anchor?.focus({ preventScroll: true })
         }
         await refresh()
       },
       `${labels[tab]} 정보가 저장되었습니다.`,
     )
-    if (result.ok)
+    if (result.ok) {
+      if (keyboard && anchor && document.activeElement === anchor && ownsMemberEdit(submitted, savedAccount))
+        returnMemberFocus(keyboard.target)
       setDraft((current) =>
         current === submitted ? emptyDraft() : current,
       )
+    }
   }
   async function remove() {
     if (!deleting || !user) return
@@ -340,7 +381,7 @@ function AdminPanel({
       <section className="admin-panel">
         <div className="admin-section-heading">
           <div>
-            <h2>{tab === 'comments' ? '후기' : labels[tab]} 관리</h2>
+            <h2 ref={memberHeading} tabIndex={tab === 'users' ? -1 : undefined}>{tab === 'comments' ? '후기' : labels[tab]} 관리</h2>
             <p>{labels[tab]} 정보를 조회하고 관리합니다.</p>
           </div>
           <span className="result-count">총 {query.data?.total || 0}개</span>
@@ -353,7 +394,8 @@ function AdminPanel({
           </button>
         </div>
         {formVisible && (
-          <form className="admin-form" onSubmit={save}>
+          <form className="admin-form" onSubmit={save} tabIndex={tab === 'users' ? -1 : undefined} aria-label={tab === 'users' ? '회원 편집' : undefined}
+            onInvalidCapture={() => { memberSaveFocus.current = null }}>
             {draft.deleted && <p className="form-context deleted-editor-notice" role="status">
               이 항목은 삭제되어 저장할 수 없습니다. 현재 입력은 남겨두었습니다.
               필요한 내용을 복사하거나 편집을 취소해 주세요.
@@ -439,7 +481,13 @@ function AdminPanel({
               </>
             )}
             <div className="admin-form-actions">
-              <button className="btn btn-dark" disabled={ui.pending[saveKey] || draft.deleted}>
+              <button className="btn btn-dark" disabled={ui.pending[saveKey] || draft.deleted}
+                onClick={(event) => {
+                  const form = event.currentTarget.form, source = document.activeElement
+                  memberSaveFocus.current = tab === 'users' && event.isTrusted && event.detail === 0 && form && source instanceof HTMLElement &&
+                    (source === event.currentTarget || source instanceof HTMLInputElement && source.form === form) ?
+                    { draft, source, submitter: event.currentTarget, form, target: memberEditTrigger.current } : null
+                }}>
                 {draft.deleted ? '저장할 수 없음' : editing ? '변경 저장' : `${labels[tab]} 등록`}
               </button>
               <button
