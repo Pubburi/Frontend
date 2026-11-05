@@ -1298,7 +1298,12 @@ textarea.form-control {
 }
 
 .table-row p { margin: 0; line-height: 1.5; }
-.admin-table .table-row > strong { overflow-wrap: anywhere; }
+.admin-table .table-row > strong,
+.admin-table .table-row > [data-label="ID"],
+.admin-form .form-context,
+.admin-layout .confirm-dialog > p:not(.section-kicker) {
+  overflow-wrap: anywhere;
+}
 .table-actions { justify-content: flex-end; }
 .order-id { text-align: left; }
 
