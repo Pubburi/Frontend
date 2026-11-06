@@ -1428,6 +1428,118 @@ test('관리자 주문 완료·삭제와 탈퇴 회원의 보존 이력 표시',
   await expect(page.getByRole('button', { name: /#501/ })).toHaveCount(0)
 })
 
+const completionOrder = (oId, userId) => ({ oId, userId, orderType: 'TAKEOUT', completed: 'N', details: [], totalPrice: null })
+const adminOrdersUrl = '/admin?tab=orders&page=1'
+
+for (const width of [1280, 390]) {
+  test(`현재 주문 완료 401은 이전 목록을 숨기고 원래 주문 탭으로 로그인 복귀 ${width}px`, async ({ page, api }, info) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    api.orders = [completionOrder(581, 'cached-customer')]
+    await guardAdminReads(page, api)
+    await page.setViewportSize({ width, height: 900 })
+    let rejected = 0
+    await page.route('**/api/admin/orders/581/complete', async (route) => {
+      if (api.user) return route.fallback()
+      rejected += 1
+      await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+    })
+    await page.goto(adminOrdersUrl)
+    const prior = page.getByText('cached-customer', { exact: true })
+    const complete = page.getByRole('button', { name: '완료', exact: true })
+    await expect(prior).toBeVisible()
+    api.user = null
+    const loginDestination = (url) => url.pathname === '/account' && url.searchParams.get('redirect') === adminOrdersUrl
+    const outcome = Promise.race([
+      page.waitForURL(loginDestination),
+      page.getByText('로그인이 필요합니다.', { exact: true }).waitFor(),
+    ])
+    await complete.press('Enter'); await outcome
+    const priorVisible = await prior.isVisible()
+    if (priorVisible) {
+      await expect(complete).toBeEnabled(); await complete.press('Enter')
+      await expect.poll(() => rejected).toBe(2)
+    }
+    await info.attach('admin-completion-session.json', { body: JSON.stringify({ width, priorVisible, rejected }), contentType: 'application/json' })
+    expect({ priorVisible, rejected }).toEqual({ priorVisible: false, rejected: 1 })
+    await expect(page).toHaveURL(loginDestination)
+    await expect(page.locator('.admin-table')).toHaveCount(0)
+    await expect(page.getByText('관리자 로그인 상태가 만료되었습니다. 다시 로그인해 주세요.', { exact: true })).toBeVisible()
+    api.orders = [completionOrder(581, 'current-customer')]
+    await loginAdminRecovery(page)
+    await expect(page).toHaveURL(adminOrdersUrl)
+    await expect(page.getByText('current-customer', { exact: true })).toBeVisible()
+    await expect(prior).toHaveCount(0)
+    await expect(complete).toBeEnabled(); await complete.press('Enter')
+    await expect(complete).toBeDisabled()
+    await expect(page.getByText('주문을 완료 처리했습니다.', { exact: true })).toBeVisible()
+    expect(api.calls.filter(({ method, path }) => method === 'PATCH' && path === '/admin/orders/581/complete')).toHaveLength(1)
+    expect(api.orders[0].completed).toBe('Y')
+  })
+}
+
+test('관리자 주문 완료 403·503은 목록과 미완료 상태를 보존하고 명시적 재시도만 허용', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.orders = [completionOrder(582, 'current-customer')]
+  const remaining = [403, 503]
+  await page.route('**/api/admin/orders/582/complete', async (route) => {
+    const status = remaining.shift()
+    if (status === undefined) return route.fallback()
+    await route.fulfill({ status, json: failure(status === 403 ? 'FORBIDDEN' : 'SERVICE_UNAVAILABLE') })
+  })
+  await page.goto(adminOrdersUrl)
+  const complete = page.getByRole('button', { name: '완료', exact: true })
+  for (const message of ['이 작업을 수행할 권한이 없습니다.', '서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.']) {
+    await complete.press('Enter')
+    await expect(page.getByRole('alert')).toContainText(message)
+    await expect(page).toHaveURL(adminOrdersUrl)
+    await expect(page.getByText('current-customer', { exact: true })).toBeVisible()
+    await expect(complete).toBeEnabled()
+    expect(api.orders[0].completed).toBe('N')
+  }
+  await complete.press('Enter')
+  await expect(page.getByText('주문을 완료 처리했습니다.', { exact: true })).toBeVisible()
+  expect(api.calls.filter(({ method, path }) => method === 'PATCH' && path === '/admin/orders/582/complete')).toHaveLength(1)
+})
+
+for (const nextId of ['admin', 'admin-next']) {
+  test(`이전 관리자 완료의 늦은 401은 ${nextId}의 새 세션과 주문 목록을 바꾸지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    api.users.push({ id: 'admin-next', name: '새관리자', role: 'ADMIN', stamps: 0 })
+    api.orders = [completionOrder(583, 'prior-customer')]
+    let release, started = false
+    const gate = new Promise((resolve) => { release = resolve })
+    await page.route('**/api/admin/orders/583/complete', async (route) => {
+      started = true
+      await gate
+      await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+    })
+    try {
+      await page.goto(adminOrdersUrl)
+      await page.getByRole('button', { name: '완료', exact: true }).press('Enter')
+      await expect.poll(() => started).toBe(true)
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await expect(page).toHaveURL('/')
+      api.orders.push(completionOrder(584, 'new-customer'))
+      await page.getByRole('link', { name: '로그인', exact: true }).click()
+      await loginAdminRecovery(page, nextId)
+      await expect(page).toHaveURL('/profile')
+      await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '관리', exact: true }).click()
+      await page.getByRole('navigation', { name: '관리 메뉴' }).getByRole('button', { name: '주문', exact: true }).click()
+      const current = page.getByText('new-customer', { exact: true })
+      await expect(current).toBeVisible()
+      const originalOrderAction = page.locator('.table-row').filter({ hasText: 'prior-customer' }).getByRole('button', { name: '완료', exact: true })
+      await expect(originalOrderAction).toBeDisabled()
+      const delayed = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/admin/orders/583/complete')
+      release(); await (await delayed).finished()
+      await expect(originalOrderAction).toBeEnabled()
+      await expect(current).toBeVisible()
+      await expect(page).toHaveURL(adminOrdersUrl)
+      await expect(page.getByText('로그인이 필요합니다.', { exact: true })).toHaveCount(0)
+      expect(api.user.id).toBe(nextId)
+    } finally { release() }
+  })
+}
+
 for (const viewport of [{ name: '일반', width: 1280, height: 900 }, { name: '좁은 웹', width: 390, height: 844 }]) {
   test(`${viewport.name} 화면의 삭제 처리 중에도 키보드 포커스는 확인창 안에 유지`, async ({ page, api }) => {
     api.user = api.users.find((user) => user.id === 'admin')

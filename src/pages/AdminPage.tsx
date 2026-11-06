@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent, type MouseEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '../services/api'
+import { api, ApiClientError } from '../services/api'
 import { categories } from '../catalog'
 import { useSession } from '../queries'
 import { useUi } from '../state/ui'
@@ -311,14 +311,33 @@ function AdminPanel({
     }
   }
   async function complete(order: Order) {
-    await ui.run(
+    const result = await ui.run(
       `admin-order-complete-${order.oId}`,
       async () => {
-        await api.completeOrder(order.oId)
+        try {
+          await api.completeOrder(order.oId)
+        } catch (error) {
+          if (error instanceof ApiClientError && error.status === 401) return false
+          throw error
+        }
         await refresh()
+        return true
       },
-      '주문을 완료 처리했습니다.',
     )
+    if (!result.ok) return
+    if (result.data) {
+      ui.status('주문을 완료 처리했습니다.')
+      return
+    }
+    const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+    const pending = useUi.getState().pending
+    if (!auth || auth !== authOwner || auth.state.data !== user || auth.state.status !== 'success' ||
+        auth.state.fetchStatus !== 'idle' || user?.role !== 'ADMIN' ||
+        pending.login || pending.join || pending.logout || pending['settings-password']) return
+    // The route guard preserves the exact destination for the next login.
+    client.clear()
+    client.setQueryData(['session'], null)
+    ui.error(new Error('관리자 로그인 상태가 만료되었습니다. 다시 로그인해 주세요.'))
   }
   function loginAgain() {
     const cache = client.getQueryCache()
