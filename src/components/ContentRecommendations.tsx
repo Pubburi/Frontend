@@ -63,7 +63,7 @@ function OwnedContentRecommendations({ user, auth }: { user: User; auth: Query }
         const actor = await api.me() as User
         if (!ownsRequest()) throw new Error('이전 화면의 추천 요청입니다.')
         if (actor?.id !== user.id) throw new ApiClientError({ code: 'UNAUTHORIZED' }, 401)
-        const response = await api.ownContentRecommendations()
+        const response = await api.ownContentRecommendations(actor.id)
         if (!ownsRequest()) throw new Error('이전 화면의 추천 요청입니다.')
         return parseContentResponse(response)
       } finally { if (current.current === request) running.current = false }
@@ -86,7 +86,7 @@ function OwnedContentRecommendations({ user, auth }: { user: User; auth: Query }
     <button className="btn btn-dark" aria-disabled={busy || expired} onClick={request}>{requestLabel}</button>
     {submitted === null ? null : busy ? <p role="status">현재 취향 추천을 확인하는 중입니다.</p> : expired ?
       <Empty title="추천을 보려면 다시 로그인해 주세요" description="로그인 상태가 바뀌어 이전 추천은 표시하지 않았습니다."><button className="btn btn-dark" onClick={loginAgain}>추천 다시 로그인</button></Empty> : query.isError ?
-        <Empty title={status === 409 ? '취향이나 검수 후보가 변경되었습니다' : status === 400 ? '추천 조건을 확인해 주세요' : '추천을 가져오지 못했습니다'} description={status === 409 ? '현재 취향으로 추천 보기를 다시 선택해 주세요.' : status === 400 ? '저장한 취향을 확인하거나 추천 보기를 다시 선택해 주세요.' : '잠시 후 추천 보기를 다시 선택해 주세요. 기본 목록은 별도로 볼 수 있습니다.'} /> :
+        <Empty title={status === 409 ? '취향이나 검수 후보가 변경되었습니다' : status === 400 ? '추천 조건을 확인해 주세요' : '추천을 가져오지 못했습니다'} description={status === 409 ? '현재 취향과 피드백으로 추천 보기를 다시 선택해 주세요.' : status === 400 ? '저장한 취향을 확인하거나 추천 보기를 다시 선택해 주세요.' : '잠시 후 추천 보기를 다시 선택해 주세요. 기본 목록은 별도로 볼 수 있습니다.'} /> :
         query.data?.source === 'UNAVAILABLE' ? <Empty title="검수 DEMO 추천을 준비하지 못했습니다" description="현재 추천을 제공할 수 없습니다. 다시 요청하거나 별도의 기본 목록을 이용해 주세요." /> : query.data?.source === 'PROVIDER' ? <ContentResults response={query.data} /> : null}
   </>
 }
@@ -95,31 +95,40 @@ function FilterText({ fact }: { fact: FilterFact }) {
   if (fact.kind === 'category_filter') return <>{fact.label}: {fact.actual_value} (허용 주종 {fact.allowed_category_count}개)</>
   return <>{fact.label}: {fact.actual_value} {fact.unit} (최소 {fact.minimum === null ? '미지정' : `${fact.minimum} ${fact.unit}`}, 최대 {fact.maximum === null ? '미지정' : `${fact.maximum} ${fact.unit}`})</>
 }
-function ScoreText({ fact, category, activity }: { fact: ScoreFact; category: string; activity?: ActivityEvidence }) {
-  if (fact.kind === 'category_match' && fact.target_value === category && activity) {
+function ScoreText({ fact, category, activity, reference }: { fact: ScoreFact; category: string; activity?: ActivityEvidence; reference: boolean }) {
+  if (!reference && fact.kind === 'category_match' && fact.target_value === category && activity) {
     const sources = []
     if (activity.favoriteCategories.includes(fact.target_value)) sources.push('찜한 검수 상품의 주종')
     if (activity.highlyRatedCategories.includes(fact.target_value)) sources.push('최근 4점 이상 후기를 남긴 검수 상품의 주종')
     if (sources.length) return <>{fact.label}: {fact.actual_value} ({sources.join(' · ')})</>
   }
-  return <>{fact.label}: 후보 {fact.actual_value}{fact.unit ? ` ${fact.unit}` : ''} / 저장 선호 {fact.target_value}{fact.unit ? ` ${fact.unit}` : ''}</>
+  return <>{fact.label}: 후보 {fact.actual_value}{fact.unit ? ` ${fact.unit}` : ''} / {reference ? '비교 상품' : '저장 선호'} {fact.target_value}{fact.unit ? ` ${fact.unit}` : ''}</>
 }
 function ContentResults({ response }: { response: Extract<ContentResponse, { source: 'PROVIDER' }> }) {
   const family = response.catalogScope === 'REVIEWED_FAMILY_BROWSE_DEMO'
+  const feedback = response.feedbackEvidence
+  const fallback = response.result.fallback_reason
+  const noSharedFeedback = feedback?.rankingMode === 'positive_feedback' && fallback === 'no_matching_features'
   return <div className="content-results">
     <p className="eyebrow">{family ? '검수 상품군 DEMO · 열람 전용' : '검수 상품 DEMO · 열람 전용'}</p>
     <p>{family ? '특정 용량·판매 상품이 아닌 열람용 상품군입니다. 용량은 미확인입니다.' : '검수용 표본 정보이며 실제 판매·재고를 보장하지 않습니다.'} 비교 점수는 만족 확률이 아닙니다.</p>
-    {response.result.fallback_reason && <p role="status">{contentFallbacks[response.result.fallback_reason]}</p>}
-    {!response.result.items.length && <Empty title="조건에 맞는 검수 DEMO 후보가 없습니다" />}
+    {feedback && feedback.excludedNotInterestedCount > 0 && <p>관심 없음 선택을 반영해 검수 후보군에서 {feedback.excludedNotInterestedCount}개를 제외했습니다.</p>}
+    {fallback && !noSharedFeedback && <p role="status">{feedback && fallback === 'no_eligible_products' ?
+      '저장한 필수 조건과 피드백을 적용했습니다. 조건을 완화하지 않았습니다.' : contentFallbacks[fallback]}</p>}
+    {!response.result.items.length && <Empty title={noSharedFeedback ? '비교 근거가 있는 검수 DEMO 후보가 없습니다' : '조건에 맞는 검수 DEMO 후보가 없습니다'} />}
     <ol className="content-cards">{response.result.items.map((item, index) => {
       const product = response.products[index], facts = item.explanation
+      const comparison = facts.comparison
+      const reference = comparison.kind === 'reference_product'
+        ? feedback?.positiveReferences.find(({ productId }) => productId === comparison.product_id) : undefined
       return <li className="content-card" key={item.product_id} data-content-product={item.product_id}>
         <h3>{product.name}</h3>
         <p>{product.type} · DEMO 표시 가격 {money(product.price)}원 · 도수 {product.abv}%</p>
-        <p>용량 미확인</p>
+        {family && <p>용량 미확인</p>}
         <p>비교 점수 {item.score} (0–1)</p>
-        <ul>{item.reasons.map((reason, i) => <li key={i}>{contentReasons[reason]}</li>)}</ul>
-        {facts.score_evidence.length > 0 && <><h4>추천에 사용한 비교 근거</h4><ul>{facts.score_evidence.map((fact, i) => <li className="content-fact" key={i}><ScoreText fact={fact} category={product.type} activity={response.activityEvidence} /></li>)}</ul></>}
+        {reference && <p className="content-fact">취향에 맞음으로 표시한 ‘{reference.name}’과 비교했습니다.</p>}
+        <ul>{item.reasons.map((reason, i) => <li key={i}>{reference && reason === 'content_similarity' ? '표시한 상품과 공유하는 특성이 있습니다.' : contentReasons[reason]}</li>)}</ul>
+        {facts.score_evidence.length > 0 && <><h4>추천에 사용한 비교 근거</h4><ul>{facts.score_evidence.map((fact, i) => <li className="content-fact" key={i}><ScoreText fact={fact} category={product.type} activity={response.activityEvidence} reference={Boolean(reference)} /></li>)}</ul></>}
         {facts.score_evidence_truncated && <p>양수 비교 근거 {facts.total_positive_contributions}개 중 상위 {facts.score_evidence.length}개만 표시합니다.</p>}
         <h4>통과한 입력 조건</h4><ul>{facts.filter_evidence.map((fact, i) => <li className="content-fact" key={i}><FilterText fact={fact} /></li>)}</ul>
       </li>

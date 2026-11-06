@@ -40,7 +40,7 @@ export interface ContentItem {
   explanation: {
     version: 'r04-facts-v1'
     basis: 'content_similarity' | 'deterministic_baseline' | 'no_shared_features'
-    comparison: { kind: 'profile' }
+    comparison: { kind: 'profile' } | { kind: 'reference_product'; product_id: number }
     score_evidence: ScoreFact[]
     filter_evidence: FilterFact[]
     total_positive_contributions: number
@@ -52,8 +52,13 @@ export interface ActivityEvidence {
   favoriteCategories: string[]
   highlyRatedCategories: string[]
 }
+interface FeedbackEvidence {
+  rankingMode: 'positive_feedback' | 'profile_fallback'
+  excludedNotInterestedCount: number
+  positiveReferences: { productId: number; name: string }[]
+}
 export type ContentResponse = { source: 'UNAVAILABLE'; catalogScope: 'REVIEWED_DEMO'; result: null; products: [] } |
-  { source: 'PROVIDER'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_FAMILY_BROWSE_DEMO'; result: { items: ContentItem[]; fallback_reason: keyof typeof contentFallbacks | null }; products: Product[]; activityEvidence?: ActivityEvidence }
+  { source: 'PROVIDER'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_FAMILY_BROWSE_DEMO'; result: { items: ContentItem[]; fallback_reason: keyof typeof contentFallbacks | null }; products: Product[]; activityEvidence?: ActivityEvidence; feedbackEvidence?: FeedbackEvidence }
 function need(value: unknown): asserts value { if (!value) throw new Error('검수 DEMO 추천 응답을 확인하지 못했습니다.') }
 function object(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)) }
 function number(value: unknown, max: number): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max }
@@ -66,9 +71,10 @@ function fallback(value: unknown) { return value === null || typeof value === 's
 export function parseContentResponse(value: unknown): ContentResponse {
   need(object(value) && Array.isArray(value.products))
   const hasActivity = Object.hasOwn(value, 'activityEvidence')
-  need(Object.keys(value).length === (hasActivity ? 5 : 4) && ['source', 'catalogScope', 'products', 'result'].every((key) => Object.hasOwn(value, key)))
+  const hasFeedback = Object.hasOwn(value, 'feedbackEvidence')
+  need(Object.keys(value).length === 4 + Number(hasActivity) + Number(hasFeedback) && ['source', 'catalogScope', 'products', 'result'].every((key) => Object.hasOwn(value, key)))
   if (value.source === 'UNAVAILABLE') {
-    need(!hasActivity && value.catalogScope === 'REVIEWED_DEMO' && value.result === null && value.products.length === 0)
+    need(!hasActivity && !hasFeedback && value.catalogScope === 'REVIEWED_DEMO' && value.result === null && value.products.length === 0)
     return value as unknown as ContentResponse
   }
   need(value.source === 'PROVIDER' && (value.catalogScope === 'REVIEWED_DEMO' || value.catalogScope === 'REVIEWED_FAMILY_BROWSE_DEMO'))
@@ -77,10 +83,33 @@ export function parseContentResponse(value: unknown): ContentResponse {
     typeof result.representation_fitted === 'boolean' && (result.model_fingerprint === null || typeof result.model_fingerprint === 'string' && /^[a-f0-9]{64}$/.test(result.model_fingerprint)))
   need(fallback(result.fallback_reason) && integer(result.eligible_count, 1000) && integer(result.supported_profile_tokens, 72) && integer(result.unknown_profile_tokens, 72))
   need(Array.isArray(result.active_numeric_preferences) && result.active_numeric_preferences.every((part) => part === 'abv_percent'))
-  need(Array.isArray(result.items) && result.items.length <= 4 && result.items.length === Math.min(4, result.eligible_count) && value.products.length === result.items.length)
-  need((result.items.length === 0) === (result.fallback_reason === 'no_eligible_products'))
+  need(Array.isArray(result.items) && value.products.length === result.items.length)
+  const references = new Set<number>()
+  let positiveOnly = false
+  if (hasFeedback) {
+    const evidence = value.feedbackEvidence
+    need(value.catalogScope === 'REVIEWED_DEMO' && object(evidence) && Object.keys(evidence).length === 3 &&
+      (evidence.rankingMode === 'positive_feedback' || evidence.rankingMode === 'profile_fallback') &&
+      integer(evidence.excludedNotInterestedCount, 1000) && Array.isArray(evidence.positiveReferences) &&
+      evidence.positiveReferences.length <= result.items.length)
+    positiveOnly = evidence.rankingMode === 'positive_feedback'
+    need(positiveOnly || evidence.positiveReferences.length === 0)
+    for (const ref of evidence.positiveReferences) {
+      need(object(ref) && Object.keys(ref).length === 2 && integer(ref.productId, 2147483647) &&
+        ref.productId > 0 && text(ref.name) && !references.has(ref.productId))
+      references.add(ref.productId)
+    }
+  }
+  const maximum = Math.min(4, result.eligible_count)
+  if (positiveOnly) {
+    need(result.items.length <= maximum && result.fallback_reason ===
+      (maximum === 0 ? 'no_eligible_products' : result.items.length === 0 ? 'no_matching_features' : null))
+  } else {
+    need(result.items.length === maximum && (result.items.length === 0) === (result.fallback_reason === 'no_eligible_products'))
+  }
   const products = value.products
   const seen = new Set<number>()
+  const usedReferences = new Set<number>()
   const matchedCategories = new Set<string>()
   result.items.forEach((item, index) => {
     need(object(item) && integer(item.product_id, 2147483647) && item.product_id > 0 && !seen.has(item.product_id))
@@ -88,12 +117,20 @@ export function parseContentResponse(value: unknown): ContentResponse {
     const product = products[index]
     need(object(product) && product.id === item.product_id && text(product.name) && text(product.type) && integer(product.price, 2147483647) && number(product.abv, 100) && integer(product.orderCount, 2147483647) && (product.img == null || typeof product.img === 'string'))
     need(number(item.score, 1) && Array.isArray(item.reasons) && item.reasons.length > 0 && item.reasons.every((reason) => typeof reason === 'string' && Object.hasOwn(contentReasons, reason)))
-    const categoryContribution = hasActivity && item.score > 0 && Array.isArray(item.contributions) && item.contributions.some((part) =>
+    need(!positiveOnly || item.score > 0)
+    const facts = item.explanation
+    need(object(facts) && facts.version === 'r04-facts-v1' && object(facts.comparison))
+    const isReference = facts.comparison.kind === 'reference_product'
+    if (isReference) {
+      need(positiveOnly && Object.keys(facts.comparison).length === 2 && integer(facts.comparison.product_id, 2147483647) &&
+        references.has(facts.comparison.product_id))
+      usedReferences.add(facts.comparison.product_id)
+    } else need(facts.comparison.kind === 'profile' && Object.keys(facts.comparison).length === 1)
+    const activityProfile = hasActivity && !isReference
+    const categoryContribution = activityProfile && item.score > 0 && Array.isArray(item.contributions) && item.contributions.some((part) =>
       object(part) && part.component === 'text' && part.feature === `category:${product.type}` && number(part.contribution, 1) && part.contribution > 0,
     )
     if (categoryContribution) matchedCategories.add(product.type)
-    const facts = item.explanation
-    need(object(facts) && facts.version === 'r04-facts-v1' && object(facts.comparison) && facts.comparison.kind === 'profile' && Object.keys(facts.comparison).length === 1)
     need(typeof facts.basis === 'string' && ['content_similarity', 'deterministic_baseline', 'no_shared_features'].includes(facts.basis) && item.reasons.includes(facts.basis))
     need(facts.fallback_reason === result.fallback_reason && integer(facts.total_positive_contributions, 43) && typeof facts.score_evidence_truncated === 'boolean')
     need(Array.isArray(facts.score_evidence) && facts.score_evidence.length === Math.min(3, facts.total_positive_contributions) && facts.score_evidence_truncated === (facts.total_positive_contributions > 3))
@@ -107,7 +144,7 @@ export function parseContentResponse(value: unknown): ContentResponse {
         need(!volume || integer(fact.actual_value, 1000000) && fact.actual_value > 0 && integer(fact.target_value, 1000000) && fact.target_value > 0)
       } else {
         need(text(fact.actual_value) && fact.target_value === fact.actual_value && !Object.hasOwn(fact, 'unit'))
-        if (hasActivity && fact.kind === 'category_match') need(categoryContribution && fact.actual_value === product.type)
+        if (activityProfile && fact.kind === 'category_match') need(categoryContribution && fact.actual_value === product.type)
       }
     }
     need(Array.isArray(facts.filter_evidence) && facts.filter_evidence.length > 0 && facts.filter_evidence.length <= 4)
@@ -121,6 +158,7 @@ export function parseContentResponse(value: unknown): ContentResponse {
       }
     }
   })
+  need(references.size === usedReferences.size && [...references].every((id) => !seen.has(id)))
   if (hasActivity) {
     const evidence = value.activityEvidence
     need(result.fallback_reason === null && object(evidence) && Object.keys(evidence).length === 2 && Object.hasOwn(evidence, 'favoriteCategories') && Object.hasOwn(evidence, 'highlyRatedCategories'))

@@ -26,6 +26,12 @@ function activityWire(visible = true) {
   item.explanation.score_evidence_truncated = !visible
   return { ...value, activityEvidence: { favoriteCategories: ['맥주'], highlyRatedCategories: ['맥주'] } }
 }
+function feedbackWire() {
+  const value = wire()
+  value.result.eligible_count = 5
+  Object.assign(value.result.items[0].explanation.comparison, { kind: 'reference_product', product_id: 13 })
+  return { ...value, feedbackEvidence: { rankingMode: 'positive_feedback', excludedNotInterestedCount: 2, positiveReferences: [{ productId: 13, name: '맞음으로 표시한 상품' }] } }
+}
 describe('owned content typed display boundary', () => {
   it('keeps ordered current Product7, real0 and comma/newline atoms without transforming the provider', () => {
     const value = wire()
@@ -76,6 +82,38 @@ describe('owned content typed display boundary', () => {
     expect(() => parseContentResponse(value)).toThrow()
     value.activityEvidence.highlyRatedCategories.push('탁주')
     expect(parseContentResponse(value)).toBe(value)
+  })
+  it('accepts a shorter positive result and distinguishes the empty positive path from baseline', () => {
+    const value = feedbackWire()
+    expect(parseContentResponse(value)).toBe(value)
+    value.result.items = []; value.products = []; value.feedbackEvidence.positiveReferences = []
+    Object.assign(value.result, { fallback_reason: 'no_matching_features' })
+    expect(parseContentResponse(value)).toBe(value)
+    value.feedbackEvidence.rankingMode = 'profile_fallback'
+    expect(() => parseContentResponse(value)).toThrow()
+  })
+  it('keeps a reference volume fact separate from profile activity categories', () => {
+    const value = { ...feedbackWire(), activityEvidence: { favoriteCategories: ['맥주'], highlyRatedCategories: [] } }
+    const ref = value.result.items[0], profile = activityWire()
+    Object.assign(ref, { product_id: 8, score: 0.4 }); Object.assign(value.products[0], { id: 8, type: '탁주' })
+    ref.contributions = [{ component: 'text', feature: 'category:탁주', contribution: 0.2 }, { component: 'volume_ml', feature: 'volume_ml', contribution: 0.2 }]
+    Object.assign(ref.explanation, { total_positive_contributions: 2, score_evidence: [
+      { kind: 'category_match', label: '주종 일치', actual_value: '탁주', target_value: '탁주', contribution: 0.2 },
+      { kind: 'volume_comparison', label: '용량 비교 근거', actual_value: 330, target_value: 375, unit: 'mL', contribution: 0.2 },
+    ] })
+    value.result.items.unshift(profile.result.items[0]); value.products.unshift(profile.products[0])
+    expect(parseContentResponse(value)).toBe(value)
+    value.activityEvidence.favoriteCategories.push('탁주')
+    expect(() => parseContentResponse(value)).toThrow()
+  })
+  it.each([
+    ['missing winning reference', (value: ReturnType<typeof feedbackWire>) => { value.feedbackEvidence.positiveReferences[0].productId = 14 }],
+    ['returned reference as candidate', (value: ReturnType<typeof feedbackWire>) => { value.result.items[0].product_id = 13; value.products[0].id = 13 }],
+    ['reference in profile fallback', (value: ReturnType<typeof feedbackWire>) => { value.feedbackEvidence.rankingMode = 'profile_fallback' }],
+    ['feedback on browse-only family', (value: ReturnType<typeof feedbackWire>) => { value.catalogScope = 'REVIEWED_FAMILY_BROWSE_DEMO' }],
+    ['zero in positive mode', (value: ReturnType<typeof feedbackWire>) => { value.result.items[0].score = 0 }],
+  ])('rejects %s in a feedback response', (_name, mutate) => {
+    const value = feedbackWire(); mutate(value); expect(() => parseContentResponse(value)).toThrow()
   })
   it.each([['taste_match', '맛 태그 일치'], ['aroma_match', '향 태그 일치']])('family unknown %s is not a display fact', (kind, label) => {
     const value = wire(); value.catalogScope = 'REVIEWED_FAMILY_BROWSE_DEMO'
