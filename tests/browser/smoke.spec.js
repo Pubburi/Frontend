@@ -609,6 +609,98 @@ test('데모 주문 실패는 장바구니를 보존하고 성공 후 서버 스
   await expect(page.getByRole('heading', { name: '장바구니가 비어 있습니다' })).toBeVisible()
 })
 
+for (const width of [1280, 390]) {
+  test(`로그아웃 대기 중 주문을 막고 새 로그인까지 장바구니를 보존 ${width}px`, async ({ page, api }, info) => {
+    api.user = api.users.find((user) => user.id === 'member')
+    await page.setViewportSize({ width, height: 900 })
+    await page.addInitScript(() => {
+      const fetch = window.fetch.bind(window)
+      window.checkoutPostCount = 0
+      window.fetch = (input, init) => {
+        if (typeof input === 'string' && new URL(input, location.href).pathname === '/api/orders' && init?.method === 'POST') window.checkoutPostCount += 1
+        return fetch(input, init)
+      }
+    })
+    let logoutStarted = false, releaseLogout
+    const logoutGate = new Promise((resolve) => { releaseLogout = resolve })
+    await page.route('**/api/auth/logout', async (route) => {
+      logoutStarted = true
+      await logoutGate
+      await route.fallback()
+    })
+    const cartLink = page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: /장바구니/ })
+    const menu = page.getByRole('button', { name: '메뉴 열기', exact: true })
+    const goToCart = async () => {
+      if (width === 390) await menu.click()
+      await cartLink.click()
+      await expect(page).toHaveURL('/cart')
+    }
+    const note = page.getByLabel('테이블·요청 사항', { exact: true })
+    const submit = page.getByRole('button', { name: '6,000원 주문하기', exact: true })
+    try {
+      await page.goto('/products/901')
+      await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
+      await goToCart()
+      await page.getByLabel('주문 방식', { exact: true }).selectOption('OFFLINE')
+      await note.fill('3번 테이블')
+      if (width === 390) await menu.click()
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await expect.poll(() => logoutStarted).toBe(true)
+      if (width === 390) await menu.click()
+      const disabled = await submit.isDisabled()
+      await note.press('Enter')
+      const posts = await page.evaluate(() => window.checkoutPostCount)
+      await info.attach('checkout-during-logout.json', { body: JSON.stringify({ width, disabled, posts }), contentType: 'application/json' })
+      expect({ disabled, posts }).toEqual({ disabled: true, posts: 0 })
+      await page.locator('.checkout-form').evaluate((form) => form.requestSubmit())
+      expect(await page.evaluate(() => window.checkoutPostCount)).toBe(0)
+      await expect(page.locator('.checkout-form').getByRole('status')).toHaveText('로그인 상태를 확인하는 동안 주문을 기다려 주세요.')
+      await expect(note).toHaveValue('3번 테이블')
+      releaseLogout()
+      await expect(page).toHaveURL('/')
+      await goToCart()
+      await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('1')
+      await expect(page.getByLabel('주문 방식', { exact: true })).toHaveValue('OFFLINE')
+      await expect(note).toHaveValue('3번 테이블')
+      await submit.click()
+      await page.getByLabel('아이디', { exact: true }).fill('other')
+      await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.getByLabel('비밀번호', { exact: true }).press('Enter')
+      await expect(page).toHaveURL('/cart')
+      await expect(note).toHaveValue('3번 테이블')
+      await submit.click()
+      await expect(page).toHaveURL('/profile')
+      await expect(page.getByText('주문 당시 금액', { exact: true })).toBeVisible()
+      expect(api.calls.filter((call) => call.path === '/orders' && call.method === 'POST').map((call) => call.body)).toEqual([
+        { userId: 'other', orderType: 'OFFLINE', orderTable: '3번 테이블', details: [{ productId: 901, quantity: 1 }] },
+      ])
+    } finally { releaseLogout() }
+  })
+}
+
+test('장바구니 세션 조회 장애는 로그인 이동 없이 입력을 보존하고 재조회로 복구', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  api.sessionFailures = 1
+  await page.addInitScript((product) => localStorage.setItem('pubburi-cart', JSON.stringify([{ product, quantity: 2 }])), products[0])
+  await page.goto('/cart')
+  const note = page.getByLabel('테이블·요청 사항', { exact: true })
+  const submit = page.getByRole('button', { name: '12,000원 주문하기', exact: true })
+  await expect(page.getByText('로그인 상태를 확인하지 못했습니다. 장바구니와 요청 사항은 유지됩니다.', { exact: true })).toBeVisible()
+  await page.getByLabel('주문 방식', { exact: true }).selectOption('OFFLINE')
+  await note.fill('재시도할 요청')
+  await expect(submit).toBeDisabled()
+  await page.locator('.checkout-form').evaluate((form) => form.requestSubmit())
+  await expect(page).toHaveURL('/cart')
+  const retry = page.getByRole('button', { name: '로그인 상태 다시 확인', exact: true })
+  await retry.focus(); await retry.press('Enter')
+  await expect(submit).toBeEnabled()
+  await expect(note).toHaveValue('재시도할 요청')
+  await expect(page.getByLabel('주문 방식', { exact: true })).toHaveValue('OFFLINE')
+  await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('2')
+  expect(api.calls.filter((call) => call.path === '/auth/me')).toHaveLength(2)
+  expect(api.calls.filter((call) => call.method === 'POST')).toEqual([])
+})
+
 test('브라우저 보관이 막혀도 담기와 성공 주문은 유지하고 보관 제약만 안내', async ({ page, api }) => {
   api.user = api.users.find((user) => user.id === 'member')
   await page.addInitScript(() => {

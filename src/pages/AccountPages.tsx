@@ -9,7 +9,11 @@ import { profilePrivacy } from '../state/authReadPrivacy'
 import { Empty, Image, Loading, Pagination, Quantity } from '../components/ui'
 import { OrderCard } from '../components/OrderLines'
 import { money, productImage } from '../utils/format'
-import type { Order, Page, Profile } from '../types'
+import type { Order, Page, Profile, User } from '../types'
+
+function checkoutAuthPending(pending: Record<string, boolean>) {
+  return Boolean(pending.login || pending.join || pending.logout || pending['settings-password'])
+}
 
 export function CartPage() {
   const cart = useCart()
@@ -19,6 +23,7 @@ export function CartPage() {
   const navigate = useNavigate()
   const client = useQueryClient()
   const location = useLocation()
+  const checkingSession = checkoutAuthPending(ui.pending) || session.isPending || session.fetchStatus !== 'idle'
   const currentLocation = useRef(location.key)
   currentLocation.current = location.key
   const mounted = useRef(false)
@@ -28,12 +33,15 @@ export function CartPage() {
   }, [])
   async function checkout(event: FormEvent) {
     event.preventDefault()
-    if (!session.data) {
+    const current = client.getQueryState<User | null>(['session'])
+    if (checkoutAuthPending(useUi.getState().pending) || current?.status !== 'success' ||
+        current.fetchStatus !== 'idle' || current.data !== session.data) return
+    if (!current.data) {
       ui.error(new Error('주문하려면 먼저 로그인해 주세요.'))
       navigate('/account?redirect=/cart')
       return
     }
-    const userId = session.data.id
+    const userId = current.data.id
     const submittedLocation = location.key
     const result = await ui.run(
       'checkout',
@@ -160,13 +168,24 @@ export function CartPage() {
                   }
                 />
               </label>
+              {!checkingSession && session.isError && (
+                <button className="btn btn-outline-dark" type="button" onClick={() => session.refetch()}>
+                  로그인 상태 다시 확인
+                </button>
+              )}
               <button
                 className="btn btn-gold btn-wide"
-                disabled={ui.pending.checkout || session.isPending}
+                disabled={ui.pending.checkout || checkingSession || session.isError}
               >
                 {money(totals.total)}원 주문하기
               </button>
-              <p className="muted">실제 결제 없이 데모 주문으로 접수합니다.</p>
+              <p className="muted">
+                <span role="status">{checkingSession
+                  ? '로그인 상태를 확인하는 동안 주문을 기다려 주세요.'
+                  : session.isError ? '로그인 상태를 확인하지 못했습니다. 장바구니와 요청 사항은 유지됩니다.' : ''}</span>
+                {(checkingSession || session.isError) && <br />}
+                실제 결제 없이 데모 주문으로 접수합니다.
+              </p>
             </form>
           </aside>
         </div>
