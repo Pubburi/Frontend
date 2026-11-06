@@ -21,6 +21,19 @@ function wire(scope = 'REVIEWED_DEMO') {
 function activityWire() {
   return { ...wire('REVIEWED_FAMILY_BROWSE_DEMO'), activityEvidence: { favoriteCategories: ['맥주'], highlyRatedCategories: ['맥주'] } }
 }
+const referenceName = '직접 표시한 <b>기준 상품'
+function feedbackWire() {
+  const value = activityWire(), reference = wire().result.items[0]
+  value.catalogScope = 'REVIEWED_DEMO'
+  value.products.push({ ...product, id: 8, name: '기준과 비슷한 검수 DEMO', type: '탁주' })
+  reference.product_id = 8
+  reference.explanation.comparison = { kind: 'reference_product', product_id: 13 }
+  reference.explanation.score_evidence[1] = { kind: 'volume_comparison', label: '용량 비교 근거', actual_value: 330, target_value: 375, unit: 'mL', contribution: 0.3 }
+  value.result.items.push(reference)
+  value.result.eligible_count = 5
+  value.feedbackEvidence = { rankingMode: 'positive_feedback', excludedNotInterestedCount: 2, positiveReferences: [{ productId: 13, name: referenceName }] }
+  return value
+}
 const panel = (page) => page.getByRole('region', { name: '내 취향 추천', exact: true })
 const button = (page) => panel(page).getByRole('button', { name: '검수 DEMO 추천 보기', exact: true })
 const cards = (page) => panel(page).locator('[data-content-product]')
@@ -33,12 +46,15 @@ const test = base.extend({
     await context.route('**/api/**', async (route) => {
       const r = route.request(), url = new URL(r.url()), path = url.pathname.slice(4), method = r.method()
       const body = method === 'POST' && r.postData() ? r.postDataJSON() : null
-      s.calls.push({ path, method, query: [...url.searchParams], ...(path === '/users/me/recommendations/content' ? { body } : {}) })
+      s.calls.push({ path, method, query: [...url.searchParams], ...(path === '/users/me/recommendations/content' ? { body, owner: r.headers()['x-pubburi-feedback-owner'] } : {}) })
       let reply
       if (path === '/auth/me' && method === 'GET') reply = s.meReplies.shift() ?? { status: s.user ? 200 : 401, data: s.user }
       else if (path === '/auth/login' && method === 'POST') { s.user = users.find((u) => u.id === body.id); reply = { status: 200, data: s.user } }
       else if (path === '/auth/logout' && method === 'POST') { if (s.logoutStatus === 200) s.user = null; reply = { status: s.logoutStatus, data: true } }
-      else if (path === '/users/me/recommendations/content' && method === 'POST') reply = s.replies.shift() ?? { status: 200, data: wire() }
+      else if (path === '/users/me/recommendations/content' && method === 'POST') {
+        reply = s.user && r.headers()['x-pubburi-feedback-owner'] === encodeURIComponent(s.user.id)
+          ? s.replies.shift() ?? { status: 200, data: wire() } : { status: 401 }
+      }
       else if (path === '/products/popular') reply = { status: 200, data: [] }
       else if (path === '/markets' || /\/orders$/.test(path)) reply = { status: 200, data: pageOf([]) }
       else if (/\/profile$/.test(path)) reply = { status: 200, data: { user: s.user, grade: { title: '씨앗' } } }
@@ -69,7 +85,7 @@ for (const width of [1280, 390]) {
     const compare = page.getByRole('link', { name: '상품 비교 1', exact: true, includeHidden: true }); await expect(compare).toHaveAttribute('href', '/compare?productId=7')
     await page.getByLabel('상품 검색', { exact: true }).fill('미제출 검색')
     await button(page).focus(); await button(page).press('Enter'); await expect(cards(page)).toHaveCount(1)
-    expect(fixture.posts()).toHaveLength(1); expect(fixture.posts()[0]).toMatchObject({ method: 'POST', query: [] }); expect(fixture.posts()[0].body).toEqual({ limit: 4, includeActivity: true }); await expect(button(page)).toBeFocused(); await page.keyboard.press('Tab'); await expect(panel(page).getByRole('link', { name: '저장한 취향 설정', exact: true })).toBeFocused()
+    expect(fixture.posts()).toHaveLength(1); expect(fixture.posts()[0]).toMatchObject({ method: 'POST', query: [], owner: 'member' }); expect(fixture.posts()[0].body).toEqual({ limit: 4, includeActivity: true }); await expect(button(page)).toBeFocused(); await page.keyboard.press('Tab'); await expect(panel(page).getByRole('link', { name: '저장한 취향 설정', exact: true })).toBeFocused()
     await expect(page).toHaveURL('/'); await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('미제출 검색')
     await expect(cards(page)).toContainText('DEMO 표시 가격 0원'); await expect(cards(page)).toContainText('도수 0%'); await expect(cards(page)).toContainText('비교 점수 0.5 (0–1)'); await expect(cards(page)).toContainText('dry,sweet\natom:<b>')
     await expect(cards(page).locator('b')).toHaveCount(0); await expect(cards(page).locator('a, button')).toHaveCount(0); await expect(cards(page)).not.toContainText('찜한 검수 상품의 주종')
@@ -108,11 +124,47 @@ test('UNAVAILABLE과 정상 empty, 지원 선호 없는 기본순을 각각 표�
   const baseline = wire(); Object.assign(baseline.result, { fallback_reason: 'no_supported_preferences', supported_profile_tokens: 0 }); Object.assign(baseline.result.items[0], { score: 0, reasons: ['available', 'deterministic_baseline'], contributions: [], explanation: { ...baseline.result.items[0].explanation, basis: 'deterministic_baseline', score_evidence: [], total_positive_contributions: 0, fallback_reason: 'no_supported_preferences' } }); fixture.replies.push({ status: 200, data: baseline })
   await load(page); await expect(cards(page)).toContainText('비교 점수 0 (0–1)'); await expect(cards(page)).not.toContainText('추천에 사용한 비교 근거'); await expect(panel(page)).toContainText('비교할 수 있는 선호가 없어 기본순')
 })
+test('추천 피드백의 실제 기준과 활동 이유를 나누고 부족한 후보를 기본순으로 채우지 않음', async ({ page, fixture }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  fixture.user = { ...users[0], id: '회원+테스트%' }
+  fixture.replies.push({ status: 200, data: feedbackWire() })
+  await open(page)
+  await button(page).press('Enter')
+  await expect(cards(page)).toHaveCount(2)
+  expect(fixture.posts()[0].owner).toBe(encodeURIComponent(fixture.user.id))
+  await expect(button(page)).toBeFocused()
+  await expect(cards(page).first()).toContainText('찜한 검수 상품의 주종')
+  await expect(cards(page).last()).toContainText(`취향에 맞음으로 표시한 ‘${referenceName}’과 비교했습니다.`)
+  await expect(cards(page).last()).toContainText('용량 비교 근거: 후보 330 mL / 비교 상품 375 mL')
+  await expect(cards(page).last()).not.toContainText(/찜한 검수 상품|저장 선호|용량 미확인/)
+  await expect(cards(page).locator('a, b, button')).toHaveCount(0)
+  await expect(panel(page)).toContainText('관심 없음 선택을 반영해 검수 후보군에서 2개를 제외했습니다.')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  const empty = feedbackWire()
+  delete empty.activityEvidence
+  empty.products = []; empty.result.items = []; empty.result.fallback_reason = 'no_matching_features'; empty.feedbackEvidence.positiveReferences = []
+  fixture.replies.push({ status: 200, data: empty })
+  await button(page).click()
+  await expect(panel(page).getByRole('heading', { name: '비교 근거가 있는 검수 DEMO 후보가 없습니다' })).toBeVisible()
+  await expect(cards(page)).toHaveCount(0)
+  await expect(panel(page)).not.toContainText(/기본순으로 표시|준비하지 못했습니다/)
+})
 for (const where of ['me', 'post']) {
   test(`${where} 현재401은 차폐하고 재로그인만 제공`, async ({ page, fixture }) => {
     await open(page); await load(page)
-    if (where === 'me') fixture.meReplies.push({ status: 401 }); else fixture.replies.push({ status: 401 })
-    await button(page).click(); await expect(panel(page).getByRole('heading', { name: '추천을 보려면 다시 로그인해 주세요' })).toBeVisible(); await expect(cards(page)).toHaveCount(0)
+    if (where === 'me') {
+      fixture.meReplies.push({ status: 401 })
+      await button(page).click()
+    } else {
+      const oldSession = fixture.hold('/auth/me', { status: 200, data: users[0] })
+      await button(page).click()
+      await expect.poll(() => oldSession.started).toBe(true)
+      fixture.user = users[1]
+      oldSession.release()
+    }
+    await expect(panel(page).getByRole('heading', { name: '추천을 보려면 다시 로그인해 주세요' })).toBeVisible(); await expect(cards(page)).toHaveCount(0)
+    if (where === 'post') expect(fixture.posts().at(-1).owner).toBe('member')
     const count = fixture.posts().length; await button(page).press('Enter'); expect(fixture.posts()).toHaveLength(count)
     await panel(page).getByRole('button', { name: '추천 다시 로그인' }).click(); await expect(page).toHaveURL('/account?redirect=%2F')
   })
@@ -128,9 +180,9 @@ for (const status of [200, 401]) {
 }
 for (const [id, status] of [['member', 401], ['other', 401], ['other', 200]]) {
   test(`${id} 재로그인/계정전환에 옛 추천과 늦은 ${status} 격리`, async ({ page, fixture }) => {
-    await open(page); const gate = fixture.hold('/users/me/recommendations/content', { status, data: activityWire() }); await button(page).click(); await expect.poll(() => gate.started).toBe(true)
+    await open(page); const gate = fixture.hold('/users/me/recommendations/content', { status, data: feedbackWire() }); await button(page).click(); await expect.poll(() => gate.started).toBe(true)
     await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect(panel(page).getByRole('link', { name: '로그인하고 취향 추천 보기' })).toBeVisible(); await login(page, id); await expect(cards(page)).toHaveCount(0); await load(page)
-    const old = page.waitForResponse((r) => r.url().endsWith('/api/users/me/recommendations/content') && r.status() === status); gate.release(); await (await old).finished(); await expect(cards(page)).toHaveCount(1); await expect(cards(page)).not.toContainText('찜한 검수 상품의 주종')
+    const old = page.waitForResponse((r) => r.url().endsWith('/api/users/me/recommendations/content') && r.status() === status); gate.release(); await (await old).finished(); await expect(cards(page)).toHaveCount(1); await expect(cards(page)).not.toContainText('찜한 검수 상품의 주종'); await expect(panel(page)).not.toContainText(referenceName)
   })
 }
 test('불확실 auth쓰기503 뒤 과거결과 차폐·쓰기이후 me401이면 새POST0', async ({ page, fixture }) => {
