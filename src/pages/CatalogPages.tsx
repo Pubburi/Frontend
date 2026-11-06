@@ -243,11 +243,19 @@ export function ProductsPage() {
   type Removal = { token: number; fromLocationKey: string; destination: string }
   const removalDraft = useRef<Removal | null>(null)
   const removalFocus = useRef<(Removal & { source: HTMLButtonElement; index: number }) | null>(null)
+  const pageRepairDraft = useRef<{ fromLocationKey: string; destination: string } | null>(null)
   useEffect(() => {
     const removal = removalDraft.current
     removalDraft.current = null
+    const repair = pageRepairDraft.current
+    pageRepairDraft.current = null
     if (removal && location.state?.catalogFilterRemoval?.token === removal.token &&
         location.pathname + location.search === removal.destination) return
+    if (repair && location.state?.catalogPageRepair?.fromLocationKey === repair.fromLocationKey &&
+        location.pathname + location.search === repair.destination) {
+      setForm((current) => ({ ...current, page: filters.page }))
+      return
+    }
     setForm(filters)
     setRangeErrors(urlRangeErrors)
     setTagIssues(urlTagIssues)
@@ -258,6 +266,18 @@ export function ProductsPage() {
     enabled: !invalidUrlFilters,
     refetchOnReconnect: (query) => !(query.state.error instanceof ApiClientError && query.state.error.status === 400),
   })
+  const resultPage = products.data
+  const repairPage = !invalidUrlFilters && products.isSuccess && resultPage && resultPage.page === filters.page &&
+    resultPage.items.length === 0 && resultPage.total > 0 && Number.isSafeInteger(resultPage.totalPages) &&
+    resultPage.totalPages > 0 && filters.page > resultPage.totalPages ? resultPage.totalPages : null
+  useEffect(() => {
+    if (repairPage === null || products.fetchStatus !== 'idle' || pageRepairDraft.current?.fromLocationKey === location.key) return
+    const destination = new URLSearchParams(search)
+    destination.set('page', String(repairPage))
+    const repair = { fromLocationKey: location.key, destination: location.pathname + '?' + destination.toString() }
+    pageRepairDraft.current = repair
+    setSearch(destination, { replace: true, state: { catalogPageRepair: repair } })
+  }, [repairPage, products.fetchStatus, search, location.key, location.pathname, setSearch])
   const rejectedTags = products.isError && products.error instanceof ApiClientError && products.error.status === 400 &&
     productTagFields.some(({ key }) => filters[key].length > 0)
   const searchButton = useRef<HTMLButtonElement>(null)
@@ -488,7 +508,7 @@ export function ProductsPage() {
       )}
       <SearchPhrases onApply={applySearchPhrase} />
       <section ref={results} className="product-results" aria-label="상품 검색 결과"
-        aria-busy={products.isFetching} tabIndex={-1} data-catalog-results="true">
+        aria-busy={products.isFetching || repairPage !== null} tabIndex={-1} data-catalog-results="true">
       {invalidUrlFilters ? (
         <Empty title="검색 조건을 확인해 주세요" description="가격·도수 범위와 태그 조건을 고치고 검색하거나 전체 해제해 주세요. 결과를 불러오지 않았습니다." />
       ) : rejectedTags ? (
@@ -500,6 +520,8 @@ export function ProductsPage() {
             target?.focus()
           }}>태그 조건 수정</button>
         </Empty>
+      ) : repairPage !== null ? (
+        <Loading label="같은 검색 조건의 마지막 페이지를 확인하는 중입니다." />
       ) : products.isPending ? (
         <Loading />
       ) : products.isError ? (
@@ -530,7 +552,7 @@ export function ProductsPage() {
         </Empty>
       )}
       </section>
-      <Pagination page={invalidUrlFilters ? undefined : products.data}
+      <Pagination page={invalidUrlFilters || repairPage !== null ? undefined : resultPage}
         onChange={(page) => navigate(page, filters)} onKeyboardNavigate={changeKeyboardPage} />
     </section>
   )

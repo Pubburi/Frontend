@@ -94,7 +94,10 @@ export function App() {
     const focusedFilter = navigationType === 'PUSH' && previous && removal?.fromLocationKey === previous.key &&
       removal?.destination === destination && document.activeElement instanceof HTMLElement &&
       document.activeElement.dataset.catalogFilterControl === 'true'
-    if (!focusedResults && !focusedFilter) window.scrollTo({ top: 0 })
+    const pageRepair = location.state?.catalogPageRepair
+    const repairedPage = navigationType === 'REPLACE' && previous && pageRepair?.fromLocationKey === previous.key &&
+      pageRepair.destination === destination
+    if (!focusedResults && !focusedFilter && !repairedPage) window.scrollTo({ top: 0 })
   }, [location.key, location.pathname, location.search, navigationType])
   async function logout() {
     const result = await ui.run(
