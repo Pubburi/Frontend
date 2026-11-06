@@ -103,6 +103,14 @@ export const api = {
   ownSearchPhrases: (searchOptInFields) => request('/users/me/search-phrases', { method: 'POST', body: JSON.stringify({ searchOptInFields, limit: 5 }) }),
   /** @returns {Promise<unknown>} */
   ownContentRecommendations: () => request('/users/me/recommendations/content', { method: 'POST', cache: 'no-store', body: JSON.stringify({ limit: 4, includeActivity: true }) }),
+  /** @param {number} productId @param {string} accountId @param {'MATCHED'|'NOT_INTERESTED'|null} [feedback] @param {AbortSignal} [signal] @returns {Promise<unknown>} */
+  ownRecommendationFeedback: (productId, accountId, feedback, signal) => request(`/users/me/recommendations/feedback/${productId}`, {
+    method: feedback === undefined ? 'GET' : feedback === null ? 'DELETE' : 'PUT',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Pubburi-Feedback-Owner': encodeURIComponent(accountId) },
+    signal,
+    ...(feedback == null ? {} : { body: JSON.stringify({ feedback }) }),
+  }),
   /** @param {import('../types').ExplicitPreferences} payload @returns {Promise<import('../types').ExplicitPreferences>} */
   replaceOwnPreferences: (payload) => request('/users/me/preferences', { method: 'PUT', body: JSON.stringify(payload) }),
   /** @param {{ page?: number, size?: number }} params @returns {Promise<import('../types').Page<import('../types').Product>>} */

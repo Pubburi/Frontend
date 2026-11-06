@@ -18,6 +18,7 @@ const test = base.extend({
     const state = {
       user: null, catalogFailures: 0, sessionFailures: 0, orderFailures: 0, defaultSource: 'BASELINE', defaultFailures: 0,
       catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {}, preferences: {}, favorites: {}, similar: {},
+      feedback: {}, feedbackCalls: [],
       users: [
         { id: 'member', name: '시험회원', role: 'USER', stamps: 3 },
         { id: 'other', name: '다른회원', role: 'USER', stamps: 0 },
@@ -96,6 +97,20 @@ const test = base.extend({
         if (method === 'PUT') state.favorites[state.user.id] = ids.includes(productId) ? ids : [productId, ...ids]
         else state.favorites[state.user.id] = ids.filter((id) => id !== productId)
         await route.fulfill({ json: success({ productId, favorited: method === 'PUT' }) })
+        return
+      }
+      const feedbackPath = path.match(/^\/users\/me\/recommendations\/feedback\/(\d+)$/)
+      if (feedbackPath && ['GET', 'PUT', 'DELETE'].includes(method)) {
+        const productId = Number(feedbackPath[1]), owner = request.headers()['x-pubburi-feedback-owner']
+        state.feedbackCalls.push({ method, productId, owner, body })
+        if (!state.user || owner !== encodeURIComponent(state.user.id)) {
+          await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+          return
+        }
+        const feedback = state.feedback[state.user.id] ??= {}
+        if (method === 'PUT') feedback[productId] = body.feedback
+        if (method === 'DELETE') delete feedback[productId]
+        await route.fulfill({ json: success({ productId, feedback: feedback[productId] ?? null }) })
         return
       }
       if (request.method() === 'GET' && path === '/products') {
@@ -4159,6 +4174,162 @@ test('유사 상품 조회는 정규 기준 상품 주소에서만 시작', asyn
   await expect(page.getByRole('region', { name: '상품 특성', exact: true }).getByText('미확인').first()).toBeVisible()
   expect(api.calls.filter(({ path }) => path.endsWith('/similar'))).toEqual([])
   await expect(similarRegion(page)).toHaveCount(0)
+})
+
+const feedbackPath = '/api/users/me/recommendations/feedback/901'
+const feedbackPanel = (page) => page.locator('details.recommendation-feedback')
+const feedbackSummary = (page) => feedbackPanel(page).locator('summary')
+const feedbackButton = (page, name) => feedbackPanel(page).getByRole('button', { name, exact: true })
+
+test('추천 피드백은 작은 화면과 키보드에서 저장·복원·변경·지우기를 수행', async ({ page, api }) => {
+  api.user = { ...api.users[0], id: '회원+테스트%' }
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/products/901')
+  await expect(feedbackSummary(page)).toHaveText('추천 피드백')
+  expect(api.feedbackCalls).toEqual([])
+  await feedbackSummary(page).press('Enter')
+  const match = feedbackButton(page, '취향에 맞음'), dismiss = feedbackButton(page, '관심 없음'), clear = feedbackButton(page, '선택 지우기')
+  await expect(match).toHaveAttribute('aria-pressed', 'false')
+  await expect(clear).toBeDisabled()
+  await page.keyboard.press('Tab')
+  await expect(match).toBeFocused()
+  await match.press('Enter')
+  await expect(match).toBeFocused()
+  await expect(match).toHaveAttribute('aria-pressed', 'true')
+  await expect(feedbackPanel(page).getByRole('status')).toHaveText('내 피드백을 저장했습니다.')
+  expect(api.feedbackCalls).toEqual([
+    { method: 'GET', productId: 901, owner: encodeURIComponent(api.user.id), body: null },
+    { method: 'PUT', productId: 901, owner: encodeURIComponent(api.user.id), body: { feedback: 'MATCHED' } },
+  ])
+  await page.reload()
+  await feedbackSummary(page).press('Enter')
+  await expect(match).toHaveAttribute('aria-pressed', 'true')
+  await dismiss.press('Enter')
+  await expect(dismiss).toHaveAttribute('aria-pressed', 'true')
+  await expect(match).toHaveAttribute('aria-pressed', 'false')
+  await clear.press('Enter')
+  await expect(clear).toBeFocused()
+  await expect(feedbackPanel(page).getByRole('status')).toHaveText('선택을 지웠습니다.')
+  await expect(dismiss).toHaveAttribute('aria-pressed', 'false')
+  expect(api.feedbackCalls.slice(-2).map(({ method, body }) => ({ method, body }))).toEqual([
+    { method: 'PUT', body: { feedback: 'NOT_INTERESTED' } }, { method: 'DELETE', body: null },
+  ])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await expect(page).toHaveURL('/products/901')
+  await expect(page.getByRole('heading', { name: '회원 후기 0', exact: true })).toBeVisible()
+})
+
+test('추천 피드백의 진행 중 쓰기를 중복하지 않고 다시 열 때 새 상태를 읽음', async ({ page, api }) => {
+  api.user = api.users[0]
+  let release, started = 0
+  const gate = new Promise(resolve => { release = resolve })
+  await page.route(`**${feedbackPath}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    started += 1
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/products/901')
+    await feedbackSummary(page).click()
+    const match = feedbackButton(page, '취향에 맞음')
+    await expect(match).toBeEnabled()
+    await match.press('Enter')
+    await expect.poll(() => started).toBe(1)
+    await match.press('Enter')
+    await feedbackSummary(page).press('Enter')
+    await expect(feedbackPanel(page).locator('button')).toHaveCount(0)
+    await feedbackSummary(page).press('Enter')
+    await expect(feedbackPanel(page).getByRole('status')).toHaveText('내 피드백을 확인하는 중입니다.')
+    expect(api.feedbackCalls.map(({ method }) => method)).toEqual(['GET'])
+    release()
+    await expect(match).toHaveAttribute('aria-pressed', 'true')
+    expect(started).toBe(1)
+    expect(api.feedbackCalls.map(({ method }) => method)).toEqual(['GET', 'PUT', 'GET'])
+  } finally { release() }
+})
+
+test('추천 피드백은 바뀐 서버 계정의 선택을 쓰지 않고 다시 확인하면 본인 상태만 표시', async ({ page, api }) => {
+  api.user = api.users[0]
+  api.feedback.member = { 901: 'MATCHED' }
+  await page.goto('/products/901')
+  await feedbackSummary(page).click()
+  const match = feedbackButton(page, '취향에 맞음'), dismiss = feedbackButton(page, '관심 없음')
+  await expect(match).toHaveAttribute('aria-pressed', 'true')
+  api.user = api.users[1]
+  await dismiss.press('Enter')
+  await expect(feedbackPanel(page).getByRole('status')).toHaveText('로그인 상태가 바뀌어 피드백을 표시하지 않았습니다.')
+  await expect(match).toHaveCount(0)
+  expect(api.feedback).toEqual({ member: { 901: 'MATCHED' } })
+  await feedbackButton(page, '피드백 로그인 상태 다시 확인').click()
+  await expect(match).toHaveAttribute('aria-pressed', 'false')
+  await expect(dismiss).toHaveAttribute('aria-pressed', 'false')
+  expect(api.feedbackCalls.map(({ method, owner }) => [method, owner])).toEqual([
+    ['GET', 'member'], ['PUT', 'member'], ['GET', 'other'],
+  ])
+})
+
+test('추천 피드백 쓰기 응답이 불확실하면 다시 쓰지 않고 서버 상태를 확인', async ({ page, api }) => {
+  api.user = api.users[0]
+  let writes = 0
+  await page.route(`**${feedbackPath}`, (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes += 1
+    api.feedback.member = { 901: 'NOT_INTERESTED' }
+    return route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+  })
+  await page.goto('/products/901')
+  await feedbackSummary(page).click()
+  const dismiss = feedbackButton(page, '관심 없음')
+  await dismiss.press('Enter')
+  await expect(feedbackPanel(page).getByRole('status')).toHaveText('저장 결과를 확인하지 못했습니다. 다시 확인한 뒤 선택해 주세요.')
+  await expect(dismiss).toHaveCount(0)
+  await feedbackButton(page, '내 피드백 다시 확인').click()
+  await expect(dismiss).toHaveAttribute('aria-pressed', 'true')
+  expect(writes).toBe(1)
+  expect(api.feedbackCalls.map(({ method }) => method)).toEqual(['GET', 'GET'])
+})
+
+test('이전 상품의 늦은 추천 피드백 401이 현재 상품의 선택에 영향을 주지 않음', async ({ page, api }) => {
+  api.user = api.users[0]
+  api.feedback.member = { 902: 'MATCHED' }
+  let release, started = false
+  const gate = new Promise(resolve => { release = resolve })
+  await page.route(`**${feedbackPath}`, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    started = true
+    await gate
+    await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+  })
+  try {
+    await page.goto('/products/901')
+    await feedbackSummary(page).click()
+    await feedbackButton(page, '관심 없음').press('Enter')
+    await expect.poll(() => started).toBe(true)
+    await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+    await page.getByRole('heading', { name: '시험 사케', exact: true }).getByRole('link').click()
+    await feedbackSummary(page).click()
+    const match = feedbackButton(page, '취향에 맞음')
+    await expect(match).toHaveAttribute('aria-pressed', 'true')
+    const old = page.waitForResponse((response) => response.url().endsWith(feedbackPath) && response.status() === 401)
+    release()
+    await (await old).finished()
+    await expect(match).toHaveAttribute('aria-pressed', 'true')
+    await expect(feedbackButton(page, '피드백 로그인 상태 다시 확인')).toHaveCount(0)
+    await expect(page).toHaveURL('/products/902')
+  } finally { release() }
+})
+
+test('이전 백엔드에 추천 피드백 API가 없어도 상세와 장바구니가 동작', async ({ page, api }) => {
+  api.user = api.users[0]
+  await page.route(`**${feedbackPath}`, (route) => route.fulfill({ status: 404, json: failure('NOT_FOUND') }))
+  await page.goto('/products/901')
+  await feedbackSummary(page).click()
+  await expect(feedbackPanel(page).getByRole('status')).toHaveText('현재 이 상품의 피드백을 사용할 수 없습니다.')
+  await expect(feedbackButton(page, '관심 없음')).toHaveCount(0)
+  await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart'))[0].quantity)).toBe(1)
+  await expect(page.getByRole('heading', { name: '회원 후기 0', exact: true })).toBeVisible()
 })
 
 test('공개 검수 빈 태그는 미확인이나 맛 없음으로 바꾸지 않고 출처와 구분', async ({ page, api }) => {
