@@ -7,7 +7,7 @@ const items = Array.from({ length: 14 }, (_, i) => ({ id: 1900 + i, name: `초�
 const applied = () => new URLSearchParams([['q', '초기'], ['type', '탁주'], ['minPriceKrw', '0'], ['maxPriceKrw', '12000'], ['minAbvPercent', '0'], ['maxAbvPercent', '15'], ['tasteTag', 'dry,sweet'], ['tasteTag', 'line\nbreak'], ['aromaTag', 'floral'], ['sort', 'name'], ['page', '2']])
 const test = base.extend({
   filtersApi: [async ({ page }, use) => {
-    const state = { calls: [], unexpected: [], errors: [], failures: 0 }
+    const state = { calls: [], unexpected: [], errors: [], failures: 0, items }
     page.on('pageerror', (error) => state.errors.push(error.message))
     await page.route('**/api/**', async (route) => {
       const req = route.request(), url = new URL(req.url()), q = url.searchParams
@@ -15,7 +15,7 @@ const test = base.extend({
       if (req.method() === 'GET' && url.pathname === '/api/auth/me') return route.fulfill({ status: 401, json: bad('UNAUTHORIZED') })
       if (req.method() === 'GET' && url.pathname === '/api/products') {
         if (state.failures) { state.failures--; return route.fulfill({ status: 503, json: bad('SERVICE_UNAVAILABLE') }) }
-        const matches = items.filter((p) => (!q.get('q') || p.name.includes(q.get('q'))) && (!q.get('type') || p.type === q.get('type')) &&
+        const matches = state.items.filter((p) => (!q.get('q') || p.name.includes(q.get('q'))) && (!q.get('type') || p.type === q.get('type')) &&
           (!q.has('minPriceKrw') || p.price >= Number(q.get('minPriceKrw'))) && (!q.has('maxPriceKrw') || p.price <= Number(q.get('maxPriceKrw'))) &&
           (!q.has('minAbvPercent') || p.abv >= Number(q.get('minAbvPercent'))) && (!q.has('maxAbvPercent') || p.abv <= Number(q.get('maxAbvPercent'))) &&
           q.getAll('tasteTag').every((v) => ['dry,sweet', 'line\nbreak'].includes(v)) && q.getAll('aromaTag').every((v) => v === 'floral'))
@@ -42,6 +42,79 @@ async function fits(page) {
     expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width)
   }
 }
+
+for (const width of [1280, 390]) test(`사라진 결과 페이지는 적용 조건·입력·뒤로 가기를 보존해 복구 ${width}px`, async ({ page, filtersApi }, info) => {
+  filtersApi.items = items.slice(0, 2)
+  await page.setViewportSize({ width, height: 900 })
+  await page.addInitScript(() => {
+    const scrollTo = window.scrollTo.bind(window)
+    window.catalogRepairScrollRequests = 0
+    window.scrollTo = (...args) => {
+      window.catalogRepairScrollRequests += 1
+      return scrollTo(...args)
+    }
+  })
+  const target = applied()
+  target.set('sort', 'priceDesc')
+  target.set('from', 'saved-search')
+  const recovered = new URLSearchParams(target)
+  recovered.set('page', '1')
+  let release, started = false
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/products?**', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('page') === '2') { started = true; await gate }
+    await route.fallback()
+  })
+  try {
+    await page.goto('/products?sort=name&page=1')
+    await expect(page.locator('.product-card')).toHaveCount(2)
+    await page.goto(`/products?${target}`)
+    await expect.poll(() => started).toBe(true)
+    await page.getByLabel('최대 가격(원)', { exact: true }).fill('9999')
+    const input = page.getByLabel('상품 검색', { exact: true })
+    await input.fill('아직 제출하지 않은 검색')
+    await expect(input).toBeFocused()
+    await page.evaluate(() => { window.catalogRepairScrollRequests = 0 })
+    const empty = page.getByRole('heading', { name: '조건에 맞는 상품이 없습니다', exact: true })
+    const outcome = Promise.race([page.waitForURL((url) => url.searchParams.toString() === recovered.toString()), empty.waitFor()])
+    release()
+    await outcome
+    const observed = { width, currentPage: urlQuery(page).get('page'), showsNoMatches: await empty.isVisible() }
+    await info.attach('catalog-page-repair.json', { body: JSON.stringify(observed), contentType: 'application/json' })
+    expect(observed).toEqual({ width, currentPage: '1', showsNoMatches: false })
+    await expect(page.locator('.product-card')).toHaveCount(2)
+    await expect(input).toHaveValue('아직 제출하지 않은 검색')
+    await expect(input).toBeFocused()
+    expect(await page.evaluate(() => window.catalogRepairScrollRequests)).toBe(0)
+    await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('9999')
+    await expect(page.getByLabel('적용된 필터', { exact: true })).toContainText('최대 가격(원): 12000')
+    expect([...urlQuery(page)]).toEqual([...recovered])
+    const matching = catalogCalls(filtersApi).filter(({ query }) => new URLSearchParams(query).get('q') === '초기').map(({ query }) => new URLSearchParams(query))
+    expect(matching.map((query) => query.get('page'))).toEqual(['2', '1'])
+    const [oldQuery, newQuery] = matching
+    oldQuery.delete('page'); newQuery.delete('page')
+    expect([...newQuery]).toEqual([...oldQuery])
+    expect(newQuery.getAll('tasteTag')).toEqual(['dry,sweet', 'line\nbreak'])
+    expect(newQuery.get('minPriceKrw')).toBe('0')
+    expect(newQuery.get('sort')).toBe('priceDesc')
+    await page.goBack()
+    await expect(page).toHaveURL('/products?sort=name&page=1')
+    await expect(page.locator('.product-card')).toHaveCount(2)
+  } finally { release() }
+})
+
+test('검색 장애와 실제 일치 상품 0건은 페이지를 임의로 변경하지 않음', async ({ page, filtersApi }) => {
+  filtersApi.failures = 1
+  filtersApi.items = []
+  const url = `/products?${applied()}`
+  await page.goto(url)
+  await expect(page.getByRole('heading', { name: '상품을 불러오지 못했습니다', exact: true })).toBeVisible()
+  await expect(page).toHaveURL(url)
+  await page.getByRole('button', { name: '다시 시도', exact: true }).press('Enter')
+  await expect(page.getByRole('heading', { name: '조건에 맞는 상품이 없습니다', exact: true })).toBeVisible()
+  await expect(page).toHaveURL(url)
+  expect(catalogCalls(filtersApi).map(({ query }) => new URLSearchParams(query).get('page'))).toEqual(['2', '2'])
+})
 
 for (const width of [1280, 390]) test(`applied-draft-baseline: 적용 URL과 결과는 미제출 입력에 바뀌지 않음 ${width}px`, async ({ page, filtersApi }, info) => {
   await page.setViewportSize({ width, height: 900 })
