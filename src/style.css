@@ -1480,5 +1480,8 @@ textarea.form-control {
 .content-card ul { padding-left: 20px; line-height: 1.7; }
 .content-card h3, .content-fact { white-space: pre-wrap; overflow-wrap: anywhere; }
 .similar-products { margin-top: 32px; }
+.recommendation-feedback summary { display: list-item; cursor: pointer; width: fit-content; }
+.recommendation-feedback .button-row { flex-wrap: wrap; }
+.recommendation-feedback [aria-pressed="true"] { color: var(--paper); background: var(--ink); }
 .similar-products h2, .similar-products p, .similar-products ul { margin: 0; }
 .similar-product-link { display: block; overflow-wrap: anywhere; font-weight: 700; }
