@@ -467,7 +467,7 @@ test('다음 페이지의 검색 초안은 Enter 제출 때 첫 페이지에 적
   await expect(page.locator('.product-card')).toHaveCount(12)
 })
 
-test('이전 페이지의 늦은 응답은 명시적으로 제출한 새 검색을 덮지 않음', async ({ page, api }) => {
+test('범위를 벗어난 이전 페이지의 늦은 응답은 명시적으로 제출한 새 검색을 덮지 않음', async ({ page, api }) => {
   api.catalog = Array.from({ length: 14 }, (_, index) => ({ ...products[0], id: 1100 + index, name: `시연 탁주 ${index + 1}` }))
   api.catalog.push({ ...products[1], name: '새 조건 사케' })
   let releaseOld
@@ -478,7 +478,7 @@ test('이전 페이지의 늦은 응답은 명시적으로 제출한 새 검색�
     if (search.get('page') !== '2' || search.get('q') !== '시연') return route.fallback()
     oldRequested = true
     await oldGate
-    await route.fulfill({ json: success(pageOf(api.catalog.filter((item) => item.type === '탁주'), 12, 2)) })
+    await route.fulfill({ json: success(pageOf(api.catalog.filter((item) => item.type === '탁주').slice(0, 12), 12, 2)) })
   })
   try {
     await page.goto('/products?type=탁주&q=시연&sort=name&page=1')
@@ -492,11 +492,12 @@ test('이전 페이지의 늦은 응답은 명시적으로 제출한 새 검색�
     await expect(page.getByRole('heading', { name: '새 조건 사케', exact: true })).toBeVisible()
     const oldResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get('page') === '2')
     releaseOld()
-    await (await oldResponse).finished()
+    expect((await (await oldResponse).json()).data).toMatchObject({ page: 2, items: [], total: 12, totalPages: 1 })
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
     await expect(page.getByRole('heading', { name: '새 조건 사케', exact: true })).toBeVisible()
     await expect(page.locator('.product-card')).toHaveCount(1)
     await expect(page).toHaveURL((url) => url.searchParams.get('q') === '새 조건' && url.searchParams.get('page') === '1')
+    expect(api.calls.filter(({ path, query }) => path === '/products' && query.q === '시연').map(({ query }) => query.page)).toEqual(['1'])
   } finally {
     releaseOld()
   }
