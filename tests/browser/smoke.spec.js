@@ -17,7 +17,7 @@ const test = base.extend({
   api: [async ({ page }, use) => {
     const state = {
       user: null, catalogFailures: 0, sessionFailures: 0, orderFailures: 0, defaultSource: 'BASELINE', defaultFailures: 0,
-      catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {}, preferences: {}, favorites: {},
+      catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {}, preferences: {}, favorites: {}, similar: {},
       users: [
         { id: 'member', name: '시험회원', role: 'USER', stamps: 3 },
         { id: 'other', name: '다른회원', role: 'USER', stamps: 0 },
@@ -121,6 +121,11 @@ const test = base.extend({
       }
       if (request.method() === 'GET' && path === '/products/popular') {
         await route.fulfill({ json: success(state.catalog) })
+        return
+      }
+      if (method === 'GET' && /^\/products\/\d+\/similar$/.test(path)) {
+        const id = Number(path.split('/').at(-2))
+        await route.fulfill({ json: success({ items: state.similar[id] ?? [] }) })
         return
       }
       if (/^\/(admin\/)?products\/\d+\/features$/.test(path)) {
@@ -4068,6 +4073,92 @@ test('공개 상품 특성 null은 미확인이고 확인하지 않은 맛이나
   await expect(facts.getByRole('list')).toHaveCount(0)
   await expect(facts.getByRole('link')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+})
+
+const similarRegion = (page) => page.getByRole('region', { name: '비슷한 상품', exact: true })
+
+test('유사 상품은 작은 화면에서 검수 시연 범위를 밝히고 키보드로 실제 상세에 연결', async ({ page, api }) => {
+  const candidate = api.catalog[1]
+  candidate.name = 'S'.repeat(100)
+  api.similar[901] = [candidate]
+  await page.setViewportSize({ width: 390, height: 900 })
+  await page.goto('/products/901')
+
+  const region = similarRegion(page)
+  await expect(region).toContainText('검수한 시연 상품의 특성을 기준으로 보여드려요.')
+  const link = region.getByRole('link', { name: candidate.name, exact: true })
+  await expect(link).toHaveAttribute('href', '/products/902')
+  expect(await link.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  const empty = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/products/902/similar')
+  await link.focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL('/products/902')
+  await expect(page.getByRole('heading', { name: candidate.name, level: 1, exact: true })).toBeVisible()
+  expect(await (await empty).json()).toMatchObject({ data: { items: [] } })
+  await expect(region).toHaveCount(0)
+})
+
+test('유사 상품의 이전 요청을 기다리지 않고 후기·담기·상세 이동을 유지', async ({ page, api }) => {
+  api.similar[902] = [api.catalog[0]]
+  let release, started = false
+  const gate = new Promise(resolve => { release = resolve })
+  await page.route('**/api/products/901/similar', async (route) => {
+    started = true
+    await gate
+    await route.fulfill({ json: success({ items: [api.catalog[1]] }) })
+  })
+  try {
+    const abandoned = page.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/api/products/901/similar')
+    await page.goto('/products/901')
+    await expect.poll(() => started).toBe(true)
+    await expect(similarRegion(page)).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: '회원 후기 0', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart'))[0].quantity)).toBe(1)
+
+    await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+    await page.getByRole('heading', { name: '시험 사케', exact: true }).getByRole('link').click()
+    await expect(similarRegion(page).getByRole('link')).toHaveText(['시험 탁주'])
+    expect((await abandoned).failure()?.errorText).toBe('net::ERR_ABORTED')
+    release()
+    await expect(similarRegion(page).getByRole('link')).toHaveText(['시험 탁주'])
+  } finally { release() }
+})
+
+test('유사 상품 오류 뒤 상세를 다시 열면 그 상품의 새 결과만 표시', async ({ page, api }) => {
+  api.similar[901] = [api.catalog[1]]
+  await page.route('**/api/products/901/similar', (route) => route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') }), { times: 1 })
+  const failed = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/products/901/similar')
+  await page.goto('/products/901')
+  expect((await failed).status()).toBe(503)
+  await expect(similarRegion(page)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+
+  await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+  await page.getByRole('heading', { name: '시험 탁주', exact: true }).getByRole('link').click()
+  await expect(similarRegion(page).getByRole('link')).toHaveText(['시험 사케'])
+})
+
+test('유사 상품은 404와 기준 상품이 섞인 응답을 표시하지 않음', async ({ page, api }) => {
+  const path = '/api/products/901/similar'
+  api.similar[901] = [api.catalog[1], api.catalog[0]]
+  await page.route(`**${path}`, (route) => route.fulfill({ status: 404, json: failure('NOT_FOUND') }), { times: 1 })
+  for (const status of [404, 200]) {
+    const reply = page.waitForResponse((response) => new URL(response.url()).pathname === path)
+    await page.goto('/products/901')
+    expect((await reply).status()).toBe(status)
+    await expect(page.getByRole('heading', { name: '시험 탁주', level: 1, exact: true })).toBeVisible()
+    await expect(similarRegion(page)).toHaveCount(0)
+  }
+})
+
+test('유사 상품 조회는 정규 기준 상품 주소에서만 시작', async ({ page, api }) => {
+  await page.route('**/api/products/0901/comments?**', (route) => route.fulfill({ json: success({ ...pageOf([], 10), ratingSummary: { count: 0, average: null } }) }))
+  await page.goto('/products/0901')
+  await expect(page.getByRole('heading', { name: '시험 탁주', level: 1, exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '상품 특성', exact: true }).getByText('미확인').first()).toBeVisible()
+  expect(api.calls.filter(({ path }) => path.endsWith('/similar'))).toEqual([])
+  await expect(similarRegion(page)).toHaveCount(0)
 })
 
 test('공개 검수 빈 태그는 미확인이나 맛 없음으로 바꾸지 않고 출처와 구분', async ({ page, api }) => {

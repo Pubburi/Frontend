@@ -23,11 +23,12 @@ const test = base.extend({
         const items = [...state.catalog.values()].filter((p) => !url.searchParams.get('q') || p.name === url.searchParams.get('q')).slice(0, 12)
         return route.fulfill({ json: success({ items, page: 1, size: 12, total: items.length, totalPages: 1, hasNext: false }) })
       }
-      const match = path.match(/^\/api\/products\/(\d+)(\/features|\/comments)?$/)
+      const match = path.match(/^\/api\/products\/(\d+)(\/features|\/comments|\/similar)?$/)
       if (r.method() === 'GET' && match) {
         const id = Number(match[1])
         if (match[2] === '/features') return route.fulfill({ json: success({ productId: id, volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null }) })
         if (match[2] === '/comments') return route.fulfill({ json: success({ items: [], page: 1, size: 10, total: 0, totalPages: 0, hasNext: false }) })
+        if (match[2] === '/similar') return route.fulfill({ json: success({ items: [] }) })
         const status = state.productErrors.get(id)
         if (status) return route.fulfill({ status, json: failure(status === 403 ? 'FORBIDDEN' : 'SERVICE_UNAVAILABLE') })
         return state.catalog.has(id) ? route.fulfill({ json: success(state.catalog.get(id)) }) : route.fulfill({ status: 404, json: failure('NOT_FOUND') })

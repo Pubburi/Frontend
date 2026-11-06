@@ -23,10 +23,11 @@ const test = base.extend({
         const items = [...state.products.values()]
         return route.fulfill({ json: success({ items, page: 1, size: 12, total: items.length, totalPages: 1, hasNext: false }) })
       }
-      const match = path.match(/^\/api\/products\/(\d+)(\/features|\/comments)?$/)
+      const match = path.match(/^\/api\/products\/(\d+)(\/features|\/comments|\/similar)?$/)
       if (request.method() === 'GET' && match) {
         const id = Number(match[1])
         if (match[2] === '/comments') return route.fulfill({ json: success({ items: [], page: 1, size: 10, total: 0, totalPages: 0, hasNext: false }) })
+        if (match[2] === '/similar') return route.fulfill({ json: success({ items: [] }) })
         const status = (match[2] ? state.featureErrors : state.productErrors).get(id)
         if (status) return route.fulfill({ status, json: failure(status === 404 ? 'NOT_FOUND' : 'SERVICE_UNAVAILABLE') })
         const value = (match[2] ? state.features : state.products).get(id)

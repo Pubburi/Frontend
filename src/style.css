@@ -1479,3 +1479,6 @@ textarea.form-control {
 .content-card { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .content-card ul { padding-left: 20px; line-height: 1.7; }
 .content-card h3, .content-fact { white-space: pre-wrap; overflow-wrap: anywhere; }
+.similar-products { margin-top: 32px; }
+.similar-products h2, .similar-products p, .similar-products ul { margin: 0; }
+.similar-product-link { display: block; overflow-wrap: anywhere; font-weight: 700; }
