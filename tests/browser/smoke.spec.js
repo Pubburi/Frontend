@@ -4238,7 +4238,7 @@ test('추천 피드백의 진행 중 쓰기를 중복하지 않고 다시 열 �
     await expect.poll(() => started).toBe(1)
     await match.press('Enter')
     await feedbackSummary(page).press('Enter')
-    await expect(match).toHaveCount(0)
+    await expect(feedbackPanel(page).locator('button')).toHaveCount(0)
     await feedbackSummary(page).press('Enter')
     await expect(feedbackPanel(page).getByRole('status')).toHaveText('내 피드백을 확인하는 중입니다.')
     expect(api.feedbackCalls.map(({ method }) => method)).toEqual(['GET'])
