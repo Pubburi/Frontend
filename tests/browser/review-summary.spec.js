@@ -31,6 +31,7 @@ const test = base.extend({
       if (/^\/api\/users\/me\/favorites\/\d+$/.test(path)) return route.fulfill({ json: ok({ productId: Number(path.split('/').at(-1)), favorited: false }) })
       if (/^\/api\/products\/(901|902)$/.test(path)) return route.fulfill({ json: ok(product(Number(path.split('/').at(-1)))) })
       if (/^\/api\/products\/(901|902)\/features$/.test(path)) return route.fulfill({ json: ok({ productId: Number(path.split('/').at(-2)), volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null }) })
+      if (method === 'GET' && /^\/api\/products\/(901|902)\/similar$/.test(path)) return route.fulfill({ json: ok({ items: [] }) })
       if (/^\/api\/products\/(901|902)\/comments$/.test(path) && method === 'GET') {
         if (state.failures) { state.failures--; return route.fulfill({ status: 503, json: error('SERVICE_UNAVAILABLE') }) }
         return route.fulfill({ json: ok(state.response(url)) })

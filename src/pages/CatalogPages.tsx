@@ -35,6 +35,7 @@ import { productRangeFields, validateProductRanges, type ProductRangeKey, type P
 import { money, productImage } from '../utils/format'
 import type { Market, Page, Product, Review } from '../types'
 import { ContentRecommendations } from '../components/ContentRecommendations'
+import { SimilarProducts } from '../components/SimilarProducts'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
 
 export function HomePage() {
@@ -1002,6 +1003,8 @@ function ProductDetail({ id }: { id: string }) {
           </div>
         </div>
       </section>
+      {product.fetchStatus === 'idle' && Number.isInteger(item.id) && item.id > 0 &&
+        item.id <= 2147483647 && String(item.id) === id && <SimilarProducts productId={item.id} />}
       {writable && deleting && (
         <Confirm
           title="후기를 삭제할까요?"

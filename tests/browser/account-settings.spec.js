@@ -30,6 +30,7 @@ const test=base.extend({ settingsApi:[async({page},use)=>{
   if(path==='/api/products/7')return reply(product)
   if(path==='/api/products/7/features')return reply({productId:7,volumeMl:null,description:null,tasteTags:null,aromaTags:null,sourceName:null,sourceUrl:null,sourceNote:null})
   if(path==='/api/products/7/comments')return reply(empty())
+  if(path==='/api/products/7/similar'&&method==='GET')return reply({items:[]})
   if(path==='/api/users/me/favorites/7')return reply({productId:7,favorited:false})
   state.unexpected.push(`${method} ${path}`);return reply(null,503)
  })
