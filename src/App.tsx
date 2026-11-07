@@ -75,6 +75,8 @@ export function App() {
   const client = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
+  const currentLocation = useRef(location.key)
+  currentLocation.current = location.key
   const [menu, setMenu] = useState(false)
   const navigationType = useNavigationType()
   const previousLocation = useRef<{ key: string; destination: string } | null>(null)
@@ -100,6 +102,7 @@ export function App() {
     if (!focusedResults && !focusedFilter && !repairedPage) window.scrollTo({ top: 0 })
   }, [location.key, location.pathname, location.search, navigationType])
   async function logout() {
+    const submittedLocation = location.key
     const result = await ui.run(
       'logout',
       async () => {
@@ -109,7 +112,7 @@ export function App() {
       },
       '로그아웃되었습니다.',
     )
-    if (result.ok) navigate('/')
+    if (result.ok && currentLocation.current === submittedLocation) navigate('/')
   }
   return (
     <div className="app-shell">
