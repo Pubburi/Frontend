@@ -392,6 +392,17 @@ test.describe('홈 상품 제안 터치', () => {
     await expect(page).toHaveURL('/products/902')
     await expect(page.getByRole('heading', { level: 1, name: '시험 사케', exact: true })).toBeVisible()
   })
+
+  test('홈 상품 제안이 열려 있어도 검색하기 버튼을 탭하면 원문으로 검색', async ({ page, api }) => {
+    api.suggestions['시험'] = api.catalog.map(({ id, name, type, price }) => ({ id, name, type, price }))
+    await page.goto('/')
+    await homeSearchInput(page).fill('시험')
+    await expect(suggestions(page).getByRole('option')).toHaveCount(2)
+    const submit = await page.getByRole('button', { name: '검색하기', exact: true }).boundingBox()
+    await page.touchscreen.tap(submit.x + submit.width / 2, submit.y + submit.height / 2)
+    await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('q') === '시험')
+    await expect(page.locator('.product-card')).toHaveCount(2)
+  })
 })
 
 test('같은 검색어로 돌아온 뒤 늦은 이전 상품 제안이 현재 목록을 덮지 않음', async ({ page, api }) => {
