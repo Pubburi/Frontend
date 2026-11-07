@@ -124,16 +124,99 @@ test('실제 0평균은 빈값으로 바꾸지 않고, 등록·수정·삭제 �
   await expect(page.getByRole('combobox', { name: '후기 정렬', exact: true })).toHaveValue('rating_asc')
 })
 
-test('마지막 페이지 한 후기 삭제는 앞 페이지로 돌아가며 전체집계를 현재값으로 읽음', async ({ page, reviewsApi }) => {
+test('review-delete-focus: 마지막 페이지 삭제는 앞 페이지와 후기 제목으로 돌아옴', async ({ page, reviewsApi }) => {
   reviewsApi.reviews = Array.from({ length: 11 }, (_, i) => review(i + 1, i === 0 ? 1 : 5))
   await page.goto('/products/901')
   await page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true }).click()
   await expect(page.locator('.comment-row > p')).toHaveText(['회원 평가 1'])
-  await page.locator('.comment-row').getByRole('button', { name: '삭제', exact: true }).click()
-  await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click()
+  const trigger = page.locator('.comment-row').getByRole('button', { name: '삭제', exact: true })
+  await trigger.focus(); await trigger.press('Enter')
+  const confirm = page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true })
+  await confirm.focus(); await confirm.press('Enter')
   await expect(page.locator('.comment-row')).toHaveCount(10)
   await expect(page.locator('.review-summary')).toHaveText('평균 5점 · 전체 후기 10개')
   expect(reviewsApi.calls.filter((call) => call.path.endsWith('/comments') && call.method === 'GET').at(-1).query.page).toBe('1')
+  await expect(page.locator('.comment-title h2')).toBeFocused()
+  await expect(page.locator('.comment-title h2')).toBeInViewport()
+})
+
+for (const width of [1280, 390]) test(`review-delete-focus: 마지막 후기 삭제 뒤 제목에서 다음 키보드 조작을 계속 ${width}px`, async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [review(1, 5)]
+  await page.setViewportSize({ width, height: 900 })
+  await page.goto('/products/901')
+  const trigger = page.locator('.comment-row').getByRole('button', { name: '삭제', exact: true })
+  await trigger.focus(); await trigger.press('Enter')
+  const dialog = page.getByRole('alertdialog'), confirm = dialog.getByRole('button', { name: '삭제', exact: true })
+  await confirm.focus(); await confirm.press('Enter')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '아직 등록된 후기가 없습니다', exact: true })).toBeVisible()
+  await expect(page.locator('.comment-title h2')).toBeFocused()
+  await expect(page.locator('.comment-title h2')).toBeInViewport()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('combobox', { name: '후기 정렬', exact: true })).toBeFocused()
+})
+
+test('review-delete-focus: 취소와 삭제 거절 후에는 기존 삭제 버튼으로 복귀', async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [review(1, 5)]
+  await page.route('**/api/comments/1', (route) => route.fulfill({ status: 503, json: error('SERVICE_UNAVAILABLE') }))
+  await page.goto('/products/901')
+  const trigger = page.locator('.comment-row').getByRole('button', { name: '삭제', exact: true })
+  await trigger.focus(); await trigger.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
+  await trigger.press('Enter')
+  const dialog = page.getByRole('alertdialog'), confirm = dialog.getByRole('button', { name: '삭제', exact: true })
+  await confirm.focus(); await confirm.press('Enter')
+  await expect(page.getByRole('alert')).toBeVisible()
+  const cancel = dialog.getByRole('button', { name: '취소', exact: true })
+  await expect(cancel).toBeEnabled()
+  await cancel.focus(); await cancel.press('Enter')
+  await expect(trigger).toBeFocused()
+  await expect(page.locator('.comment-row > p')).toHaveText('회원 평가 1')
+})
+
+for (const mode of ['other-control', 'same-url', 'route', 'account']) test(`review-delete-focus: 늦은 삭제가 ${mode}의 현재 포커스를 가져가지 않음`, async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [review(1, 5)]
+  let release, started = false
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/comments/1', async (route) => {
+    reviewsApi.reviews = []
+    started = true
+    await gate
+    await route.fulfill({ json: ok(true) })
+  })
+  try {
+    await page.goto('/products/901')
+    const trigger = page.locator('.comment-row').getByRole('button', { name: '삭제', exact: true })
+    await trigger.focus(); await trigger.press('Enter')
+    const confirm = page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true })
+    await confirm.focus(); await confirm.press('Enter')
+    await expect.poll(() => started).toBe(true)
+    let target
+    if (mode === 'same-url') {
+      await page.evaluate(() => { history.pushState({ key: 'review-delete-new-entry' }, '', location.href); dispatchEvent(new PopStateEvent('popstate')) })
+      target = page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true })
+    } else if (mode === 'route' || mode === 'account') {
+      await page.evaluate(() => { history.pushState({ key: 'review-delete-next-product' }, '', '/products/902'); dispatchEvent(new PopStateEvent('popstate')) })
+      target = page.getByRole('spinbutton', { name: '후기 표본 902 수량', exact: true })
+      await expect(target).toBeVisible()
+      if (mode === 'account') {
+        await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+        await expect(page).toHaveURL('/')
+        await page.evaluate(() => { history.pushState({ key: 'review-delete-new-account' }, '', '/account?redirect=%2Fproducts%2F901'); dispatchEvent(new PopStateEvent('popstate')) })
+        await page.getByLabel('아이디', { exact: true }).fill('next-member')
+        await page.getByLabel('비밀번호', { exact: true }).fill('password')
+        await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+        target = page.locator('.comment-form').getByLabel('후기', { exact: true })
+      }
+    } else target = page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true })
+    await target.focus()
+    const response = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/api/comments/1')
+    release(); await (await response).finished()
+    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+    await page.evaluate(() => new Promise(requestAnimationFrame))
+    await expect(target).toBeFocused()
+  } finally { release() }
 })
 
 test('정렬을 빨리 바꿔도 늦은 이전 응답이 현재 순서/평균을 덮지 않음', async ({ page, reviewsApi }) => {

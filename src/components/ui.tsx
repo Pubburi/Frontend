@@ -215,6 +215,7 @@ export function Confirm({
   pending,
   onCancel,
   onConfirm,
+  fallbackFocus,
 }: {
   title: string
   description?: string
@@ -222,6 +223,7 @@ export function Confirm({
   pending?: boolean
   onCancel: () => void
   onConfirm: () => void
+  fallbackFocus?: () => HTMLElement | null
 }) {
   const dialog = useRef<HTMLElement>(null)
   const titleId = useId()
@@ -268,6 +270,10 @@ export function Confirm({
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true)
       if (previous?.isConnected) previous.focus()
+      else if (document.activeElement === document.body) {
+        const fallback = fallbackFocus?.()
+        if (fallback?.isConnected) fallback.focus()
+      }
     }
   }, [])
   useEffect(() => {
