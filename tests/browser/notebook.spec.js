@@ -240,9 +240,9 @@ test('Unicode 계정 owner는 canonical encodeURIComponent이며 emoji40자 태�
   expect(writes(s)[0].owner).toBe(encodeURIComponent(id)); expect(writes(s)[0].body.tasteTags[0]).toBe('😀'.repeat(40)); expect(writes(s)[0].body.memo).toBe('😀'.repeat(2000))
 })
 
-test('늦은 이전 계정 읽기는 새 계정 목록·편집에 나타나지 않고 현재401은 빈 기록으로 위장하지 않음', async ({ page, notebookApi: s }) => {
+for (const oldStatus of [200, 401]) test(`늦은 이전 계정 읽기${oldStatus}는 새 계정 목록·편집에 나타나지 않고 현재401은 빈 기록으로 위장하지 않음`, async ({ page, notebookApi: s }) => {
   const g = gate(); let started = false
-  await page.route('**/api/users/me/notebook/by-product/7', async (route) => { started = true; await g.promise; await route.fulfill({ json: ok(entry({ memo: '옛 계정 비밀' })) }) })
+  await page.route('**/api/users/me/notebook/by-product/7', async (route) => { started = true; await g.promise; await route.fulfill({ status: oldStatus, json: oldStatus === 200 ? ok(entry({ memo: '옛 계정 비밀' })) : bad(oldStatus) }) })
   try {
     await page.goto('/products/7'); await page.locator('.notebook-panel summary').click(); await expect.poll(() => started).toBe(true)
     await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await nav(page, '로그인')
@@ -255,4 +255,26 @@ test('늦은 이전 계정 읽기는 새 계정 목록·편집에 나타나지 �
     await expect(page.getByText('로그인 상태가 바뀌어 내 기록을 표시하지 않았습니다.', { exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: '아직 저장한 취향 기록이 없습니다', exact: true })).toHaveCount(0)
   } finally { g.release() }
+})
+
+for (const method of ['PUT', 'DELETE', 'GET']) test(`P1 기록 ${method}401은 재확인 전 모든 카드의 비공개 원문·평점·태그와 편집을 차폐`, async ({ page, notebookApi: s }) => {
+  const first = entry({ memo: '첫 번째 비공개 원문', tasteTags: ['내 비공개 맛'], rating: 4.25 })
+  const second = entry({ id: '22222222-2222-4222-8222-222222222222', productId: 8, currentProduct: { ...product, id: 8 }, memo: '다른 카드의 비공개 원문', aromaTags: ['내 비공개 향'] })
+  s.notes.member.push(first, second)
+  await page.goto('/notebook'); await expect(page.locator('.notebook-card')).toHaveCount(2)
+  if (method === 'GET') await page.route(`**/api/users/me/notebook/${first.id}`, (route) => route.fulfill({ status: 401, json: bad(401) }))
+  await page.getByRole('button', { name: '내 기록 편집', exact: true }).first().click()
+  if (method !== 'GET') {
+    await expect(form(page)).toBeVisible(); s.writeStatus = 401
+    if (method === 'PUT') { await memo(page).fill('보내려는 비공개 초안'); await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).click() }
+    else { await form(page).getByRole('button', { name: '내 기록 삭제', exact: true }).click(); await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click() }
+  }
+  await expect(page.getByText('로그인 상태가 바뀌어 내 기록을 표시하지 않았습니다.', { exact: true })).toBeVisible()
+  await expect(page.locator('.notebook-card')).toHaveCount(0); await expect(form(page)).toHaveCount(0)
+  const privateView = await page.locator('.notebook-view').textContent()
+  for (const value of [first.memo, second.memo, '내 비공개 맛', '내 비공개 향', '나의 평점 4.25점']) expect(privateView).not.toContain(value)
+  s.user = account('other')
+  await page.getByRole('button', { name: '기록 로그인 상태 다시 확인', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '아직 저장한 취향 기록이 없습니다', exact: true })).toBeVisible()
+  expect(s.calls.filter((call) => call.path === '/api/users/me/notebook' && call.method === 'GET').at(-1).owner).toBe('other')
 })

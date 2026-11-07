@@ -12,7 +12,7 @@ import { Confirm, Empty, Pagination } from './ui'
 const authPending = () => ['login', 'join', 'logout', 'settings-password'].some((key) => useUi.getState().pending[key])
 // Retain only HTTP lifetimes through cache/route changes, never private form values.
 const writes = new WeakMap<QueryClient, Map<string, Promise<void>>>()
-type Actor = { user: User; ready: boolean; sameActor: () => boolean; owns: () => boolean; recheck: () => void }
+type Actor = { user: User; ready: boolean; sameActor: () => boolean; owns: () => boolean; recheck: () => void; rejectAuth: (error: unknown) => void }
 
 function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }) {
   const client = useQueryClient(), location = useLocation()
@@ -20,7 +20,7 @@ function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }
   const pending = useUi((state) => ['login', 'join', 'logout', 'settings-password'].some((key) => state.pending[key]))
   const [attempt, setAttempt] = useState(0)
   const [verified, setVerified] = useState<{ user: User | null; auth: Query; key: string; attempt: number } | null>(null)
-  const [failed, setFailed] = useState(false)
+  const [failed, setFailed] = useState<boolean | 'expired'>(false)
   const active = useRef<object | null>(null)
   const recheck = () => setAttempt((value) => value + 1)
   useLayoutEffect(() => {
@@ -44,7 +44,7 @@ function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }
   const current = !pending && verified?.key === location.key && verified.attempt === attempt &&
     client.getQueryCache().find({ queryKey: ['session'], exact: true }) === verified.auth &&
     (verified.user === null ? verified.auth.state.data === null : (verified.auth.state.data as User | undefined)?.id === verified.user.id)
-  if (failed || verified && !current) return <div role="status"><p>내 기록의 로그인 상태를 확인하지 못했습니다.</p><button className="btn btn-outline-dark" onClick={recheck}>기록 로그인 상태 다시 확인</button></div>
+  if (failed || verified && !current) return <div role="status"><p>{failed === 'expired' ? '로그인 상태가 바뀌어 내 기록을 표시하지 않았습니다.' : '내 기록의 로그인 상태를 확인하지 못했습니다.'}</p><button className="btn btn-outline-dark" onClick={recheck}>기록 로그인 상태 다시 확인</button></div>
   if (!current || !verified) return <p role="status">내 기록의 로그인 상태를 확인하는 중입니다.</p>
   if (!verified.user) return <Link className="btn btn-outline-dark" to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`}>로그인하고 내 기록 남기기</Link>
   const token = active.current
@@ -52,6 +52,12 @@ function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }
     (verified.auth.state.data as User | undefined)?.id === verified.user!.id && !authPending()
   const ready = verified.auth.state.status === 'success' && verified.auth.state.fetchStatus === 'idle'
   const actor: Actor = { user: verified.user, ready, sameActor, recheck,
+    rejectAuth: (error) => {
+      if (error instanceof ApiClientError && error.status === 401 && sameActor()) {
+        active.current = null
+        setVerified(null); setFailed('expired')
+      }
+    },
     owns: () => sameActor() && verified.auth.state.status === 'success' && verified.auth.state.fetchStatus === 'idle' }
   return <Fragment key={`${location.key}:${attempt}:${verified.user.id}`}>
     {!ready && <div role="status"><p>{session.isError ? '내 기록의 로그인 상태를 확인하지 못했습니다.' : '내 기록의 로그인 상태를 확인하는 중입니다.'}</p>
@@ -82,11 +88,13 @@ function NotebookEditor({ actor, productId, entryId, onChanged, fallbackFocus }:
   const query = useQuery({
     queryKey: ['account', actor.user.id, 'notebook', entryId ?? productId, load], gcTime: 0, networkMode: 'always', refetchOnReconnect: false,
     queryFn: async ({ signal }) => {
-      await writes.get(client)?.get(actor.user.id)
-      if (!actor.owns() || signal.aborted) throw new Error('이전 화면의 기록 조회입니다.')
-      const value = entryId ? await api.notebookEntry(actor.user.id, entryId, signal) : await api.notebookForProduct(actor.user.id, productId!, signal)
-      if (!actor.owns()) throw new Error('이전 계정의 기록 조회입니다.')
-      return checkedNotebookEntry(value, { id: entryId, productId })
+      try {
+        await writes.get(client)?.get(actor.user.id)
+        if (!actor.owns() || signal.aborted) throw new Error('이전 화면의 기록 조회입니다.')
+        const value = entryId ? await api.notebookEntry(actor.user.id, entryId, signal) : await api.notebookForProduct(actor.user.id, productId!, signal)
+        if (!actor.owns()) throw new Error('이전 계정의 기록 조회입니다.')
+        return checkedNotebookEntry(value, { id: entryId, productId })
+      } catch (error) { actor.rejectAuth(error); throw error }
     },
   })
   if (query.isPending || query.fetchStatus !== 'idle') return <p role="status">내 취향 기록을 불러오는 중입니다.</p>
@@ -100,7 +108,7 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
 }) {
   const client = useQueryClient()
   const [note, setNote] = useState(initial), [draft, setDraft] = useState(() => notebookDraft(initial))
-  const [pending, setPending] = useState(false), [blocked, setBlocked] = useState(false), [expired, setExpired] = useState(false)
+  const [pending, setPending] = useState(false), [blocked, setBlocked] = useState(false)
   const [message, setMessage] = useState(''), [error, setError] = useState(''), [deleting, setDeleting] = useState(false)
   const alive = useRef(false), form = useRef<HTMLFormElement>(null)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
@@ -131,7 +139,7 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
       } catch (cause) {
         if (!sameScope()) return
         const status = cause instanceof ApiClientError ? cause.status : 0
-        if (status === 401) { setExpired(true); setError('로그인 상태가 바뀌어 내 기록을 표시하지 않았습니다.') }
+        if (status === 401) actor.rejectAuth(cause)
         else {
           setBlocked(status !== 400)
           setError(status === 409 ? '다른 곳에서 기록이 바뀌었습니다. 현재 입력은 남겨 두었습니다. 복사한 뒤 최신 기록으로 다시 편집해 주세요.' :
@@ -149,7 +157,6 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
   function submit(event: FormEvent) { event.preventDefault(); void write() }
   // Keep an owned draft in memory during a read, with no private fields in the DOM.
   if (!actor.ready) return null
-  if (expired) return <ReadFailure error={new ApiClientError({}, 401)} actor={actor} retry={reload} />
   return <>
     {message && <p className="notice success" role="status">{message}</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
@@ -185,12 +192,14 @@ function NotebookList({ actor }: { actor: Actor }) {
   const listKey = ['account', actor.user.id, 'notebook', 'list', page] as const
   const query = useQuery({ queryKey: listKey, gcTime: 0, networkMode: 'always', refetchOnReconnect: false,
     queryFn: async () => {
-      await writes.get(client)?.get(actor.user.id)
-      if (!actor.owns()) throw new Error('이전 화면의 기록 조회입니다.')
-      const data = await api.notebook(actor.user.id, { page, size: 10 })
-      if (!actor.owns()) throw new Error('이전 계정의 기록 조회입니다.')
-      data.items.forEach((entry) => checkedNotebookEntry(entry, { id: entry.id }))
-      return data
+      try {
+        await writes.get(client)?.get(actor.user.id)
+        if (!actor.owns()) throw new Error('이전 화면의 기록 조회입니다.')
+        const data = await api.notebook(actor.user.id, { page, size: 10 })
+        if (!actor.owns()) throw new Error('이전 계정의 기록 조회입니다.')
+        data.items.forEach((entry) => checkedNotebookEntry(entry, { id: entry.id }))
+        return data
+      } catch (error) { actor.rejectAuth(error); throw error }
     } })
   const lastPage = query.data ? Math.max(1, query.data.totalPages) : page
   const outOfRange = query.isSuccess && page > lastPage
