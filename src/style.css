@@ -431,6 +431,35 @@ textarea.form-control {
   border-radius: 12px;
 }
 
+.home-search-field { position: relative; }
+.home-search-suggestions {
+  position: absolute;
+  inset: calc(100% + 4px) 0 auto;
+  z-index: 5;
+  max-height: min(50vh, 320px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+.home-search-suggestions li {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.home-search-suggestions li:hover,
+.home-search-suggestions li[aria-selected="true"] { background: var(--cream); }
+
 .success-text {
   color: var(--forest) !important;
 }
@@ -1432,6 +1461,10 @@ textarea.form-control {
   .account-story h1 { font-size: 38px; }
   .auth-panel, .account-story { padding: 28px 22px; }
   .inline-field { grid-template-columns: 1fr; }
+  /* Leave the stacked manual search button above the suggestions. */
+  .home-search { position: relative; }
+  .home-search-field { position: static; }
+  .home-search-suggestions { inset: calc(100% + 4px) 0 auto; }
   .profile-hero .btn { width: 100%; }
   .order-summary-head { flex-direction: column; }
   .table-row,

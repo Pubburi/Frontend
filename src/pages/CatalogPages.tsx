@@ -37,11 +37,11 @@ import type { Market, Page, Product, Review } from '../types'
 import { ContentRecommendations } from '../components/ContentRecommendations'
 import { SimilarProducts } from '../components/SimilarProducts'
 import { RecommendationFeedback } from '../components/RecommendationFeedback'
+import { HomeProductSearch } from '../components/HomeProductSearch'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
 
 export function HomePage() {
   const [active, setActive] = useState(0)
-  const [keyword, setKeyword] = useState('')
   const navigate = useNavigate()
   const products = useQuery<Product[]>({
     queryKey: ['catalog', 'popular'],
@@ -53,19 +53,7 @@ export function HomePage() {
   })
   return (
     <section className="view home-view">
-      <form className="inline-field home-search" role="search" aria-label="홈 상품 검색"
-        onSubmit={(event) => {
-          event.preventDefault()
-          navigate(`/products?${pageQuery(buildProductQuery({ q: keyword }, 1))}`)
-        }}>
-        <label className="field-group">
-          <span>상품 검색</span>
-          <input className="form-control" type="search" name="q"
-            placeholder="찾는 상품명을 입력하세요" maxLength={100}
-            value={keyword} onChange={(event) => setKeyword(event.target.value)} />
-        </label>
-        <button className="btn btn-gold" type="submit">검색하기</button>
-      </form>
+      <HomeProductSearch />
       <section
         className="hero-carousel"
         aria-roledescription="carousel"

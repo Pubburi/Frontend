@@ -56,6 +56,7 @@ const test = base.extend({
           ? s.replies.shift() ?? { status: 200, data: wire() } : { status: 401 }
       }
       else if (path === '/products/popular') reply = { status: 200, data: [] }
+      else if (path === '/products/suggestions' && method === 'GET') reply = { status: 200, data: { items: [] } }
       else if (path === '/markets' || /\/orders$/.test(path)) reply = { status: 200, data: pageOf([]) }
       else if (/\/profile$/.test(path)) reply = { status: 200, data: { user: s.user, grade: { title: '씨앗' } } }
       else if (path === '/products') reply = { status: 200, data: pageOf([product]) }
