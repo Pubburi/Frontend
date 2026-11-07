@@ -787,6 +787,47 @@ test('데모 주문 실패는 장바구니를 보존하고 성공 후 서버 스
   await expect(page.getByRole('heading', { name: '장바구니가 비어 있습니다' })).toBeVisible()
 })
 
+for (const status of [200, 503]) test(`늦은 로그아웃 ${status} 뒤에도 새 공개 검색과 수정 중인 입력을 보존`, async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  let release, started = false
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/auth/logout', async (route) => {
+    started = true
+    await gate
+    if (status === 200) await route.fallback()
+    else await route.fulfill({ status, json: failure('SERVICE_UNAVAILABLE') })
+  })
+  try {
+    await page.goto('/profile')
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+    await expect.poll(() => started).toBe(true)
+    await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+    const input = page.getByLabel('상품 검색', { exact: true })
+    await input.fill('시험')
+    await page.getByRole('combobox', { name: '주종', exact: true }).selectOption('탁주')
+    await input.press('Enter')
+    await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('q') === '시험' && url.searchParams.get('type') === '탁주')
+    await expect(page.locator('.product-card')).toHaveCount(1)
+    const destination = page.url()
+    await input.fill('아직 바꾸는 검색어')
+    await page.getByLabel('최대 가격(원)', { exact: true }).fill('9000')
+    const response = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/api/auth/logout')
+    release()
+    await (await response).finished()
+    if (status === 200) {
+      await expect(page.getByText('로그아웃되었습니다.', { exact: true })).toBeVisible()
+      await expect(page.locator('.user-name')).toHaveCount(0)
+    } else {
+      await expect(page.getByRole('alert')).toBeVisible()
+      await expect(page.locator('.user-name')).toHaveText('시험회원님')
+    }
+    await expect(page).toHaveURL(destination)
+    await expect(input).toHaveValue('아직 바꾸는 검색어')
+    await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('9000')
+    await expect(page.getByLabel('적용된 필터', { exact: true })).toContainText('검색: 시험')
+  } finally { release() }
+})
+
 for (const width of [1280, 390]) {
   test(`로그아웃 대기 중 주문을 막고 새 로그인까지 장바구니를 보존 ${width}px`, async ({ page, api }, info) => {
     api.user = api.users.find((user) => user.id === 'member')
