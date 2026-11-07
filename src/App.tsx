@@ -29,6 +29,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { useRecentProducts } from './state/recentProducts'
 import MarketDetailPage from './pages/MarketDetailPage'
 import OrderDetailPage from './pages/OrderDetailPage'
+import { NotebookPage } from './components/Notebook'
 
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 function Guard({
@@ -207,6 +208,7 @@ export function App() {
             <Route path="/compare" element={<ComparePage />} />
             <Route path="/recent" element={<RecentPage />} />
             <Route path="/discover" element={<DiscoverPage />} />
+            <Route path="/notebook" element={<NotebookPage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route
               path="/account"

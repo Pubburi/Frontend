@@ -428,6 +428,34 @@ test('auth-transition: 기존 본문·편집 초안은 인증 전환에 차폐�
   } finally { release() }
 })
 
+for (const width of [1280, 390]) for (const mode of ['create', 'edit']) for (const status of [200, 503]) test(`P1 후기 ${mode} ${width}px 기록 첫 열기 GET${status}는 같은 인증의 본문·평점·태그 초안을 보존`, async ({ page, reviewsApi: s }) => {
+  s.reviews = [{ ...review(1, 4.25), tasteTags: ['기존 맛'] }]
+  await page.setViewportSize({ width, height: 900 }); await page.goto('/products/901')
+  const target = page.locator(mode === 'create' ? '.comment-form' : '.comment-edit-form')
+  if (mode === 'edit') await page.locator('.comment-row').getByRole('button', { name: '수정', exact: true }).click()
+  const body = target.getByRole('textbox', { name: mode === 'create' ? '후기' : '후기 내용', exact: true })
+  await body.fill('기록을 열기 전에 작성한 미제출 후기')
+  await target.getByRole('combobox', { name: '평점', exact: true }).selectOption(mode === 'create' ? '3' : '4.25')
+  if (mode === 'create') await target.getByRole('button', { name: '느낀 맛 태그 추가', exact: true }).click()
+  await target.getByRole('textbox', { name: '느낀 맛 태그 1', exact: true }).fill('작성 중인 맛')
+  const quantity = page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true }); await quantity.fill('3'); await quantity.press('Tab')
+  let release, started = false; const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/users/me/notebook/by-product/901', (route) => route.fulfill({ json: ok(null) }))
+  await page.route('**/api/auth/me', async (route) => { if (started) return route.fallback(); started = true; await gate; return status === 503 ? route.fulfill({ status, json: error('SERVICE_UNAVAILABLE') }) : route.fallback() })
+  try {
+    await page.locator('.notebook-panel summary').click(); await expect.poll(() => started).toBe(true)
+    await expect(page.locator('.comment-form')).toHaveCount(0); await expect(page.locator('.comment-edit-form')).toHaveCount(0)
+    expect(await page.locator('.comment-box').textContent()).not.toContain('기록을 열기 전에 작성한 미제출 후기')
+    release()
+    if (status === 503) await page.locator('.notebook-panel').getByRole('button', { name: '기록 로그인 상태 다시 확인', exact: true }).click()
+    await expect(body).toHaveValue('기록을 열기 전에 작성한 미제출 후기')
+    await expect(target.getByRole('combobox', { name: '평점', exact: true })).toHaveValue(mode === 'create' ? '3' : '4.25')
+    await expect(target.getByRole('textbox', { name: '느낀 맛 태그 1', exact: true })).toHaveValue('작성 중인 맛')
+    await expect(quantity).toHaveValue('3')
+    expect(s.calls.filter((call) => call.path.startsWith('/api/comments') && call.method !== 'GET')).toEqual([])
+  } finally { release() }
+})
+
 for (const width of [1280, 390]) for (const key of ['Enter', 'Space']) test(`review-edit-keyboard: ${key} 진입과 다음 Tab은 현재 후기 입력으로 연결 ${width}px`, async ({ page, reviewsApi }, info) => {
   reviewsApi.reviews = [{ ...review(1, 2.25), tasteTags: ['직접 느낀 맛'] }]
   await page.setViewportSize({ width, height: 900 })

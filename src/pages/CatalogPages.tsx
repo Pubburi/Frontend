@@ -37,6 +37,7 @@ import type { Market, Page, Product, Review } from '../types'
 import { ContentRecommendations } from '../components/ContentRecommendations'
 import { SimilarProducts } from '../components/SimilarProducts'
 import { RecommendationFeedback } from '../components/RecommendationFeedback'
+import { ProductNotebook } from '../components/Notebook'
 import { HomeProductSearch } from '../components/HomeProductSearch'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
 
@@ -571,9 +572,9 @@ function ProductDetail({ id }: { id: string }) {
   const [editing, setEditing] = useState<ReviewEdit | null>(null)
   const [deleting, setDeleting] = useState<Review | null>(null)
   const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
-  const writable = session.isSuccess && session.fetchStatus === 'idle' && Boolean(session.data) &&
-    !['login', 'join', 'logout', 'settings-password'].some((key) => ui.pending[key])
-  const [account, setAccount] = useState({ auth, id: session.data?.id, role: session.data?.role, writable })
+  const transitioning = ['login', 'join', 'logout', 'settings-password'].some((key) => ui.pending[key])
+  const writable = session.isSuccess && session.fetchStatus === 'idle' && Boolean(session.data) && !transitioning
+  const [account, setAccount] = useState({ auth, id: session.data?.id, role: session.data?.role, transitioning })
   const currentAccount = useRef(account)
   const reviewHeading = useRef<HTMLHeadingElement>(null)
   const focusIntent = useRef<ReviewFocus | null>(null)
@@ -598,9 +599,9 @@ function ProductDetail({ id }: { id: string }) {
     focusIntent.current = event.detail === 0 && document.activeElement === source && row ?
       { editing: next, account, view: reviewView, locationKey: location.key, source, row } : null
   }
-  // Discard account-owned drafts before rendering a changed/uncertain session; public view and quantity survive.
-  if (account.auth !== auth || account.id !== session.data?.id || account.role !== session.data?.role || account.writable !== writable) {
-    const next = { auth, id: session.data?.id, role: session.data?.role, writable }
+  // Reads hide private inputs; only an account or authentication generation change discards their drafts.
+  if (account.auth !== auth || account.id !== session.data?.id || account.role !== session.data?.role || account.transitioning !== transitioning) {
+    const next = { auth, id: session.data?.id, role: session.data?.role, transitioning }
     currentAccount.current = next
     focusIntent.current = null
     saveFocus.current = null
@@ -768,6 +769,7 @@ function ProductDetail({ id }: { id: string }) {
           <ProductFavorite product={item} />
           <CompareAction product={item} />
           {currentProduct && <RecommendationFeedback key={location.key} productId={item.id} />}
+          {currentProduct && <ProductNotebook key={`notebook:${location.key}`} productId={item.id} />}
           <ProductFeatureDetails productId={item.id} />
           <div className="comment-box">
             <div className="comment-title">
