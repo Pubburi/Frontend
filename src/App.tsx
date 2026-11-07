@@ -84,9 +84,9 @@ export function App() {
     const previous = previousLocation.current
     const destination = location.pathname + location.search
     previousLocation.current = { key: location.key, destination }
+    setMenu(false)
     // Consume navigation ownership once, including same-URL entries. POP never opts out.
     if (previous?.destination === destination) return
-    setMenu(false)
     const intent = location.state?.catalogPagination
     const focusedResults = navigationType === 'PUSH' && previous &&
       intent?.fromLocationKey === previous.key && intent?.destination === destination &&
