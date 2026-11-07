@@ -9,6 +9,7 @@ import { profilePrivacy } from '../state/authReadPrivacy'
 import { Empty, Image, Loading, Pagination, Quantity } from '../components/ui'
 import { OrderCard } from '../components/OrderLines'
 import { money, productImage } from '../utils/format'
+import { validPassword } from '../settings'
 import type { Order, Page, Profile, User } from '../types'
 
 function checkoutAuthPending(pending: Record<string, boolean>) {
@@ -372,6 +373,7 @@ export function AccountPage() {
   const [mode, setMode] = useState<'login' | 'join'>('login')
   const [login, setLogin] = useState({ id: '', pass: '' })
   const [join, setJoin] = useState({ id: '', name: '', pass: '' })
+  const passwordInput = useRef<HTMLInputElement>(null)
   const [check, setCheck] = useState({ id: '', available: false, message: '' })
   const latestJoinId = useRef(join.id)
   latestJoinId.current = join.id
@@ -386,6 +388,11 @@ export function AccountPage() {
     const target = safeRedirect(search.get('redirect'))
     if (mode === 'join' && (!check.available || check.id !== join.id.trim())) {
       ui.error(new Error('아이디 중복 확인이 필요합니다.'))
+      return
+    }
+    if (mode === 'join' && !validPassword(join.pass)) {
+      ui.error(new Error('비밀번호는 4~100자·UTF-8 최대72바이트로 입력해 주세요. 공백도 비밀번호에 포함됩니다.'))
+      passwordInput.current?.focus()
       return
     }
     const credentials =
@@ -546,8 +553,10 @@ export function AccountPage() {
           <label className="field-group">
             <span>비밀번호</span>
             <input
+              ref={passwordInput}
               type="password"
               aria-label="비밀번호"
+              aria-describedby={mode === 'join' ? 'join-password-limit' : undefined}
               className="form-control"
               autoComplete={
                 mode === 'login' ? 'current-password' : 'new-password'
@@ -563,7 +572,7 @@ export function AccountPage() {
                   : setJoin({ ...join, pass: e.target.value })
               }
             />
-            {mode === 'join' && <small>4자 이상 입력해 주세요.</small>}
+            {mode === 'join' && <small id="join-password-limit">4~100자·UTF-8 최대72바이트. 한글·이모지는 여러 바이트이며 공백도 그대로 포함됩니다. 현재 {new TextEncoder().encode(join.pass).byteLength}/72바이트</small>}
           </label>
           <button
             className="btn btn-dark w-100"

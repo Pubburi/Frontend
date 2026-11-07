@@ -3015,6 +3015,46 @@ async function prepareJoin(page, id = 'recovery-member') {
   await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
 }
 
+for (const width of [1280, 390]) {
+  test(`가입 ${width}px은 72 UTF-8바이트 초과를 전송 전에 알려주고 입력을 고쳐 완료`, async ({ page, api }) => {
+    await page.setViewportSize({ width, height: 844 })
+    await prepareJoin(page, 'byte-limit-member')
+    const password = page.getByLabel('비밀번호', { exact: true })
+    const submit = page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true })
+    for (const value of ['한'.repeat(25), '😀'.repeat(19), 'a'.repeat(73)]) {
+      await password.fill(value)
+      await submit.focus(); await submit.press('Enter')
+      await expect(page.getByRole('alert')).toContainText('UTF-8 최대72바이트')
+      await expect(password).toBeFocused()
+      await expect(password).toHaveValue(value)
+      await expect(page.getByLabel('아이디', { exact: true })).toHaveValue('byte-limit-member')
+      await expect(page.getByLabel('이름', { exact: true })).toHaveValue('복구흐름회원')
+      await expect(page.getByText('사용할 수 있는 아이디입니다.', { exact: true })).toBeVisible()
+      expect(api.calls.filter((call) => call.method === 'POST' && ['/users', '/auth/login'].includes(call.path))).toEqual([])
+    }
+    // Leading/trailing spaces remain literal; this value is exactly 72 UTF-8 bytes.
+    const accepted = ' ' + '한'.repeat(23) + 'a '
+    expect(new TextEncoder().encode(accepted).byteLength).toBe(72)
+    await password.fill(accepted)
+    await submit.focus(); await submit.press('Enter')
+    await expect(page).toHaveURL('/cart')
+    const writes = api.calls.filter((call) => call.method === 'POST' && ['/users', '/auth/login'].includes(call.path))
+    expect(writes.map((call) => call.path)).toEqual(['/users', '/auth/login'])
+    expect(writes.every((call) => call.body.pass === accepted)).toBe(true)
+    expect(api.user.id).toBe('byte-limit-member')
+  })
+}
+
+test('가입의 새 비밀번호 제한은 기존 로그인 비밀번호를 변경하거나 차단하지 않음', async ({ page, api }) => {
+  await page.goto('/account?redirect=/cart')
+  const literal = ' ' + '한'.repeat(30) + ' '
+  await page.getByLabel('아이디', { exact: true }).fill('member')
+  await page.getByLabel('비밀번호', { exact: true }).fill(literal)
+  await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+  await expect(page).toHaveURL('/cart')
+  expect(api.calls.find((call) => call.method === 'POST' && call.path === '/auth/login').body.pass).toBe(literal)
+})
+
 test('가입 요청 자체의 실패는 완료로 오인하지 않고 입력과 재가입을 유지', async ({ page, api }) => {
   let attempts = 0
   await page.route('**/api/users', async (route) => {
