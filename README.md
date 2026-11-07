@@ -220,54 +220,49 @@ if (!first || !last) {
 }
 ```
 
-### 4. 인증 캐시 초기화와 진행 중인 취향 쓰기의 수명 분리
+### 4. 인증 소유와 조회 상태를 분리해 비공개 기록·후기 초안 보호하기
 
 #### 문제
 
-취향 저장 응답을 받기 전에 로그아웃하고 같은 계정으로 다시 로그인하면, 서버에는 새 값이 저장됐는데 새 편집 화면은 이전 값에 머물렀다. R01 초기 구현을 검토하며 이 순서를 재현했다. 다른 계정에 이전 응답이 섞이지 않도록 하는 검사만으로는 같은 계정의 재로그인 문제를 해결하지 못했다.
+비공개 취향 기록을 기존 상품 상세에 연결하는 개발 인수에서 두 결함을 재현했다. 세션이 만료된 상태로 기록을 저장하면 편집창만 숨고 목록의 개인 메모·평점·태그는 남았다. 반대로 같은 계정의 로그인 상태를 다시 확인하는 정상 동작만으로 작성·수정 중인 회원 후기가 초기화됐다.
 
 #### 원인
 
-로그인·로그아웃의 `client.clear()`는 개인 query와 mutation cache를 지웠다. 하지만 이미 인증 검사를 통과한 HTTP 쓰기는 서버에서 계속될 수 있다. mutation 개수가 0이라는 이유로 새 GET을 열면 쓰기 전 값을 편집 초기값으로 확정한다. 이전 세션 응답을 거부하는 검사는 유지돼야 하므로, 그 늦은 응답으로 새 폼을 고치는 것도 올바른 해결이 아니었다. 캐시가 비워진 상태와 서버 쓰기가 끝난 상태를 혼동한 것이 원인이었다.
+기록 API의 401을 편집 폼 안에서만 처리해 목록이 의존하는 상위 계정은 계속 유효한 것으로 남았다. 후기에서는 일시적인 `writable` 상태까지 초안 소유의 일부로 사용했다. 공유 세션의 GET 대기·실패를 실제 로그아웃과 같은 입력 폐기로 처리한 것이다.
 
 #### 해결
 
-계정별 미완료 HTTP 소유를 QueryClient 밖의 Zustand Map에 두었다. 취향·인증값 대신 요청 토큰만 보관하고 자기 `finally`만 해제한다. 같은 계정의 새 세션은 이전 HTTP 응답이 정착한 뒤 새 GET으로 편집을 시작하며, 다른 계정은 독립적으로 사용한다. 인증 캐시는 계속 초기화한다. 늦은 응답은 캡처한 세션과 현재 세션이 같을 때만 캐시에 반영한다. 화면을 떠났으면 로컬 입력·알림을 갱신하지 않고, 같은 화면에서는 현재 초안이 제출한 객체와 같을 때만 정규화하고 이후의 새 입력을 보존한다.
+현재 인증에서 받은 기록 API의 401을 상위 계정 경계로 전달해 목록과 편집을 함께 차폐하고, 명시 재확인 뒤에만 다시 읽는다. 이전 계정의 늦은 401은 현재 경계를 바꾸지 못한다. 후기 초안의 소유는 인증 Query·계정 ID·권한·실제 인증 전환으로 판단하고, 조회 준비 상태는 표시와 제출을 제어한다. 같은 인증의 조회 중에는 개인 입력 DOM을 제거하면서 메모리 초안을 보존하고 인증 세대가 바뀌면 폐기한다.
 
 #### 결과
 
-동일 계정으로 다시 로그인하면 진행 중인 취향 쓰기의 응답을 기다린 뒤 새 GET으로 서버 저장값과 편집 초기값을 일치시킨다. 다른 계정은 독립적으로 읽고 편집하며, 이전 세션의 늦은 응답은 새 세션에 적용하지 않는다. 같은 화면에서 저장 중 새로 입력한 초안도 유지한다. 이 동작은 같은 웹 실행 안의 계정 이동에 적용되며, 브라우저 종료·전체 재로딩을 넘는 미확정 저장까지 보장하지 않는다.
+실제 서버의 세션을 브라우저 밖에서 종료한 뒤 저장·삭제·편집 조회를 시도해도 재확인 전 개인 카드와 입력이 표시되지 않았다. 일반·좁은 웹 화면에서 기록을 처음 펼쳐 로그인 GET을 실행한 뒤에도 후기 본문·평점·맛 태그가 유지됐다. 조회 실패 뒤 같은 계정으로 복구하는 상황과 재로그인의 초안 폐기도 제어한 브라우저 조건에서 구분했다. 개발 중 재현과 폐기 환경 인수의 결과이며 운영 사고 통계·자연 오류율·성능 개선 수치로 해석하지 않는다.
 
 #### 대체안/회고
 
-미완료 쓰기를 기억하려고 로그아웃 시 개인 캐시를 남기는 대신, 취향값을 담지 않는 요청 소유만 분리했다. 저장 중 로그아웃을 막는 방법은 계정 이동까지 묶으며, 전송 취소만으로 이미 시작한 서버 작업의 취소를 보장할 수도 없다. 이 Map은 같은 웹 실행 안에서만 유효하다. 브라우저 종료·전체 재로딩 뒤 미확정 커밋 조정과 여러 창의 수정 충돌에는 별도 서버 계약이 필요하다. 초기 구현에서 재현한 결함과 확인한 한계를 기록하며 운영 장애나 모든 동시성 문제의 해결로 표현하지 않는다.
+조회마다 캐시와 초안을 지우면 정상 재확인에도 입력을 잃는다. 폼만 숨기고 상위 계정을 유지하면 인증 실패 뒤 개인 목록이 남는다. 인증 소유와 읽기 준비를 분리해 두 상황을 다르게 처리했다. 브라우저 밖의 세션 변경은 다음 실제 API 응답에서 확인하며, 서버의 소유자 검증과 기록 revision 계약도 함께 필요하다.
 
 #### 코드
 
-```ts
-begin(userId) {
-  if (get().owners.has(userId)) return null
-  const owner = Symbol()
-  set({ owners: new Map(get().owners).set(userId, owner) })
-  return owner
-},
-finish(userId, owner) {
-  if (get().owners.get(userId) !== owner) return
-  const next = new Map(get().owners)
-  next.delete(userId)
-  set({ owners: next })
-},
+```tsx
+if (error instanceof ApiClientError && error.status === 401 && sameActor()) {
+  active.current = null
+  setVerified(null); setFailed('expired')
+}
 ```
 
 ```tsx
-const pending = usePreferenceWrites((state) => state.owners.has(user.id))
-const [initial, setInitial] = useState<ExplicitPreferences | null>(null)
-const query = useQuery({
-  queryKey: preferenceQueryKey(user.id),
-  queryFn: api.ownPreferences,
-  enabled: !initial && !pending,
-  refetchOnReconnect: false,
-})
+if (account.auth !== auth || account.id !== session.data?.id ||
+    account.role !== session.data?.role || account.transitioning !== transitioning) {
+  const next = { auth, id: session.data?.id, role: session.data?.role, transitioning }
+  currentAccount.current = next
+  focusIntent.current = null
+  saveFocus.current = null
+  setAccount(next)
+  setDraft({ rating: 5, comment: '', tasteTags: [] })
+  setEditing(null)
+  setDeleting(null)
+}
 ```
 
 <a id="development"></a>
