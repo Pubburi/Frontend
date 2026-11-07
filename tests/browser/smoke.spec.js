@@ -19,6 +19,7 @@ const test = base.extend({
       user: null, catalogFailures: 0, sessionFailures: 0, orderFailures: 0, defaultSource: 'BASELINE', defaultFailures: 0,
       catalog: products.map((item) => ({ ...item })), markets: [], reviews: [], orders: [], features: {}, preferences: {}, favorites: {}, similar: {},
       feedback: {}, feedbackCalls: [],
+      suggestions: {},
       users: [
         { id: 'member', name: '시험회원', role: 'USER', stamps: 3 },
         { id: 'other', name: '다른회원', role: 'USER', stamps: 0 },
@@ -123,6 +124,11 @@ const test = base.extend({
         const type = url.searchParams.get('type') || ''
         const items = state.catalog.filter((item) => (!type || item.type === type) && item.name.includes(q))
         await route.fulfill({ json: success(pageOf(items, Number(url.searchParams.get('size') || 12), Number(url.searchParams.get('page') || 1))) })
+        return
+      }
+      if (method === 'GET' && path === '/products/suggestions') {
+        const q = url.searchParams.get('q')
+        await route.fulfill({ json: success({ items: state.suggestions[q] ?? [] }) })
         return
       }
       if (method === 'GET' && path === '/recommendations/default') {
@@ -323,6 +329,146 @@ for (const width of [1280, 390]) {
     await info.attach('direct-search-path.json', { body: JSON.stringify({ path: ['/', '/products?q=' + keyword], keywordEntries: 1, intermediateCatalogPage: false, boxes }), contentType: 'application/json' })
   })
 }
+
+const homeSearchInput = (page) => page.getByRole('combobox', { name: '상품 검색', exact: true })
+const suggestions = (page) => page.getByRole('listbox', { name: '상품 바로가기', exact: true })
+const suggestionReads = (api) => api.calls.filter(({ path }) => path === '/products/suggestions')
+
+test('홈 상품 제안은 중복 이름과 특수문자를 그대로 표시하고 키보드로 정확한 상세에 연결', async ({ page, api }) => {
+  const name = '시험_%\\표본 <b>'
+  api.catalog.forEach((item) => Object.assign(item, { name, type: '탁주', price: 0 }))
+  api.suggestions['시험_%'] = api.catalog.map(({ id, name, type, price }) => ({ id, name, type, price }))
+  api.suggestions['시험_%'].push(...Array.from({ length: 6 }, (_, index) => ({
+    id: 910 + index, name: `${name} ${index}`, type: '탁주', price: 0,
+  })))
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  const input = homeSearchInput(page)
+  await expect(input).toHaveAttribute('aria-expanded', 'false')
+  await input.fill('시험_%')
+  const options = suggestions(page).getByRole('option')
+  await expect(options).toHaveCount(8)
+  const second = suggestions(page).getByRole('option', { name: /상품 번호 902/ })
+  await expect(second).toContainText(name)
+  await expect(second).toContainText('탁주 · 0원')
+  await expect(second.locator('b')).toHaveCount(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  await input.press('ArrowUp')
+  await expect(options.last()).toHaveAttribute('aria-selected', 'true')
+  expect(await options.last().evaluate((option) => {
+    const row = option.getBoundingClientRect(), list = option.parentElement.getBoundingClientRect()
+    return row.bottom <= list.bottom && row.top >= list.top
+  })).toBe(true)
+  await expect(input).toBeFocused()
+  await expect(input).toHaveAttribute('aria-activedescendant', await options.last().getAttribute('id'))
+  await input.press('Escape')
+  await expect(suggestions(page)).toHaveCount(0)
+  await expect(input).toHaveValue('시험_%')
+  await input.press('ArrowDown')
+  await expect(second).toBeVisible()
+  await input.press('Tab')
+  await expect(page.getByRole('button', { name: '검색하기', exact: true })).toBeFocused()
+  await expect(suggestions(page)).toHaveCount(0)
+  await page.keyboard.press('Shift+Tab')
+  await expect(second).toBeVisible()
+  await input.press('ArrowDown')
+  await input.press('ArrowDown')
+  await expect(second).toHaveAttribute('aria-selected', 'true')
+  await input.press('Enter')
+  await expect(page).toHaveURL('/products/902')
+  await expect(page.getByRole('heading', { level: 1, name, exact: true })).toBeVisible()
+  expect(suggestionReads(api).map(({ query }) => query)).toEqual(Array(3).fill({ q: '시험_%' }))
+  expect(api.calls.filter(({ path }) => path === '/products')).toEqual([])
+})
+
+test.describe('홈 상품 제안 터치', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } })
+  test('상품 옵션을 한 번 탭하면 현재 ID 상세로 이동', async ({ page, api }) => {
+    api.suggestions['시험'] = api.catalog.map(({ id, name, type, price }) => ({ id, name, type, price }))
+    await page.goto('/')
+    await homeSearchInput(page).fill('시험')
+    await suggestions(page).getByRole('option', { name: /시험 사케/ }).tap()
+    await expect(page).toHaveURL('/products/902')
+    await expect(page.getByRole('heading', { level: 1, name: '시험 사케', exact: true })).toBeVisible()
+  })
+})
+
+test('같은 검색어로 돌아온 뒤 늦은 이전 상품 제안이 현재 목록을 덮지 않음', async ({ page, api }) => {
+  await page.addInitScript(() => {
+    const fetchWithSignal = window.fetch.bind(window)
+    window.fetch = (request, init) => {
+      if (typeof request !== 'string' || new URL(request, location.href).pathname !== '/api/products/suggestions') return fetchWithSignal(request, init)
+      // Exercise a response that settles even when the caller cancels its signal.
+      return fetchWithSignal(request, { ...init, signal: undefined })
+    }
+  })
+  api.suggestions['처음'] = [{ id: 902, name: '같은 입력의 새 제안', type: '사케', price: 12000 }]
+  api.suggestions['다음'] = [{ id: 903, name: '다음 입력의 제안', type: '사케', price: 12000 }]
+  let release, started = false
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/products/suggestions?**', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('q') !== '처음' || started) return route.fallback()
+    started = true
+    await gate
+    await route.fulfill({ json: success({ items: [{ id: 901, name: '지연된 옛 제안', type: '탁주', price: 6000 }] }) })
+  })
+  try {
+    await page.goto('/')
+    const input = homeSearchInput(page)
+    await input.fill('처음'); await expect.poll(() => started).toBe(true)
+    await input.fill('다음'); await expect(suggestions(page)).toContainText('다음 입력의 제안')
+    await input.fill('처음'); await expect(suggestions(page)).toContainText('같은 입력의 새 제안')
+    const old = page.waitForResponse((reply) => new URL(reply.url()).searchParams.get('q') === '처음')
+    release()
+    await (await old).finished()
+    await expect(suggestions(page)).toContainText('같은 입력의 새 제안')
+    await expect(suggestions(page)).not.toContainText('지연된 옛 제안')
+    await expect(input).toHaveValue('처음')
+  } finally { release() }
+})
+
+test('한글 조합 중에는 제안과 Enter 검색을 보류하고 확정한 글자로만 조회', async ({ page, api }) => {
+  await page.clock.install()
+  api.suggestions['시험'] = api.catalog.map(({ id, name, type, price }) => ({ id, name, type, price }))
+  await page.goto('/')
+  const input = homeSearchInput(page)
+  await input.fill('시'); await page.clock.runFor(250)
+  expect(suggestionReads(api)).toEqual([])
+  await input.fill('시험'); await page.clock.runFor(210)
+  await expect(suggestions(page).getByRole('option')).toHaveCount(2)
+  await input.press('ArrowDown')
+  await input.dispatchEvent('compositionstart')
+  await input.fill('새 이')
+  await page.clock.runFor(250)
+  await input.press('Enter')
+  await expect(page).toHaveURL('/')
+  await expect(suggestions(page)).toHaveCount(0)
+  expect(suggestionReads(api).map(({ query }) => query.q)).toEqual(['시험'])
+  await input.fill('새 이름')
+  await input.dispatchEvent('compositionend', { data: '름' })
+  await page.clock.runFor(210)
+  await expect.poll(() => suggestionReads(api).map(({ query }) => query.q)).toEqual(['시험', '새 이름'])
+  await input.press('Enter')
+  await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('q') === '새 이름')
+})
+
+for (const status of [503, 200]) test(`홈 상품 제안 ${status === 503 ? '장애' : '잘못된 응답'}에도 원문으로 직접 검색`, async ({ page, api }) => {
+  const keyword = '시험 & 사케+100% / #?'
+  api.catalog[0].name = keyword
+  await page.route('**/api/products/suggestions?**', (route) => route.fulfill({ status,
+    json: status === 503 ? failure('SERVICE_UNAVAILABLE') : success({ items: [{ id: '/invalid', name: keyword, type: '사케', price: 0 }] }) }))
+  await page.goto('/')
+  const input = homeSearchInput(page)
+  const response = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/api/products/suggestions')
+  await input.fill(keyword)
+  await (await response).finished()
+  await expect(input).toHaveValue(keyword)
+  await expect(suggestions(page)).toHaveCount(0)
+  await input.press('Enter')
+  await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('q') === keyword)
+  await expect(page.locator('.product-card')).toHaveCount(1)
+})
 
 test('홈 검색의 빈 입력·빈 결과는 기존 전체 보기와 검색 수정·Back으로 복구', async ({ page }) => {
   await page.goto('/')
