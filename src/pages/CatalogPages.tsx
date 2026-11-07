@@ -37,6 +37,7 @@ import type { Market, Page, Product, Review } from '../types'
 import { ContentRecommendations } from '../components/ContentRecommendations'
 import { SimilarProducts } from '../components/SimilarProducts'
 import { RecommendationFeedback } from '../components/RecommendationFeedback'
+import { ProductNotebook } from '../components/Notebook'
 import { HomeProductSearch } from '../components/HomeProductSearch'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
 
@@ -768,6 +769,7 @@ function ProductDetail({ id }: { id: string }) {
           <ProductFavorite product={item} />
           <CompareAction product={item} />
           {currentProduct && <RecommendationFeedback key={location.key} productId={item.id} />}
+          {currentProduct && <ProductNotebook key={`notebook:${location.key}`} productId={item.id} />}
           <ProductFeatureDetails productId={item.id} />
           <div className="comment-box">
             <div className="comment-title">

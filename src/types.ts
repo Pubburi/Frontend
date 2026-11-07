@@ -97,3 +97,19 @@ export interface Profile {
   user: User
   grade: { title?: string; to?: number; step?: number; stepMax?: number }
 }
+export interface NotebookContent {
+  experience: 'TRIED' | 'INTERESTED'
+  rating: number | null
+  tasteTags: string[] | null
+  aromaTags: string[] | null
+  memo: string | null
+}
+export interface NotebookEntry extends NotebookContent {
+  id: string
+  productId: number | null
+  productName: string
+  currentProduct: Product | null
+  version: number
+  createdAt: number
+  updatedAt: number
+}

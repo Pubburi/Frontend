@@ -92,6 +92,18 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   join: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
   idAvailable: (id) => request(`/users/id-available?id=${encodeURIComponent(id)}`),
+  /** @param {string} owner @param {{page?:number,size?:number}} [params] @returns {Promise<import('../types').Page<import('../types').NotebookEntry>>} */
+  notebook: (owner, params = {}) => request(`/users/me/notebook?${pageQuery(params, { page: 1, size: 10 })}`, { cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
+  /** @param {string} owner @param {number} productId @param {AbortSignal} [signal] @returns {Promise<import('../types').NotebookEntry|null>} */
+  notebookForProduct: (owner, productId, signal) => request(`/users/me/notebook/by-product/${productId}`, { cache: 'no-store', signal, headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
+  /** @param {string} owner @param {string} id @param {AbortSignal} [signal] @returns {Promise<import('../types').NotebookEntry>} */
+  notebookEntry: (owner, id, signal) => request(`/users/me/notebook/${encodeURIComponent(id)}`, { cache: 'no-store', signal, headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
+  /** @param {string} owner @param {number} productId @param {import('../types').NotebookContent} content @returns {Promise<import('../types').NotebookEntry>} */
+  createNotebookEntry: (owner, productId, content) => request('/users/me/notebook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ productId, ...content }) }),
+  /** @param {string} owner @param {string} id @param {number} expectedVersion @param {import('../types').NotebookContent} content @returns {Promise<import('../types').NotebookEntry>} */
+  updateNotebookEntry: (owner, id, expectedVersion, content) => request(`/users/me/notebook/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ ...content, expectedVersion }) }),
+  /** @param {string} owner @param {string} id @param {number} expectedVersion @returns {Promise<unknown>} */
+  deleteNotebookEntry: (owner, id, expectedVersion) => request(`/users/me/notebook/${encodeURIComponent(id)}?${pageQuery({ expectedVersion })}`, { method: 'DELETE', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
   profile: (id) => request(`/users/${encodeURIComponent(id)}/profile`),
   /** @param {{name: string}} payload @returns {Promise<boolean>} */
   updateOwnProfile: (payload) => request('/users/me/profile', { method: 'PUT', body: JSON.stringify({ name: payload.name }) }),

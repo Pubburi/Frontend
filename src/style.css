@@ -1516,5 +1516,14 @@ textarea.form-control {
 .recommendation-feedback summary { display: list-item; cursor: pointer; width: fit-content; }
 .recommendation-feedback .button-row { flex-wrap: wrap; }
 .recommendation-feedback [aria-pressed="true"] { color: var(--paper); background: var(--ink); }
+.notebook-panel { margin-block: 1rem; padding-block: 1rem; border-block: 1px solid var(--line); }
+.notebook-panel summary { display: list-item; cursor: pointer; }
+.notebook-form { width: 100%; margin-top: 1rem; }
+.notebook-form .button-row { flex-wrap: wrap; }
+.notebook-list { display: grid; gap: 1rem; margin-block: 1rem; }
+.notebook-card { overflow-wrap: anywhere; }
+.notebook-card h3 { margin: 0; }
+.notebook-memo { white-space: pre-wrap; }
+.notebook-tags li { white-space: pre-wrap; }
 .similar-products h2, .similar-products p, .similar-products ul { margin: 0; }
 .similar-product-link { display: block; overflow-wrap: anywhere; font-weight: 700; }

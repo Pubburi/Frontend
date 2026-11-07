@@ -9,6 +9,8 @@ export function TagEditor({
   emptyLabel = '검수 완료 · 선언할 태그 없음',
   tagsLabel = '확인한 태그 입력',
   optional = false,
+  maxLength = 40,
+  help = '항목별로 최대 20개·각 40자. 대소문자만 다른 중복도 사용할 수 없습니다.',
 }: {
   label: string
   value: TagDraft
@@ -17,6 +19,8 @@ export function TagEditor({
   emptyLabel?: string
   tagsLabel?: string
   optional?: boolean
+  maxLength?: number
+  help?: string
 }) {
   const inputs = useRef<(HTMLTextAreaElement | null)[]>([])
   const add = useRef<HTMLButtonElement>(null)
@@ -66,7 +70,7 @@ export function TagEditor({
                   aria-label={`${label} ${index + 1}`}
                   required
                   ref={(element) => { inputs.current[index] = element }}
-                  maxLength={40}
+                  maxLength={maxLength}
                   rows={1}
                   value={tag}
                   onChange={(e) =>
@@ -107,10 +111,7 @@ export function TagEditor({
           >
             {label} 추가
           </button>
-          <small>
-            항목별로 최대 20개·각 40자. 대소문자만 다른 중복도 사용할 수
-            없습니다.
-          </small>
+          <small>{help}</small>
         </div>
       )}
     </fieldset>

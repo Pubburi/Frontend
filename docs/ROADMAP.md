@@ -41,7 +41,7 @@
 | F04 · 12-08 | 후기 맛 태그·평균 평점·정렬 및 본인 수정/삭제. 구매 확인 배지 없이 회원 평가로 표시. | F03·FE03, 후기 확장 API | main 병합·실제 연동 검증 완료: 전체 평점·정렬·선택 맛 태그와 권한/입력 보존. [Backend #49](https://github.com/Pubburi/Backend/pull/49)·[Frontend #51](https://github.com/Pubburi/Frontend/pull/51) |
 | F05 · 12-18 | 최근 본 상품 재탐색·삭제/보관 범위, 비회원/계정 저장과 개인정보 정책 명시. | 현재 공개 Product7/세션 계약; FE04·BE04 전체 완료와 독립 | [main 병합·검증 완료](https://github.com/Pubburi/Frontend/pull/37) |
 | F06 · 12-20 | 선택 상품의 가격·도수·주종·확보 특성 비교·선택 해제, 미확인 정보 구분. | F03·F02의 현재 Product7/특성 GET 계약; 전체 엔진 인수와 독립 | [main 병합·검증 완료](https://github.com/Pubburi/Frontend/pull/36) |
-| F07 · 12-26 | 비공개 취향 기록 CRUD·본인 권한, 실제 경험 평가와 관심도 구분. | R01·F04, 비공개 기록 API | 미착수 |
+| F07 · 12-26 | 비공개 취향 기록 CRUD·본인 권한, 실제 경험 평가와 관심도 구분. | R01·F04, [본인 기록 API](https://github.com/Pubburi/Backend/blob/main/docs/NOTEBOOK.md) | 상세 바로 기록·본인 목록/편집·경험/관심 구분 연결. 실제 PostgreSQL 공동 인수·병합은 진행 중이며 전체 기능 완료에 합산하지 않았다. |
 | F08 · 12-28 | 검수한 입문/선물/음식 테마 목록과 상품 연결, 근거 없는 연관 생성 금지. | F03·FE04, 검수 큐레이션 API | 미착수 |
 | F09 · 12-23 | 본인 정보·비밀번호·취향 수정, 세션 갱신/회수와 타 계정 접근 차단. | BE03·R01, 본인 수정 API | [main 병합·검증 완료](https://github.com/Pubburi/Frontend/pull/39) |
 | F10 · 12-17 | 계정 장바구니·로그인 병합·수량/삭제와 병합 정책, 기존 브라우저 보관/주문 보존. | BE03·FE04, 계정 장바구니 API | 미착수 |

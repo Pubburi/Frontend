@@ -289,6 +289,7 @@ export function ProfilePage() {
               <Link className="btn btn-outline-dark" to="/settings">내 계정 설정</Link>
               <Link className="btn btn-outline-dark" to="/preferences">내 취향 설정</Link>
               <Link className="btn btn-outline-dark" to="/favorites">내 찜 목록</Link>
+              <Link className="btn btn-outline-dark" to="/notebook">내 취향 기록</Link>
               <Link className="btn btn-outline-dark" to="/discover">기본 주류 둘러보기</Link>
             </div>
             <button
