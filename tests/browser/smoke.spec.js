@@ -288,6 +288,50 @@ const test = base.extend({
   }, { auto: true }],
 })
 
+test.describe('현재 페이지의 모바일 메뉴', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+  for (const method of ['touch', 'keyboard']) test(`현재 메뉴 ${method} 선택과 같은 URL Back은 메뉴만 닫음`, async ({ page }) => {
+    await page.goto('/products')
+    const input = page.getByLabel('상품 검색', { exact: true })
+    await input.fill('아직 수정 중인 검색')
+    await page.getByLabel('최대 가격(원)', { exact: true }).fill('9000')
+    await page.evaluate(() => window.scrollTo(0, 400))
+    const original = await page.evaluate(() => history.state.key)
+    const toggle = page.getByRole('button', { name: '메뉴 열기', exact: true })
+    const current = page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true })
+    if (method === 'touch') await toggle.tap()
+    else { await toggle.focus(); await toggle.press('Enter'); await current.focus() }
+    const before = await page.evaluate(() => scrollY)
+    if (method === 'touch') await current.tap()
+    else await current.press('Enter')
+    await expect.poll(() => page.evaluate(() => history.state.key)).not.toBe(original)
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(current).toBeHidden()
+    await expect(page).toHaveURL('/products')
+    await expect(input).toHaveValue('아직 수정 중인 검색')
+    await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('9000')
+    expect(await page.evaluate(() => scrollY)).toBe(before)
+
+    const beforeBack = await page.evaluate(() => {
+      const previous = history.state?.key
+      history.pushState({ ...history.state, key: 'mobile-menu-back-entry' }, '', location.href)
+      dispatchEvent(new PopStateEvent('popstate'))
+      return previous
+    })
+    await toggle.tap()
+    await page.goBack()
+    await expect.poll(() => page.evaluate(() => history.state?.key)).toBe(beforeBack)
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(input).toHaveValue('아직 수정 중인 검색')
+    await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('9000')
+
+    await toggle.tap()
+    await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '홈', exact: true }).tap()
+    await expect(page).toHaveURL('/')
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
 test('홈의 전체 둘러보기에서 기존 목록 검색도 그대로 사용할 수 있음', async ({ page, api }, info) => {
   await page.goto('/')
   await page.getByRole('link', { name: '전체 주류 둘러보기', exact: true }).click()
