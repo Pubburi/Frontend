@@ -1003,6 +1003,8 @@ function ProductDetail({ id }: { id: string }) {
           pending={ui.pending['comment-delete']}
           onCancel={() => setDeleting(null)}
           onConfirm={removeReview}
+          fallbackFocus={() => currentAccount.current === account && currentContext.current.locationKey === location.key
+            ? reviewHeading.current : null}
         />
       )}
     </>
