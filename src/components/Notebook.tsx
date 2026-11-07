@@ -12,11 +12,11 @@ import { Confirm, Empty, Pagination } from './ui'
 const authPending = () => ['login', 'join', 'logout', 'settings-password'].some((key) => useUi.getState().pending[key])
 // Retain only HTTP lifetimes through cache/route changes, never private form values.
 const writes = new WeakMap<QueryClient, Map<string, Promise<void>>>()
-type Actor = { user: User; owns: () => boolean; recheck: () => void }
+type Actor = { user: User; ready: boolean; sameActor: () => boolean; owns: () => boolean; recheck: () => void }
 
 function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }) {
   const client = useQueryClient(), location = useLocation()
-  useSession()
+  const session = useSession()
   const pending = useUi((state) => ['login', 'join', 'logout', 'settings-password'].some((key) => state.pending[key]))
   const [attempt, setAttempt] = useState(0)
   const [verified, setVerified] = useState<{ user: User | null; auth: Query; key: string; attempt: number } | null>(null)
@@ -43,15 +43,21 @@ function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }
   }, [client, location.key, pending, attempt])
   const current = !pending && verified?.key === location.key && verified.attempt === attempt &&
     client.getQueryCache().find({ queryKey: ['session'], exact: true }) === verified.auth &&
-    verified.auth.state.data === verified.user && verified.auth.state.status === 'success' && verified.auth.state.fetchStatus === 'idle'
+    (verified.user === null ? verified.auth.state.data === null : (verified.auth.state.data as User | undefined)?.id === verified.user.id)
   if (failed || verified && !current) return <div role="status"><p>내 기록의 로그인 상태를 확인하지 못했습니다.</p><button className="btn btn-outline-dark" onClick={recheck}>기록 로그인 상태 다시 확인</button></div>
   if (!current || !verified) return <p role="status">내 기록의 로그인 상태를 확인하는 중입니다.</p>
   if (!verified.user) return <Link className="btn btn-outline-dark" to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`}>로그인하고 내 기록 남기기</Link>
   const token = active.current
-  const actor: Actor = { user: verified.user, recheck, owns: () => active.current === token &&
-    client.getQueryCache().find({ queryKey: ['session'], exact: true }) === verified.auth && verified.auth.state.data === verified.user &&
-    verified.auth.state.status === 'success' && verified.auth.state.fetchStatus === 'idle' && !authPending() }
-  return <Fragment key={`${location.key}:${attempt}:${verified.user.id}`}>{children(actor)}</Fragment>
+  const sameActor = () => active.current === token && client.getQueryCache().find({ queryKey: ['session'], exact: true }) === verified.auth &&
+    (verified.auth.state.data as User | undefined)?.id === verified.user!.id && !authPending()
+  const ready = verified.auth.state.status === 'success' && verified.auth.state.fetchStatus === 'idle'
+  const actor: Actor = { user: verified.user, ready, sameActor, recheck,
+    owns: () => sameActor() && verified.auth.state.status === 'success' && verified.auth.state.fetchStatus === 'idle' }
+  return <Fragment key={`${location.key}:${attempt}:${verified.user.id}`}>
+    {!ready && <div role="status"><p>{session.isError ? '내 기록의 로그인 상태를 확인하지 못했습니다.' : '내 기록의 로그인 상태를 확인하는 중입니다.'}</p>
+      {session.isError && <button className="btn btn-outline-dark" onClick={() => void session.refetch()}>기록 로그인 상태 다시 확인</button>}</div>}
+    {children(actor)}
+  </Fragment>
 }
 
 export function ProductNotebook({ productId }: { productId: number }) {
@@ -98,6 +104,7 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
   const [message, setMessage] = useState(''), [error, setError] = useState(''), [deleting, setDeleting] = useState(false)
   const alive = useRef(false), form = useRef<HTMLFormElement>(null)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
+  const sameScope = () => alive.current && actor.sameActor()
   const owns = () => alive.current && actor.owns()
   async function write(remove = false) {
     const activeWrites = writes.get(client) ?? new Map<string, Promise<void>>()
@@ -116,13 +123,13 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
         } else result = checkedNotebookEntry(saved ? await api.updateNotebookEntry(actor.user.id, saved.id, saved.version, content!) :
           await api.createNotebookEntry(actor.user.id, productId!, content!), saved ? { id: saved.id } : { productId })
         if (!remove && !result) throw new Error('저장 응답을 확인하지 못했습니다.')
-        if (!owns()) return
+        if (!sameScope()) return
         setNote(result); setDraft((current) => current === submitted ? notebookDraft(result) : current)
         setMessage(remove ? '비공개 기록을 삭제했습니다.' : '비공개 기록을 저장했습니다.')
         void client.invalidateQueries({ queryKey: ['account', actor.user.id, 'notebook'], refetchType: 'none' })
         onChanged?.(result)
       } catch (cause) {
-        if (!owns()) return
+        if (!sameScope()) return
         const status = cause instanceof ApiClientError ? cause.status : 0
         if (status === 401) { setExpired(true); setError('로그인 상태가 바뀌어 내 기록을 표시하지 않았습니다.') }
         else {
@@ -134,12 +141,14 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
         }
       } finally {
         activeWrites.delete(actor.user.id)
-        if (owns()) { setPending(false); setDeleting(false) }
+        if (sameScope()) { setPending(false); setDeleting(false) }
       }
     })()
     activeWrites.set(actor.user.id, promise)
   }
   function submit(event: FormEvent) { event.preventDefault(); void write() }
+  // Keep an owned draft in memory during a read, with no private fields in the DOM.
+  if (!actor.ready) return null
   if (expired) return <ReadFailure error={new ApiClientError({}, 401)} actor={actor} retry={reload} />
   return <>
     {message && <p className="notice success" role="status">{message}</p>}
@@ -187,11 +196,12 @@ function NotebookList({ actor }: { actor: Actor }) {
   const outOfRange = query.isSuccess && page > lastPage
   useEffect(() => { if (query.isSuccess && !query.isFetching && page > lastPage) setSearch({ page: String(lastPage) }, { replace: true }) }, [query.isSuccess, query.isFetching, page, lastPage, setSearch])
   return <section aria-label="비공개 취향 기록 목록"><h2 ref={heading} tabIndex={-1}>저장한 내 기록</h2>
-    <button className="btn btn-outline-dark" disabled={query.isFetching} onClick={() => { setEditing(null); void query.refetch() }}>내 기록 목록 새로고침</button>
+    <button className="btn btn-outline-dark" disabled={!actor.ready || query.isFetching} onClick={() => { setEditing(null); void query.refetch() }}>내 기록 목록 새로고침</button>
     {query.isPending || query.isFetching || outOfRange ? <p role="status">내 기록 목록을 불러오는 중입니다.</p> : query.isError ? <ReadFailure error={query.error} actor={actor} retry={() => void query.refetch()} /> : !query.data.items.length ?
-      <Empty title="아직 저장한 취향 기록이 없습니다"><Link className="btn btn-outline-dark" to="/products">상품을 고르고 내 기록 남기기</Link></Empty> : <>
-        <p className="muted">총 {query.data.total}개 · 목록을 새로 불러오면 최근 수정한 순서로 표시합니다.</p>
-        <div className="notebook-list">{query.data.items.map((note) => <article className="notebook-card settings-card" key={note.id}>
+      actor.ready && <Empty title="아직 저장한 취향 기록이 없습니다"><Link className="btn btn-outline-dark" to="/products">상품을 고르고 내 기록 남기기</Link></Empty> : <>
+        {actor.ready && <p className="muted">총 {query.data.total}개 · 목록을 새로 불러오면 최근 수정한 순서로 표시합니다.</p>}
+        <div className="notebook-list">{query.data.items.filter((note) => actor.ready || editing === note.id).map((note) => <article className="notebook-card settings-card" key={note.id}>
+          {actor.ready && <>
           <h3>{note.productName}</h3><span className="badge">{note.experience === 'TRIED' ? '직접 마셔봄 · 경험 기록' : '아직 마시지 않음 · 관심 기록'}</span>
           {note.currentProduct && note.productId !== null ? <Link className="text-link" to={`/products/${note.productId}`}>현재 상품 보기 · {note.currentProduct.name}</Link> : <p className="muted">삭제된 상품 · 기록은 남아 있습니다.</p>}
           {note.experience === 'TRIED' && <><p>나의 평점 {note.rating === null ? '미평가' : `${note.rating}점`}</p>
@@ -199,12 +209,13 @@ function NotebookList({ actor }: { actor: Actor }) {
               {note[key] === null ? <p>미기록</p> : !note[key].length ? <p>기록할 태그 없음</p> : <ul className="product-feature-tags notebook-tags">{note[key].map((tag, index) => <li key={index}>{tag}</li>)}</ul>}</div>)}</>}
           <p className="notebook-memo">{note.memo || '메모 없음'}</p><small>수정 {new Date(note.updatedAt).toLocaleString('ko-KR')}</small>
           <button className="btn btn-outline-dark" aria-expanded={editing === note.id} onClick={() => setEditing(editing === note.id ? null : note.id)}>{editing === note.id ? '기록 편집 닫기' : '내 기록 편집'}</button>
+          </>}
           {editing === note.id && <NotebookEditor actor={actor} entryId={note.id} onChanged={(entry) => {
             if (!entry) { void query.refetch(); return }
             client.setQueryData<Page<NotebookEntry>>(listKey, (data) => data ? { ...data, items: data.items.map((item) => item.id === entry.id ? entry : item) } : data)
           }} fallbackFocus={() => heading.current} />}
         </article>)}</div>
-        <Pagination page={query.data} onChange={(next) => { setEditing(null); setSearch({ page: String(next) }) }} />
+        {actor.ready && <Pagination page={query.data} onChange={(next) => { setEditing(null); setSearch({ page: String(next) }) }} />}
       </>}
   </section>
 }
