@@ -96,6 +96,61 @@ async function localCart(page, quantity = 2) { await page.addInitScript(({ p, qu
 async function nav(page, name) { const link = name === '로그인' ? page.getByRole('link', { name, exact: true }) : page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name }); const menu = page.getByRole('button', { name: '메뉴 열기', exact: true }); if (!await link.isVisible() && await menu.isVisible()) await menu.click(); await link.click() }
 function gate() { let release; const promise = new Promise((resolve) => { release = resolve }); return { promise, release } }
 async function signIn(page, id) { await nav(page, '로그인'); await page.getByLabel('아이디', { exact: true }).fill(id); await page.getByLabel('비밀번호', { exact: true }).fill('fixture'); await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click(); await expect(page.locator('.user-name')).toHaveText(`${user(id).name}님`) }
+const badge = (page) => page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: /장바구니/ }).locator('.cart-count')
+
+for (const path of ['/', '/products']) test(`헤더 수량 ${path} cold/reload는 저장된수량을 카트 방문없이 표시`, async ({ page, cartApi: s }, info) => {
+  s.carts.member = { version: 3, items: [row(7, 4)] }; await page.goto(path); await expect(page.locator('.user-name')).toBeVisible()
+  await expect(badge(page)).toHaveText('4')
+  await info.attach('cold-header-count.json', { body: JSON.stringify({ path, serverQuantity: 4, visibleBadges: await badge(page).count(), cartReads: s.calls.filter((call) => call.path === '/api/users/me/cart').length }), contentType: 'application/json' })
+  expect(s.calls.filter((call) => call.path === '/api/users/me/cart')).toHaveLength(1)
+  s.carts.member = { version: 4, items: [row(7, 6)] }; await page.reload(); await expect(badge(page)).toHaveText('6')
+  expect(s.calls.filter((call) => call.path === '/api/users/me/cart')).toHaveLength(2)
+  expect(s.calls.filter((call) => call.path === '/api/users/me/cart').every((call) => call.owner === 'member')).toBe(true)
+})
+for (const path of ['/', '/products']) test(`헤더 수량 ${path} cold 로그인 직후에도 계정 카트를 읽음`, async ({ page, cartApi: s }) => {
+  s.user = null; s.carts.member = { version: 3, items: [row(7, 4)] }; await page.goto('/account?' + new URLSearchParams({ redirect: path }))
+  expect(s.calls.filter((call) => call.path === '/api/users/me/cart')).toHaveLength(0)
+  await page.getByLabel('아이디', { exact: true }).fill('member'); await page.getByLabel('비밀번호', { exact: true }).fill('fixture'); await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+  await expect(page).toHaveURL(path); await expect(badge(page)).toHaveText('4')
+  expect(s.calls.filter((call) => call.path.startsWith('/api/users/me/cart') && call.method !== 'GET')).toEqual([])
+})
+test('헤더 수량은 초기 인증 권위 확인 전에는 조회하거나 표시하지 않음', async ({ page, cartApi: s }) => {
+  s.carts.member = { version: 3, items: [row(7, 4)] }; const g = gate(); let started = false
+  await page.route('**/api/auth/me', async (route) => { started = true; await g.promise; await route.fallback() })
+  try {
+    await page.goto('/'); await expect.poll(() => started).toBe(true); await expect(badge(page)).toHaveCount(0); expect(s.calls.filter((call) => call.path === '/api/users/me/cart')).toHaveLength(0)
+    g.release(); await expect(badge(page)).toHaveText('4')
+  } finally { g.release() }
+})
+for (const path of ['/', '/products']) for (const status of [401, 503]) test(`헤더 수량 ${path} cartGET${status}는 개인수를 표시하거나 기기로 대체하지 않음`, async ({ page, cartApi: s }) => {
+  s.carts.member = { version: 3, items: [row(7, 4)] }; s.readStatus = status
+  const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/users/me/cart')
+  await page.goto(path); expect((await response).status()).toBe(status); await expect(badge(page)).toHaveCount(0)
+  expect(s.calls.filter((call) => call.path.startsWith('/api/users/me/cart') && call.method !== 'GET')).toEqual([])
+  expect(await page.evaluate(() => localStorage.getItem('pubburi-cart'))).toBeNull()
+})
+test('헤더 수량은 A→B 로그인 전환 중 A 수를 차폐하고 B 결과만 표시', async ({ page, cartApi: s }) => {
+  s.carts.member = { version: 3, items: [row(7, 4)] }; s.carts.other = { version: 1, items: [row(8, 2)] }; await page.goto('/'); await expect(badge(page)).toHaveText('4')
+  const logout = gate(), next = gate(); let started = false
+  await page.route('**/api/auth/logout', async (route) => { started = true; await logout.promise; await route.fallback() })
+  await page.route('**/api/users/me/cart', async (route) => { if (route.request().headers()['x-pubburi-account-owner'] === 'other') await next.promise; await route.fallback() })
+  try {
+    await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect.poll(() => started).toBe(true); await expect(badge(page)).toHaveCount(0)
+    logout.release(); await signIn(page, 'other'); await expect(badge(page)).toHaveCount(0); next.release(); await expect(badge(page)).toHaveText('2')
+  } finally { logout.release(); next.release() }
+})
+for (const status of [200, 401]) test(`헤더의 이전 A cartGET${status}는 현재 B 수량을 덮지 않음`, async ({ page, cartApi: s }) => {
+  s.carts.member = { version: 3, items: [row(7, 4)] }; s.carts.other = { version: 1, items: [row(8, 2)] }; const g = gate(); let started = false
+  await page.route('**/api/users/me/cart', async (route) => {
+    if (route.request().headers()['x-pubburi-account-owner'] !== 'member') return route.fallback()
+    started = true; await g.promise; await route.fulfill({ status, json: status === 200 ? ok({ version: 3, items: [row(7, 4)] }) : bad('UNAUTHORIZED') })
+  })
+  try {
+    await page.goto('/'); await expect.poll(() => started).toBe(true); await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await signIn(page, 'other'); await expect(badge(page)).toHaveText('2')
+    const settled = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/users/me/cart' && r.request().headers()['x-pubburi-account-owner'] === 'member')
+    g.release(); await (await settled).finished(); await expect(badge(page)).toHaveText('2'); await expect(page.getByText('로그인 상태가 바뀌어 계정 장바구니를 표시하지 않았습니다.', { exact: true })).toHaveCount(0)
+  } finally { g.release() }
+})
 
 for (const width of [1280, 390]) test(`F10 ${width}px 명시 병합·현재0원·수량키보드·데모주문과 계정격리`, async ({ page, cartApi: s }) => {
   await page.setViewportSize({ width, height: 900 }); await localCart(page)
@@ -181,9 +236,10 @@ test('ABA 복귀의 읽기전용 receipt는 적용된 병합을 다시 합산하
 for (const receiptExists of [true, false]) test(`다시 로그인한 주문 receipt ${receiptExists ? '있음' : '없음·재가입'}은 자동POST/이동 없이 확인하고 새폼 보존`, async ({ page, cartApi: s }) => {
   s.carts.member = { version: 1, items: [row(8, 2)] }; s.lost = 'checkout'
   await page.goto('/cart'); await page.getByLabel('테이블·요청 사항', { exact: true }).fill('이전 요청'); await page.getByRole('button', { name: '10,000원 주문하기', exact: true }).click(); await expect(page.getByRole('button', { name: '같은 작업 결과 확인', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await signIn(page, 'member')
+  await page.getByRole('button', { name: '로그아웃', exact: true }).click()
   if (!receiptExists) { s.receipts.clear(); s.carts.member = { version: 0, items: [row(7, 1)] } }
   else { s.carts.member.items = [row(7, 1)]; s.carts.member.version++ }
+  await signIn(page, 'member')
   await nav(page, /장바구니/); await expect(page.getByRole('button', { name: '이전 작업 결과 조회', exact: true })).toBeVisible(); await page.getByLabel('테이블·요청 사항', { exact: true }).fill('새 로그인 요청')
   await page.getByRole('button', { name: '이전 작업 결과 조회', exact: true }).click(); await expect(page.getByRole('button', { name: '이전 작업 결과 조회', exact: true })).toHaveCount(0)
   if (!receiptExists) {

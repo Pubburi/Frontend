@@ -26,6 +26,7 @@ const test = base.extend({
     page.on('pageerror', (e) => s.errors.push(e.message))
     context.on('page', (target) => target.on('pageerror', (e) => s.errors.push(e.message)))
     await context.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const r = route.request(), url = new URL(r.url()), path = url.pathname.slice(4), method = r.method()
       const payload = method === 'POST' && r.postData() ? r.postDataJSON() : null
       s.calls.push({ path, method, query: [...url.searchParams], ...(path === '/users/me/search-phrases' ? { payload } : {}) })

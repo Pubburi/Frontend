@@ -71,7 +71,7 @@ function Guard({
 export function App() {
   const session = useSession()
   const cart = useCart()
-  const accountCart = useAccountCart()
+  const accountCart = useAccountCart(true)
   const cartCount = accountCart.mode === 'account' && !accountCart.legacy
     ? accountCart.ready && !accountCart.error && !accountCart.loading ? accountCart.data?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0 : 0
     : cartTotals(cart.items).count

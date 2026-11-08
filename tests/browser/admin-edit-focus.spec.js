@@ -15,6 +15,7 @@ const test = base.extend({
     s.hold = (path, data, status = 200) => { let release; const wait = new Promise((resolve) => { release = resolve }); const gate = { path, data: structuredClone(data), status, wait, release, started: false }; s.gates.push(gate); return gate }
     page.on('pageerror', (error) => s.errors.push(error.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const request = route.request(), path = new URL(request.url()).pathname.slice(4), method = request.method(); s.calls.push({ path, method })
       let data, status = 200
       if (method === 'GET' && path === '/auth/me') { data = s.user; status = s.user ? 200 : 401 }
