@@ -729,7 +729,7 @@ function ProductDetail({ id }: { id: string }) {
     <>
       <section className="view detail-layout">
         <div className="detail-media">
-          <Image src={productImage(item)} alt={item.name} loading="eager" />
+          <Image src={productImage(item)} alt={item.name} loading="eager" product />
         </div>
         <div className="detail-panel">
           <div className="detail-copy">

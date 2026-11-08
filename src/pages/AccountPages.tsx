@@ -106,6 +106,7 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
                   <Image
                     src={productImage(item.product)}
                     alt={item.product.name}
+                    product
                   />
                 </Link>
                 <div className="cart-product-copy">

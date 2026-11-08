@@ -25,7 +25,7 @@ interface ContextResult {
   fallback_reason: keyof typeof contextFallbacks | null
 }
 export interface CartContextResponse {
-  source: 'PROVIDER' | 'UNAVAILABLE'; catalogScope: 'REVIEWED_DEMO'; cartVersion: number
+  source: 'PROVIDER' | 'UNAVAILABLE'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_LOCAL_CATALOG'; cartVersion: number
   references: ContextReference[]; unavailableReason: keyof typeof contextUnavailable | null
   result: ContextResult | null; products: Product[]
 }
@@ -37,7 +37,7 @@ const text = (value: unknown): value is string => typeof value === 'string' && !
 
 // Consume current products and typed display facts, never reconstruct rankings or catalog authority.
 export function checkedCartContext(value: unknown, cart: AccountCart): CartContextResponse {
-  need(object(value) && Object.keys(value).length === 7 && value.catalogScope === 'REVIEWED_DEMO' && value.cartVersion === cart.version &&
+  need(object(value) && Object.keys(value).length === 7 && (value.catalogScope === 'REVIEWED_DEMO' || value.catalogScope === 'REVIEWED_LOCAL_CATALOG') && value.cartVersion === cart.version &&
     Array.isArray(value.references) && value.references.length === cart.items.length && Array.isArray(value.products))
   const refs = new Set<number>()
   value.references.forEach((ref, index) => {

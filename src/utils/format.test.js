@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { productImage, webpSource } from './format'
 
 describe('format utilities', () => {
-  it('prefers webp product image paths', () => {
-    expect(productImage({ img: 'takju1.png' })).toBe('/images/pub/takju1.webp')
-    expect(productImage({ img: '/images/category/탁주.png' })).toBe('/images/category/탁주.webp')
+  it('keeps original product paths so picture can recover after a failed WebP', () => {
+    expect(productImage({ img: 'takju1.png' })).toBe('/images/pub/takju1.png')
+    expect(productImage({ img: '/images/category/탁주.png' })).toBe('/images/category/탁주.png')
   })
 
   it('keeps existing webp paths and falls back to webp icon', () => {

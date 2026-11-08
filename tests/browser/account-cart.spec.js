@@ -357,6 +357,18 @@ function unavailableContext(cart, reason, state = 'READY') {
 }
 test.describe('R07 cart-only context consumer', () => {
   test.beforeEach(async ({ cartApi: s }) => { s.carts.member = { version: 3, items: [row(7, 2)] }; s.products.push(contextProduct) })
+  test('로컬 검수 비교는 시연 가격·현재 링크·기준과 3자리 점수를 표시', async ({ page, cartApi: s }) => {
+    s.contextResponse = (cart) => { const value = contextReply(cart); value.catalogScope = 'REVIEWED_LOCAL_CATALOG'; return value }
+    await page.setViewportSize({ width: 390, height: 900 }); await page.goto('/cart'); expect(contextCalls(s)).toEqual([]); await compareCart(page).press('Enter'); await expect(contextCards(page)).toHaveCount(1)
+    await expect(contextRegion(page).locator('.eyebrow')).toHaveText('검수 로컬 상품'); await expect(contextCards(page)).toContainText('시연 가격 0원'); await expect(contextCards(page)).toContainText('비교 점수 0.7'); await expect(contextCards(page)).toContainText('기준 상품 ‘카트 표본 7’'); await expect(contextCards(page).getByRole('link')).toHaveAttribute('href', '/products/9')
+    await contextRegion(page).getByText('추천 기준 안내', { exact: true }).click(); await expect(contextRegion(page).getByText(/가격은 시연용이며/)).toBeVisible(); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
+  test('로컬 scope의 장애와 잘못된 scope는 옛카드 없이 카트/주문 입력을 보존', async ({ page, cartApi: s }) => {
+    s.contextResponse = (cart) => { const value = contextReply(cart); value.catalogScope = 'REVIEWED_LOCAL_CATALOG'; return value }
+    await page.goto('/cart'); await compareCart(page).click(); await expect(contextCards(page)).toHaveCount(1); await own(page).getByRole('spinbutton').fill('3'); await page.getByLabel('테이블·요청 사항', { exact: true }).fill('로컬 요청 원문')
+    s.contextResponse = (cart) => { const value = contextReply(cart); value.catalogScope = 'LOCAL_CATALOG'; return value }; await compareCart(page).click(); await expect(contextRegion(page).getByRole('heading', { name: '상품 비교를 가져오지 못했습니다', exact: true })).toBeVisible(); await expect(contextCards(page)).toHaveCount(0)
+    s.contextResponse = (cart) => { const value = unavailableContext(cart, 'PROVIDER_UNAVAILABLE'); value.catalogScope = 'REVIEWED_LOCAL_CATALOG'; return value }; await compareCart(page).click(); await expect(contextRegion(page).getByRole('heading', { name: '이 장바구니를 비교하지 못했습니다', exact: true })).toBeVisible(); await expect(contextRegion(page).locator('.eyebrow')).toHaveText('검수 로컬 상품'); await expect(contextCards(page)).toHaveCount(0); await expect(own(page).getByRole('spinbutton')).toHaveValue('3'); await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('로컬 요청 원문'); expect(s.calls.filter((c) => c.path === '/api/recommendations/default')).toEqual([])
+  })
   for (const [score, display] of [[0.6984126984126984, '0.698'], [0.0000004, '<0.001']]) test(`비교점수 ${score}는간결히표시하고원값/후보순서보존`, async ({ page, cartApi: s }) => {
     s.contextResponse = (cart) => {
       const value = contextReply(cart), item = value.result.items[0]; item.score = score

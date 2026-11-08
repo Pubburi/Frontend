@@ -1,7 +1,7 @@
 export function productImage(product) {
   if (!product?.img) return '/images/icon/mainIcon.webp'
   const src = product.img.startsWith('/') ? product.img : `/images/pub/${product.img}`
-  return webpSource(src) || src
+  return src
 }
 
 export function webpSource(src) {
