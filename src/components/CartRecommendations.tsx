@@ -100,7 +100,7 @@ function ContextResults({ response }: { response: CartContextResponse }) {
         return <li className="content-card" key={item.product_id} data-cart-context-product={item.product_id}>
           <h3><Link className="text-link" to={`/products/${product.id}`}>{product.name}</Link></h3>
           <p>{product.type} · 현재 표시 가격 {money(product.price)}원 · 도수 {product.abv}%</p>
-          <p>비교 점수 {item.score}</p>
+          <p>비교 점수 {item.score < 0.001 ? '<0.001' : item.score.toLocaleString('ko-KR', { maximumFractionDigits: 3 })}</p>
           <p>이 후보는 기준 상품 ‘{reference.name}’의 특성과 비교했습니다.</p>
           <h4>비교에 사용한 실제 근거</h4><ul>{facts.score_evidence.map((fact, i) => <li key={i}>
             {fact.label}: 후보 {fact.actual_value}{fact.unit ? ` ${fact.unit}` : ''} / 기준 상품 {fact.target_value}{fact.unit ? ` ${fact.unit}` : ''}

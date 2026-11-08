@@ -357,6 +357,21 @@ function unavailableContext(cart, reason, state = 'READY') {
 }
 test.describe('R07 cart-only context consumer', () => {
   test.beforeEach(async ({ cartApi: s }) => { s.carts.member = { version: 3, items: [row(7, 2)] }; s.products.push(contextProduct) })
+  for (const [score, display] of [[0.6984126984126984, '0.698'], [0.0000004, '<0.001']]) test(`비교점수 ${score}는간결히표시하고원값/후보순서보존`, async ({ page, cartApi: s }) => {
+    s.contextResponse = (cart) => {
+      const value = contextReply(cart), item = value.result.items[0]; item.score = score
+      item.contributions = [{ component: 'text', feature: 'category:탁주', contribution: score }]
+      Object.assign(item.explanation, { total_positive_contributions: 1, score_evidence: [{ kind: 'category_match', label: '주종 일치', actual_value: '탁주', target_value: '탁주', contribution: score }] })
+      const next = structuredClone(item); next.product_id = 10; next.score = score / 2; next.contributions[0].contribution = score / 2; next.explanation.score_evidence[0].contribution = score / 2
+      value.products.push(product(10)); value.result.eligible_count = 2; value.result.matches.push({ product_id: 10, reference_product_id: 7 }); value.result.items.push(next); return value
+    }
+    await page.setViewportSize({ width: 390, height: 900 }); await page.goto('/cart')
+    const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/users/me/cart/recommendations'); await compareCart(page).click()
+    const raw = (await (await response).json()).data; expect(raw.result.items.map((item) => item.score)).toEqual([score, score / 2])
+    await expect(contextCards(page)).toHaveCount(2); expect(await contextCards(page).evaluateAll((cards) => cards.map((card) => Number(card.dataset.cartContextProduct)))).toEqual(raw.result.items.map((item) => item.product_id))
+    await expect(contextCards(page).first().getByText(`비교 점수 ${display}`, { exact: true })).toBeVisible(); await expect(contextCards(page).first().getByText(`비교 점수 ${score}`, { exact: true })).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
   for (const width of [1280, 390]) test(`명시비교·실제승자/단위·현재0원·상품상세/Back과키보드 ${width}`, async ({ page, cartApi: s }, info) => {
     await page.setViewportSize({ width, height: 900 }); await page.goto('/cart'); await expect(contextRegion(page)).toBeVisible(); expect(contextCalls(s)).toEqual([])
     await compareCart(page).focus(); await page.keyboard.press('Enter'); await expect(contextCards(page)).toHaveCount(1); await expect(compareCart(page)).toBeFocused()
