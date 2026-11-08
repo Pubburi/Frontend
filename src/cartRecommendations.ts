@@ -19,7 +19,7 @@ export const contextFallbacks = {
 } as const
 export const referenceStates = { READY: '비교 가능', DELETED: '삭제된 상품', UNREVIEWED: '검수 대상 아님', UNAVAILABLE: '비교 불가', CATALOG_UNAVAILABLE: '검수 카탈로그 미확인' } as const
 export interface ContextReference { productId: number; name: string | null; quantity: number; state: keyof typeof referenceStates }
-interface ContextResult {
+export interface ContextResult {
   items: ContentItem[]
   matches: { product_id: number; reference_product_id: number }[]
   fallback_reason: keyof typeof contextFallbacks | null
@@ -55,6 +55,13 @@ export function checkedCartContext(value: unknown, cart: AccountCart): CartConte
     return value as unknown as CartContextResponse
   }
   need(value.source === 'PROVIDER' && value.unavailableReason === null && refs.size > 0 && refs.size <= 20 && value.references.every((ref) => ref.state === 'READY'))
+  checkContextProducts(value, refs)
+  return value as unknown as CartContextResponse
+}
+
+// The cart and own-order endpoints share one provider result contract.
+export function checkContextProducts(value: Record<string, unknown>, refs: Set<number>) {
+  need(Array.isArray(value.products))
   const result = value.result
   need(object(result) && result.algorithm === 'b1-tfidf-minmax-v1' && result.aggregation_algorithm === 'r07-max-reference-v1' &&
     result.fit_scope === 'request_catalog' && result.profile_source === 'explicit_context_product_facts' && result.reference_group_policy === 'exclude_all_known_reference_groups' &&
@@ -96,5 +103,4 @@ export function checkedCartContext(value: unknown, cart: AccountCart): CartConte
         need(number(fact.actual_value, max) && (fact.minimum === null || number(fact.minimum, max)) && (fact.maximum === null || number(fact.maximum, max)) && fact.unit === (price ? 'KRW' : 'vol%')) }
     }
   })
-  return value as unknown as CartContextResponse
 }

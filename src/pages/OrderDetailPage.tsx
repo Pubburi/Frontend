@@ -8,6 +8,7 @@ import { orderPrivacy } from '../state/authReadPrivacy'
 import { parseOrderId, demoOrderStatus } from '../orders'
 import { Empty, Loading } from '../components/ui'
 import { OrderLines, orderMoney } from '../components/OrderLines'
+import { OrderRecommendations } from '../components/OrderRecommendations'
 import { orderType } from '../utils/format'
 import type { Order, User } from '../types'
 
@@ -70,8 +71,13 @@ function OwnedOrder({ id, user, auth }: { id: number; user: User; auth: Query })
     refetchOnReconnect: false,
   })
   const currentQuery = client.getQueryCache().find({ queryKey: key, exact: true })
-  const expired = failures.some((failure) => failure.auth === auth && failure.query === currentQuery)
+  const expired = failures.some((failure) => failure.auth === auth && (failure.query === currentQuery || key.every((value, index) => failure.query.queryKey[index] === value)))
   const busy = query.isPending || query.fetchStatus !== 'idle'
+  function ownsOrder(order: Order) {
+    const state = currentQuery?.state
+    return ownsActor() && !expired && auth.state.fetchStatus === 'idle' && state?.status === 'success' && state.fetchStatus === 'idle' &&
+      (state.data as { order: Order } | undefined)?.order === order && order.userId === user.id
+  }
   function loginAgain() {
     if (!ownsActor() || session.fetchStatus !== 'idle' || query.fetchStatus !== 'idle') return
     client.clear(); client.setQueryData(['session'], null)
@@ -91,5 +97,6 @@ function OwnedOrder({ id, user, auth }: { id: number; user: User; auth: Query })
         <p className="muted">상태는 마지막 조회 기준입니다. 데모 처리 완료는 실제 결제·상품 준비·배송 완료를 뜻하지 않습니다.</p>
         {query.data.admin && <p><span className="muted">주문 회원: {query.data.order.userId ?? '탈퇴한 회원'}</span> <Link className="text-link" to="/admin?tab=orders">관리자 주문 목록</Link></p>}
       </> : null}
+    <OrderRecommendations owner={user.id} queryKey={key} ownsOrder={ownsOrder} order={!expired && !busy && query.isSuccess && ownsOrder(query.data.order) ? query.data.order : null} />
   </OrderShell>
 }
