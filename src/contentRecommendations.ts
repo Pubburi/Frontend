@@ -10,7 +10,7 @@ export const contentReasons = {
   deterministic_baseline: '비교 근거가 부족해 정해진 기본순으로 표시',
 } as const
 export const contentFallbacks = {
-  no_eligible_products: '저장한 필수 조건을 충족하는 검수 DEMO 후보가 없습니다. 조건을 완화하지 않았습니다.',
+  no_eligible_products: '저장한 필수 조건을 충족하는 검수 후보가 없습니다. 조건을 완화하지 않았습니다.',
   no_supported_preferences: '검수 후보와 비교할 수 있는 선호가 없어 기본순으로 표시합니다.',
   no_matching_features: '검수 후보와 공유하는 취향 근거가 없어 기본순으로 표시합니다.',
 } as const
@@ -57,9 +57,9 @@ interface FeedbackEvidence {
   excludedNotInterestedCount: number
   positiveReferences: { productId: number; name: string }[]
 }
-export type ContentResponse = { source: 'UNAVAILABLE'; catalogScope: 'REVIEWED_DEMO'; result: null; products: [] } |
-  { source: 'PROVIDER'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_FAMILY_BROWSE_DEMO'; result: { items: ContentItem[]; fallback_reason: keyof typeof contentFallbacks | null }; products: Product[]; activityEvidence?: ActivityEvidence; feedbackEvidence?: FeedbackEvidence }
-function need(value: unknown): asserts value { if (!value) throw new Error('검수 DEMO 추천 응답을 확인하지 못했습니다.') }
+export type ContentResponse = { source: 'UNAVAILABLE'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_LOCAL_CATALOG'; result: null; products: [] } |
+  { source: 'PROVIDER'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_FAMILY_BROWSE_DEMO' | 'REVIEWED_LOCAL_CATALOG'; result: { items: ContentItem[]; fallback_reason: keyof typeof contentFallbacks | null }; products: Product[]; activityEvidence?: ActivityEvidence; feedbackEvidence?: FeedbackEvidence }
+function need(value: unknown): asserts value { if (!value) throw new Error('검수 추천 응답을 확인하지 못했습니다.') }
 function object(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)) }
 function number(value: unknown, max: number): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max }
 function integer(value: unknown, max: number): value is number { return number(value, max) && Number.isInteger(value) }
@@ -74,10 +74,10 @@ export function parseContentResponse(value: unknown): ContentResponse {
   const hasFeedback = Object.hasOwn(value, 'feedbackEvidence')
   need(Object.keys(value).length === 4 + Number(hasActivity) + Number(hasFeedback) && ['source', 'catalogScope', 'products', 'result'].every((key) => Object.hasOwn(value, key)))
   if (value.source === 'UNAVAILABLE') {
-    need(!hasActivity && !hasFeedback && value.catalogScope === 'REVIEWED_DEMO' && value.result === null && value.products.length === 0)
+    need(!hasActivity && !hasFeedback && (value.catalogScope === 'REVIEWED_DEMO' || value.catalogScope === 'REVIEWED_LOCAL_CATALOG') && value.result === null && value.products.length === 0)
     return value as unknown as ContentResponse
   }
-  need(value.source === 'PROVIDER' && (value.catalogScope === 'REVIEWED_DEMO' || value.catalogScope === 'REVIEWED_FAMILY_BROWSE_DEMO'))
+  need(value.source === 'PROVIDER' && (value.catalogScope === 'REVIEWED_DEMO' || value.catalogScope === 'REVIEWED_FAMILY_BROWSE_DEMO' || value.catalogScope === 'REVIEWED_LOCAL_CATALOG'))
   const result = value.result
   need(object(result) && result.algorithm === 'b1-tfidf-minmax-v1' && result.fit_scope === 'request_catalog' &&
     typeof result.representation_fitted === 'boolean' && (result.model_fingerprint === null || typeof result.model_fingerprint === 'string' && /^[a-f0-9]{64}$/.test(result.model_fingerprint)))
@@ -88,7 +88,7 @@ export function parseContentResponse(value: unknown): ContentResponse {
   let positiveOnly = false
   if (hasFeedback) {
     const evidence = value.feedbackEvidence
-    need(value.catalogScope === 'REVIEWED_DEMO' && object(evidence) && Object.keys(evidence).length === 3 &&
+    need((value.catalogScope === 'REVIEWED_DEMO' || value.catalogScope === 'REVIEWED_LOCAL_CATALOG') && object(evidence) && Object.keys(evidence).length === 3 &&
       (evidence.rankingMode === 'positive_feedback' || evidence.rankingMode === 'profile_fallback') &&
       integer(evidence.excludedNotInterestedCount, 1000) && Array.isArray(evidence.positiveReferences) &&
       evidence.positiveReferences.length <= result.items.length)

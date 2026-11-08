@@ -33,6 +33,22 @@ function feedbackWire() {
   return { ...value, feedbackEvidence: { rankingMode: 'positive_feedback', excludedNotInterestedCount: 2, positiveReferences: [{ productId: 13, name: '맞음으로 표시한 상품' }] } }
 }
 describe('owned content typed display boundary', () => {
+  it('accepts local catalog facts and feedback without changing raw scores or product IDs', () => {
+    for (const value of [wire(), feedbackWire(), activityWire()]) {
+      value.catalogScope = 'REVIEWED_LOCAL_CATALOG'
+      value.result.items[0].score = 0.6984126984126984
+      expect(parseContentResponse(value)).toBe(value)
+      expect(value.result.items[0].score).toBe(0.6984126984126984)
+      expect(value.products[0].id).toBe(7)
+    }
+    expect(parseContentResponse({ source: 'UNAVAILABLE', catalogScope: 'REVIEWED_LOCAL_CATALOG', products: [], result: null }).source).toBe('UNAVAILABLE')
+  })
+  it('still rejects unknown scopes and mismatched local products or winning references', () => {
+    for (const mutate of [(v: ReturnType<typeof feedbackWire>) => { v.catalogScope = 'LOCAL_CATALOG' }, (v: ReturnType<typeof feedbackWire>) => { v.products[0].id = 8 }, (v: ReturnType<typeof feedbackWire>) => { v.feedbackEvidence.positiveReferences[0].productId = 14 }]) {
+      const value = feedbackWire(); value.catalogScope = 'REVIEWED_LOCAL_CATALOG'; mutate(value)
+      expect(() => parseContentResponse(value)).toThrow()
+    }
+  })
   it('keeps ordered current Product7, real0 and comma/newline atoms without transforming the provider', () => {
     const value = wire()
     expect(parseContentResponse(value)).toBe(value)

@@ -13,7 +13,7 @@ const owners = new WeakMap<object, number>()
 let nextOwner = 0
 let nextView = 0
 const authPending = () => ['login', 'join', 'logout', 'settings-password'].some((key) => useUi.getState().pending[key])
-const requestLabel = '검수 DEMO 추천 보기'
+const requestLabel = '취향 추천 보기'
 
 export function ContentRecommendations() {
   const session = useSession()
@@ -24,7 +24,7 @@ export function ContentRecommendations() {
   if (auth && !owners.has(auth)) owners.set(auth, ++nextOwner)
   return <section className="content-recommendations section-band" aria-labelledby="content-recommendations-title">
     <h2 id="content-recommendations-title">내 취향 추천</h2>
-    <p>저장한 취향과 검수 DEMO 후보를 비교합니다. 선호 주종을 아직 설정하지 않았다면 찜한 검수 상품과 상품별 최신 후기가 4점 이상인 검수 상품의 주종을 참고할 수 있습니다.</p>
+    <p>저장한 취향과 검수한 상품 특성을 비교합니다.</p>
     {transitioning || session.isPending || session.fetchStatus !== 'idle' ? <p role="status">현재 로그인 상태를 확인하는 중입니다.</p> : session.isError ?
       <><p role="status">로그인 상태를 확인하지 못했습니다.</p><button className="btn btn-outline-dark" onClick={() => session.refetch()}>추천 로그인 상태 다시 확인</button></> :
       !session.data ? <Link className="btn btn-dark" to="/account?redirect=/">로그인하고 취향 추천 보기</Link> : auth ?
@@ -87,7 +87,7 @@ function OwnedContentRecommendations({ user, auth }: { user: User; auth: Query }
     {submitted === null ? null : busy ? <p role="status">현재 취향 추천을 확인하는 중입니다.</p> : expired ?
       <Empty title="추천을 보려면 다시 로그인해 주세요" description="로그인 상태가 바뀌어 이전 추천은 표시하지 않았습니다."><button className="btn btn-dark" onClick={loginAgain}>추천 다시 로그인</button></Empty> : query.isError ?
         <Empty title={status === 409 ? '취향이나 검수 후보가 변경되었습니다' : status === 400 ? '추천 조건을 확인해 주세요' : '추천을 가져오지 못했습니다'} description={status === 409 ? '현재 취향과 피드백으로 추천 보기를 다시 선택해 주세요.' : status === 400 ? '저장한 취향을 확인하거나 추천 보기를 다시 선택해 주세요.' : '잠시 후 추천 보기를 다시 선택해 주세요. 기본 목록은 별도로 볼 수 있습니다.'} /> :
-        query.data?.source === 'UNAVAILABLE' ? <Empty title="검수 DEMO 추천을 준비하지 못했습니다" description="현재 추천을 제공할 수 없습니다. 다시 요청하거나 별도의 기본 목록을 이용해 주세요." /> : query.data?.source === 'PROVIDER' ? <ContentResults response={query.data} /> : null}
+        query.data?.source === 'UNAVAILABLE' ? <Empty title="취향 추천을 준비하지 못했습니다" description="현재 추천을 제공할 수 없습니다. 다시 요청하거나 별도의 기본 목록을 이용해 주세요." /> : query.data?.source === 'PROVIDER' ? <ContentResults response={query.data} /> : null}
   </>
 }
 function FilterText({ fact }: { fact: FilterFact }) {
@@ -106,26 +106,27 @@ function ScoreText({ fact, category, activity, reference }: { fact: ScoreFact; c
 }
 function ContentResults({ response }: { response: Extract<ContentResponse, { source: 'PROVIDER' }> }) {
   const family = response.catalogScope === 'REVIEWED_FAMILY_BROWSE_DEMO'
+  const local = response.catalogScope === 'REVIEWED_LOCAL_CATALOG'
   const feedback = response.feedbackEvidence
   const fallback = response.result.fallback_reason
   const noSharedFeedback = feedback?.rankingMode === 'positive_feedback' && fallback === 'no_matching_features'
   return <div className="content-results">
-    <p className="eyebrow">{family ? '검수 상품군 DEMO · 열람 전용' : '검수 상품 DEMO · 열람 전용'}</p>
-    <p>{family ? '특정 용량·판매 상품이 아닌 열람용 상품군입니다. 용량은 미확인입니다.' : '검수용 표본 정보이며 실제 판매·재고를 보장하지 않습니다.'} 비교 점수는 만족 확률이 아닙니다.</p>
+    <p className="eyebrow">{local ? '검수 로컬 상품' : family ? '검수 상품군 DEMO · 열람 전용' : '검수 상품 DEMO · 열람 전용'}</p>
+    <details><summary>상품 정보·추천 안내</summary><p>{local ? '공개 출처에서 검수한 특성을 로컬 상품에 연결했습니다. 가격은 시연용이며 현재 상품 표시가 실제 판매·재고를 뜻하지 않습니다. 이미지·맛·향 정보는 미확인입니다.' : family ? '특정 용량·판매 상품이 아닌 열람용 상품군입니다. 용량은 미확인입니다.' : '검수용 표본 정보이며 실제 판매·재고를 보장하지 않습니다.'} 비교 점수는 만족 확률이 아닙니다.</p></details>
     {feedback && feedback.excludedNotInterestedCount > 0 && <p>관심 없음 선택을 반영해 검수 후보군에서 {feedback.excludedNotInterestedCount}개를 제외했습니다.</p>}
     {fallback && !noSharedFeedback && <p role="status">{feedback && fallback === 'no_eligible_products' ?
       '저장한 필수 조건과 피드백을 적용했습니다. 조건을 완화하지 않았습니다.' : contentFallbacks[fallback]}</p>}
-    {!response.result.items.length && <Empty title={noSharedFeedback ? '비교 근거가 있는 검수 DEMO 후보가 없습니다' : '조건에 맞는 검수 DEMO 후보가 없습니다'} />}
+    {!response.result.items.length && <Empty title={noSharedFeedback ? '비교 근거가 있는 검수 후보가 없습니다' : '조건에 맞는 검수 후보가 없습니다'} />}
     <ol className="content-cards">{response.result.items.map((item, index) => {
       const product = response.products[index], facts = item.explanation
       const comparison = facts.comparison
       const reference = comparison.kind === 'reference_product'
         ? feedback?.positiveReferences.find(({ productId }) => productId === comparison.product_id) : undefined
       return <li className="content-card" key={item.product_id} data-content-product={item.product_id}>
-        <h3>{product.name}</h3>
-        <p>{product.type} · DEMO 표시 가격 {money(product.price)}원 · 도수 {product.abv}%</p>
+        <h3>{local ? <Link className="text-link" to={`/products/${product.id}`}>{product.name}</Link> : product.name}</h3>
+        <p>{product.type} · {local ? '시연 가격' : 'DEMO 표시 가격'} {money(product.price)}원 · 도수 {product.abv}%</p>
         {family && <p>용량 미확인</p>}
-        <p>비교 점수 {item.score} (0–1)</p>
+        <p>비교 점수 {item.score > 0 && item.score < 0.001 ? '<0.001' : item.score.toLocaleString('ko-KR', { maximumFractionDigits: 3 })} (0–1)</p>
         {reference && <p className="content-fact">취향에 맞음으로 표시한 ‘{reference.name}’과 비교했습니다.</p>}
         <ul>{item.reasons.map((reason, i) => <li key={i}>{reference && reason === 'content_similarity' ? '표시한 상품과 공유하는 특성이 있습니다.' : contentReasons[reason]}</li>)}</ul>
         {facts.score_evidence.length > 0 && <><h4>추천에 사용한 비교 근거</h4><ul>{facts.score_evidence.map((fact, i) => <li className="content-fact" key={i}><ScoreText fact={fact} category={product.type} activity={response.activityEvidence} reference={Boolean(reference)} /></li>)}</ul></>}

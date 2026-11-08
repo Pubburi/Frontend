@@ -16,6 +16,14 @@ function response(): any {
     } }
 }
 describe('current cart context display binding', () => {
+  it('accepts only the explicit local scope while preserving bound references, raw score and current product', () => {
+    const value = response(); value.catalogScope = 'REVIEWED_LOCAL_CATALOG'; value.result.items[0].score = 0.6984126984126984
+    expect(checkedCartContext(value, cart)).toBe(value)
+    expect(value.result.items[0].score).toBe(0.6984126984126984)
+    Object.assign(value, { source: 'UNAVAILABLE', unavailableReason: 'PROVIDER_UNAVAILABLE', products: [], result: null })
+    expect(checkedCartContext(value, cart)).toBe(value)
+    value.catalogScope = 'LOCAL_CATALOG'; expect(() => checkedCartContext(value, cart)).toThrow()
+  })
   it('preserves current names, raw atoms, actual zero price and missing image', () => {
     const result = checkedCartContext(response(), cart)
     expect(result.references[0].name).toBe('현재 기준'); expect(result.products[0].price).toBe(0); expect(result.products[0].img).toBeNull()

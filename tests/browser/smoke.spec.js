@@ -4387,6 +4387,17 @@ test('공개 상품 특성 null은 미확인이고 확인하지 않은 맛이나
 
 const similarRegion = (page) => page.getByRole('region', { name: '비슷한 상품', exact: true })
 
+for (const width of [1280, 390]) test(`로컬 검수 유사상품은 현재 상세·Back으로 연결하고 시연 상품군과 구분 ${width}px`, async ({ page, api }) => {
+  const candidate = api.catalog[1]
+  await page.route('**/api/products/901/similar', (route) => route.fulfill({ json: success({ items: [candidate], catalogScope: 'REVIEWED_LOCAL_CATALOG' }) }))
+  await page.setViewportSize({ width, height: 900 }); await page.goto('/products/901'); const region = similarRegion(page)
+  await expect(region).toContainText('검수한 로컬 상품의 확인된 특성'); await expect(region).not.toContainText('시연 상품의 특성'); await region.getByRole('link', { name: candidate.name, exact: true }).focus(); await page.keyboard.press('Enter'); await expect(page).toHaveURL(`/products/${candidate.id}`); await expect(page.getByRole('heading', { name: candidate.name, level: 1, exact: true })).toBeVisible(); await page.goBack(); await expect(region.getByRole('link', { name: candidate.name, exact: true })).toBeVisible(); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+test('유사상품의 알 수 없는 scope metadata는 시연이나 로컬로 표시하지 않음', async ({ page, api }) => {
+  await page.route('**/api/products/901/similar', (route) => route.fulfill({ json: success({ items: [api.catalog[1]], catalogScope: 'LOCAL_CATALOG' }) }))
+  const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/products/901/similar'); await page.goto('/products/901'); await (await response).finished(); await expect(similarRegion(page)).toHaveCount(0); await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+})
+
 test('유사 상품은 작은 화면에서 검수 시연 범위를 밝히고 키보드로 실제 상세에 연결', async ({ page, api }) => {
   const candidate = api.catalog[1]
   candidate.name = 'S'.repeat(100)
