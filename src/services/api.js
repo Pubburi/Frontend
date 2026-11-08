@@ -92,6 +92,12 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   join: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
   idAvailable: (id) => request(`/users/id-available?id=${encodeURIComponent(id)}`),
+  /** @param {string} owner @param {number} page @param {number} size @param {AbortSignal} signal @returns {Promise<unknown>} */
+  notifications: (owner, page, size, signal) => request(`/users/me/notifications?${pageQuery({ page, size })}`, { signal, cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
+  /** @param {string} owner @param {string} id @returns {Promise<unknown>} */
+  readNotification: (owner, id) => request(`/users/me/notifications/${encodeURIComponent(id)}/read`, { method: 'PUT', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
+  /** @param {string} owner @param {string[]} ids @returns {Promise<unknown>} */
+  readNotifications: (owner, ids) => request('/users/me/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ ids }) }),
   /** @param {string} owner @returns {Promise<import('../types').AccountCart>} */
   accountCart: (owner) => request('/users/me/cart', { cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
   /** @param {string} owner @param {string} operationId @returns {Promise<import('../types').CartOperation>} */

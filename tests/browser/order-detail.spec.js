@@ -12,6 +12,7 @@ const test = base.extend({
     s.orderReads = (id) => s.calls.filter((c) => c.path === `/orders/${id}`).length
     page.on('pageerror', (e) => s.errors.push(e.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/notifications') return route.fulfill({ status: 404, json: { data: null, error: { code: 'NOTIFICATIONS_NOT_SUPPORTED' } } })
       if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const path = new URL(route.request().url()).pathname.slice(4), method = route.request().method()
       s.calls.push({ path, method })

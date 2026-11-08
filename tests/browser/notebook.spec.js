@@ -11,6 +11,7 @@ const test = base.extend({ notebookApi: [async ({ page }, use) => {
   const s = { user: account(), notes: { member: [], other: [] }, calls: [], unexpected: [], errors: [], writeStatus: 0, meFailure: false }
   page.on('pageerror', (e) => s.errors.push(e.message))
   await page.route('**/api/**', async (route) => {
+    if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/notifications') return route.fulfill({ status: 404, json: { data: null, error: { code: 'NOTIFICATIONS_NOT_SUPPORTED' } } })
       if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
     const r = route.request(), url = new URL(r.url()), path = url.pathname, method = r.method(), body = r.postData() ? r.postDataJSON() : undefined
     const owner = r.headers()['x-pubburi-account-owner']; s.calls.push({ path, method, body, owner, query: Object.fromEntries(url.searchParams) })

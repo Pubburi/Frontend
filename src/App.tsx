@@ -31,6 +31,7 @@ import { useRecentProducts } from './state/recentProducts'
 import MarketDetailPage from './pages/MarketDetailPage'
 import OrderDetailPage from './pages/OrderDetailPage'
 import { NotebookPage } from './components/Notebook'
+import { NotificationNav, NotificationsPage } from './components/Notifications'
 
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 function Guard({
@@ -155,6 +156,7 @@ export function App() {
                 </span>
               )}
             </NavLink>
+            <NotificationNav />
             <NavLink to={session.data ? '/profile' : '/account'}>마이</NavLink>
             {session.data?.role === 'ADMIN' && (
               <NavLink to="/admin">관리</NavLink>
@@ -215,6 +217,7 @@ export function App() {
             <Route path="/recent" element={<RecentPage />} />
             <Route path="/discover" element={<DiscoverPage />} />
             <Route path="/notebook" element={<NotebookPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route
               path="/account"

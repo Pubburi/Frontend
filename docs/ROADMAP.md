@@ -46,7 +46,7 @@
 | F09 · 12-23 | 본인 정보·비밀번호·취향 수정, 세션 갱신/회수와 타 계정 접근 차단. | BE03·R01, 본인 수정 API | [main 병합·검증 완료](https://github.com/Pubburi/Frontend/pull/39) |
 | F10 · 12-17 | 계정 장바구니·로그인 병합·수량/삭제와 병합 정책, 기존 브라우저 보관/주문 보존. | BE03·FE04, [계정 카트 계약](https://github.com/Pubburi/Backend/blob/main/docs/CART.md) | 구현: 본인 목록·명시 병합·수량/삭제·미확정 복구 연결. 실제 PG/JPA·production 웹 인수 근거와 최신 CI/병합 상태는 [PR #74](https://github.com/Pubburi/Frontend/pull/74)에서 관리. |
 | F11 · 12-22 | 데모 주문/매장 상세·상태 표시, 실제 재고·예약·결제와 구분. | BE01·BE02·FE03, 현재 주문/매장 계약; 제공된 매장 GET은 전체 DB 전환과 독립 | [main 병합·검증 완료](https://github.com/Pubburi/Frontend/pull/41): 공개 매장 PR40·데모 주문 상세/상태 PR41 고정 범위 실제 인수 |
-| F12 · 12-29 | 서비스 내 알림 생성 사건·목록·읽음, 계정 격리와 관련 화면 연결. 외부 push 제외. | BE03·F04·F11, 내부 알림 API | 미착수 |
+| F12 · 12-29 | 서비스 내 알림 생성 사건·목록·읽음, 계정 격리와 관련 화면 연결. 외부 push 제외. | BE03·F04·F11, [내부 알림 API](https://github.com/Pubburi/Backend/blob/main/docs/NOTIFICATIONS.md) | 구현·인수 진행 중: 헤더 미확인 수·본인 목록·개별/현재페이지 읽음·관련 화면 연결. 실제 서버 사건 생성/읽음 통합과 최신 PR 병합 검증은 남아 있다. |
 
 ## 남은 FE03/C04 인수
 
