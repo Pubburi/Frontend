@@ -31,6 +31,7 @@ interface State {
   recoveryOnly: boolean; resolveRequired: boolean; recoveryMessage: string; confirmedOrderId: number | null
   drafts: Record<number, string>; draft: (productId: number, value: string) => void
   load: () => Promise<void>; recheck: () => Promise<void>
+  rejectAuth: (scope: Scope) => void
   add: (product: Product, quantity?: number) => Promise<boolean>
   quantity: (productId: number, value: number) => Promise<void>; remove: (productId: number | null) => Promise<void>
   merge: () => Promise<number | null>; checkout: () => Promise<number | null>; retry: () => Promise<number | null>; resolve: () => Promise<null>
@@ -182,6 +183,7 @@ export function createAccountCart(client: QueryClient) {
         try { await client.fetchQuery({ queryKey: ['session'], queryFn: readSession, staleTime: 0 }); await load() }
         catch { if (cache.find({ queryKey: ['session'], exact: true }) === auth && !authPending()) set({ error: '로그인 상태를 확인하지 못했습니다. 입력은 유지됩니다.' }) }
       },
+      rejectAuth: (scope) => failed(scope, new ApiClientError({}, 401)),
       async add(product, amount = 1) {
         const state = get(), quantity = normalizeQuantity(amount)
         if (state.mode === 'guest' || state.mode === 'unknown' && !state.scope || state.legacy) { cartStore.getState().add(product, quantity); return true }

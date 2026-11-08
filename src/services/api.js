@@ -98,6 +98,8 @@ export const api = {
   readNotification: (owner, id) => request(`/users/me/notifications/${encodeURIComponent(id)}/read`, { method: 'PUT', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
   /** @param {string} owner @param {string[]} ids @returns {Promise<unknown>} */
   readNotifications: (owner, ids) => request('/users/me/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ ids }) }),
+  /** @param {string} owner @param {number} expectedVersion @param {AbortSignal} signal @returns {Promise<unknown>} */
+  cartRecommendations: (owner, expectedVersion, signal) => request('/users/me/cart/recommendations', { method: 'POST', cache: 'no-store', signal, headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ expectedVersion, limit: 4 }) }),
   /** @param {string} owner @returns {Promise<import('../types').AccountCart>} */
   accountCart: (owner) => request('/users/me/cart', { cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
   /** @param {string} owner @param {string} operationId @returns {Promise<import('../types').CartOperation>} */

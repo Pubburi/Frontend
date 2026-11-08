@@ -7,8 +7,22 @@ const row = (id = 7, quantity = 1) => ({ productId: id, productName: product(id)
 const ok = (data) => ({ data, error: null }), bad = (code) => ({ data: null, error: { code } })
 const emptyPage = (items = []) => ({ items, total: items.length, totalPages: items.length ? 1 : 0, page: 1, size: 12, hasNext: false })
 const intentOf = (kind, body) => JSON.stringify({ kind: kind.toLowerCase(), items: body.items, orderType: kind.toLowerCase() === 'merge' ? null : body.orderType, orderTable: kind.toLowerCase() === 'merge' ? null : body.orderTable })
+const contextProduct = { ...product(9), price: 0, abv: 8 }
+function contextReply(cart) {
+  const refs = cart.items.map((r) => ({ productId: r.productId, name: r.currentProduct?.name ?? null, quantity: r.quantity, state: r.currentProduct ? 'READY' : 'DELETED' }))
+  const ref = refs[0]?.productId
+  return { source: 'PROVIDER', catalogScope: 'REVIEWED_DEMO', cartVersion: cart.version, references: refs, unavailableReason: null, products: [contextProduct], result: {
+    algorithm: 'b1-tfidf-minmax-v1', aggregation_algorithm: 'r07-max-reference-v1', fit_scope: 'request_catalog', profile_source: 'explicit_context_product_facts', reference_group_policy: 'exclude_all_known_reference_groups', representation_fitted: true, model_fingerprint: 'a'.repeat(64), min_relevance_score: 0,
+    references: refs.map((r) => ({ product_id: r.productId, sku_group: `group-${r.productId}`, state: 'available', supported_profile_tokens: 1, unknown_profile_tokens: 0, active_numeric_preferences: ['abv_percent', 'volume_ml'], fallback_reason: null })), evaluated_reference_count: refs.length, eligible_count: 1, excluded_reference_group_count: refs.length, fallback_reason: null,
+    matches: [{ product_id: 9, reference_product_id: ref }], items: [{ product_id: 9, score: 0.7, reasons: ['available', 'content_similarity'], contributions: [{ component: 'text', feature: 'category:탁주', contribution: 0.3 }, { component: 'abv_percent', feature: 'abv_percent', contribution: 0.3 }, { component: 'volume_ml', feature: 'volume_ml', contribution: 0.1 }], explanation: {
+      version: 'r04-facts-v1', basis: 'content_similarity', comparison: { kind: 'reference_product', product_id: ref }, fallback_reason: null, total_positive_contributions: 3, score_evidence_truncated: false,
+      score_evidence: [{ kind: 'category_match', label: '주종 일치', actual_value: '탁주', target_value: '탁주', contribution: 0.3 }, { kind: 'abv_comparison', label: '도수 비교 근거', actual_value: 8, target_value: 6, unit: 'vol%', contribution: 0.3 }, { kind: 'volume_comparison', label: '용량 비교 근거', actual_value: 750, target_value: 500, unit: 'mL', contribution: 0.1 }],
+      filter_evidence: [{ kind: 'availability_filter', label: '입력 가용 조건 충족', actual_value: true }],
+    } }],
+  } }
+}
 const test = base.extend({ cartApi: [async ({ page }, use) => {
-  const s = { user: user(), carts: { member: { version: 0, items: [] }, other: { version: 0, items: [] } }, receipts: new Map(), orders: [], calls: [], errors: [], unexpected: [], readStatus: 0, writeStatus: 0, afterApply401: null, keepUserAfter401: false, lost: null, hold: null, products: [product(7), product(8)] }
+  const s = { user: user(), carts: { member: { version: 0, items: [] }, other: { version: 0, items: [] } }, receipts: new Map(), orders: [], calls: [], errors: [], unexpected: [], readStatus: 0, writeStatus: 0, contextStatus: 0, contextResponse: null, afterApply401: null, keepUserAfter401: false, lost: null, hold: null, products: [product(7), product(8)] }
   page.on('pageerror', (e) => s.errors.push(e.message))
   await page.route('**/api/**', async (route) => {
     if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/notifications') return route.fulfill({ status: 404, json: { data: null, error: { code: 'NOTIFICATIONS_NOT_SUPPORTED' } } })
@@ -21,6 +35,11 @@ const test = base.extend({ cartApi: [async ({ page }, use) => {
     if (path.startsWith('/api/users/me/cart')) {
       if (!s.user || owner !== encodeURIComponent(s.user.id)) return reply(null, 401, 'UNAUTHORIZED')
       const id = s.user.id, cart = s.carts[id] ??= { version: 0, items: [] }
+      if (path === '/api/users/me/cart/recommendations' && method === 'POST') {
+        if (body.expectedVersion !== cart.version) return reply(null, 409)
+        if (s.contextStatus) return reply(null, s.contextStatus, s.contextStatus === 401 ? 'UNAUTHORIZED' : 'SERVICE_UNAVAILABLE')
+        return reply(typeof s.contextResponse === 'function' ? s.contextResponse(cart) : s.contextResponse ?? contextReply(cart))
+      }
       const resolution = path.match(/^\/api\/users\/me\/cart\/operations\/([^/]+)\/resolve$/)
       if (resolution && method === 'POST') {
         const operationId = resolution[1], key = `${id}:${operationId}`, existing = s.receipts.get(key), intent = intentOf(body.kind, body)
@@ -78,6 +97,7 @@ const test = base.extend({ cartApi: [async ({ page }, use) => {
     }
     if (path === '/api/products') return reply(emptyPage(s.products))
     if (path === '/api/products/popular') return reply(s.products)
+    if (path === '/api/recommendations/default') return reply({ source: 'FALLBACK', items: [contextProduct] })
     if (path === '/api/markets') return reply(emptyPage())
     if (/^\/api\/products\/\d+$/.test(path)) return reply(s.products.find((p) => p.id === Number(path.split('/').at(-1))))
     if (path.endsWith('/features')) return reply({ productId: Number(path.split('/').at(-2)), volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null })
@@ -324,4 +344,104 @@ for (const kind of ['merge', 'checkout']) for (const recovery of ['relogin', 'sa
   if (kind === 'merge') await expect(guest(page)).toHaveCount(0)
   else await expect(page.getByRole('link', { name: '확인한 주문 보기', exact: true })).toHaveAttribute('href', '/orders/90')
   await expect(page).toHaveURL('/cart')
+})
+
+// R07 consumer responses below are authored display fixtures, not model quality results.
+const contextRegion = (page) => page.getByRole('region', { name: '담은 상품과 비슷한 술', exact: true })
+const contextCards = (page) => page.locator('[data-cart-context-product]')
+const compareCart = (page) => page.getByRole('button', { name: '비슷한 상품 보기', exact: true })
+const contextCalls = (s) => s.calls.filter((c) => c.path === '/api/users/me/cart/recommendations')
+function unavailableContext(cart, reason, state = 'READY') {
+  const value = contextReply(cart); Object.assign(value, { source: 'UNAVAILABLE', unavailableReason: reason, products: [], result: null })
+  value.references = value.references.map((r) => ({ ...r, name: state === 'DELETED' ? null : r.name, state })); return value
+}
+test.describe('R07 cart-only context consumer', () => {
+  test.beforeEach(async ({ cartApi: s }) => { s.carts.member = { version: 3, items: [row(7, 2)] }; s.products.push(contextProduct) })
+  for (const width of [1280, 390]) test(`명시비교·실제승자/단위·현재0원·상품상세/Back과키보드 ${width}`, async ({ page, cartApi: s }, info) => {
+    await page.setViewportSize({ width, height: 900 }); await page.goto('/cart'); await expect(contextRegion(page)).toBeVisible(); expect(contextCalls(s)).toEqual([])
+    await compareCart(page).focus(); await page.keyboard.press('Enter'); await expect(contextCards(page)).toHaveCount(1); await expect(compareCart(page)).toBeFocused()
+    await expect(contextCards(page)).toContainText('현재 표시 가격 0원'); await expect(contextCards(page)).toContainText('기준 상품 ‘카트 표본 7’'); await expect(contextCards(page)).toContainText('후보 8 vol% / 기준 상품 6 vol%'); await expect(contextCards(page)).toContainText('후보 750 mL / 기준 상품 500 mL')
+    expect(contextCalls(s)[0].body).toEqual({ expectedVersion: 3, limit: 4 }); expect(contextCalls(s)[0].owner).toBe('member')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    if (width === 390) await info.attach('cart-context-390.png', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' })
+    await contextCards(page).getByRole('link', { name: '카트 표본 9', exact: true }).click(); await expect(page).toHaveURL('/products/9'); await expect(page.getByRole('heading', { name: '카트 표본 9', level: 1, exact: true })).toBeVisible(); await page.goBack(); await expect(own(page).getByRole('spinbutton')).toHaveValue('2'); await expect(contextCards(page)).toHaveCount(0); expect(contextCalls(s)).toHaveLength(1)
+  })
+  test('빈카트는자동비교/B0없이설명하고조작을요구하지않음', async ({ page, cartApi: s }) => {
+    s.carts.member.items = []; await page.goto('/cart'); await expect(compareCart(page)).toBeDisabled(); await expect(contextRegion(page)).toContainText('계정 장바구니에 상품을 담은 뒤'); expect(contextCalls(s)).toEqual([])
+  })
+  test('비교중중복클릭은막되수량초안·다음주문입력과탐색은보존', async ({ page, cartApi: s }) => {
+    const g = gate(); let started = false
+    await page.route('**/api/users/me/cart/recommendations', async (route) => { started = true; await g.promise; await route.fallback() })
+    try {
+      await page.goto('/cart'); await compareCart(page).focus(); await page.keyboard.press('Enter'); await expect.poll(() => started).toBe(true); await expect(compareCart(page)).toHaveAttribute('aria-disabled', 'true'); await expect(compareCart(page)).toBeFocused(); await page.keyboard.press('Enter')
+      await own(page).getByRole('spinbutton').fill('3'); await page.getByLabel('테이블·요청 사항', { exact: true }).fill('다음 입력'); g.release(); await expect(contextCards(page)).toHaveCount(1); await expect(own(page).getByRole('spinbutton')).toHaveValue('3'); await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('다음 입력'); expect(contextCalls(s)).toHaveLength(1)
+    } finally { g.release() }
+  })
+  for (const [reason, state, message] of [['DELETED_ITEMS', 'DELETED', '삭제된 상품이 있어'], ['UNREVIEWED_ITEMS', 'UNREVIEWED', '검수 대상이 아닌 상품'], ['CATALOG_UNAVAILABLE', 'CATALOG_UNAVAILABLE', '검수 카탈로그를 확인하지 못해'], ['UNAVAILABLE_REFERENCES', 'UNAVAILABLE', '사용할 수 없는 기준'], ['PROVIDER_UNAVAILABLE', 'READY', '추천 서버의 비교 결과']]) test(`${reason}은실제B0/부분추천으로바꾸지않고전체기준을표시`, async ({ page, cartApi: s }) => {
+    s.contextResponse = (cart) => unavailableContext(cart, reason, state); if (state === 'DELETED') s.carts.member.items[0].currentProduct = null
+    await page.goto('/cart'); await compareCart(page).click(); await expect(contextRegion(page)).toContainText(message); await expect(contextCards(page)).toHaveCount(0)
+    await contextRegion(page).getByText('추천 기준·DEMO 안내', { exact: true }).click(); await expect(contextRegion(page)).toContainText(state === 'DELETED' ? '삭제된 상품 #7' : '카트 표본 7')
+    expect(s.calls.filter((c) => c.path === '/api/recommendations/default')).toEqual([]); await contextRegion(page).getByRole('link', { name: '기본 추천 보기', exact: true }).click(); await expect(page.getByRole('heading', { name: '기본 주류 둘러보기', exact: true })).toBeVisible(); await expect(page.locator('.product-card')).toHaveCount(1)
+    expect(s.calls.filter((c) => c.path === '/api/recommendations/default')).toHaveLength(1)
+  })
+  test('21개기준을20개로자르지않고제한과모든행을알림', async ({ page, cartApi: s }) => {
+    s.carts.member.items = Array.from({ length: 21 }, (_, i) => row(i + 7, 1)); s.contextResponse = (cart) => unavailableContext(cart, 'REFERENCE_LIMIT')
+    await page.goto('/cart'); await compareCart(page).click(); await expect(contextRegion(page)).toContainText('20종을 넘습니다'); await contextRegion(page).getByText('추천 기준·DEMO 안내', { exact: true }).click(); await expect(contextRegion(page).locator('details li')).toHaveCount(21); await expect(contextCards(page)).toHaveCount(0)
+    expect(contextCalls(s)[0].body).toEqual({ expectedVersion: 3, limit: 4 })
+  })
+  for (const fallback of ['no_eligible_products', 'no_supported_preferences', 'no_matching_features']) test(`정상빈 ${fallback}은장애/기본순후보와구분`, async ({ page, cartApi: s }) => {
+    s.contextResponse = (cart) => { const v = contextReply(cart); v.products = []; v.result.items = []; v.result.matches = []; v.result.fallback_reason = fallback; return v }
+    await page.goto('/cart'); await compareCart(page).click(); await expect(contextRegion(page).getByRole('heading', { name: '비교 근거가 있는 검수 후보가 없습니다', exact: true })).toBeVisible(); await expect(contextRegion(page).getByRole('heading', { name: '이 장바구니를 비교하지 못했습니다', exact: true })).toHaveCount(0); await expect(contextCards(page)).toHaveCount(0)
+  })
+  for (const status of [409, 503]) test(`새비교${status}에이전성공카드를남기지않고카트/주문입력유지`, async ({ page, cartApi: s }) => {
+    await page.goto('/cart'); await compareCart(page).click(); await expect(contextCards(page)).toHaveCount(1); await own(page).getByRole('spinbutton').fill('3'); await page.getByLabel('테이블·요청 사항', { exact: true }).fill('  입력  '); s.contextStatus = status
+    await compareCart(page).click(); await expect(contextRegion(page).getByRole('heading', { name: status === 409 ? '장바구니나 비교 조건이 변경되었습니다' : '상품 비교를 가져오지 못했습니다', exact: true })).toBeVisible(); await expect(contextCards(page)).toHaveCount(0); await expect(own(page).getByRole('spinbutton')).toHaveValue('3'); await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('  입력  ')
+    expect(s.orders).toEqual([]); s.contextStatus = 0; await compareCart(page).click(); await expect(contextCards(page)).toHaveCount(1)
+  })
+  test('추천401은기존카트권위경계로개인목록을차폐하고기기원본/주문입력보존', async ({ page, cartApi: s }) => {
+    await localCart(page); s.contextStatus = 401; await page.goto('/cart'); await page.getByLabel('테이블·요청 사항', { exact: true }).fill('보존 요청'); await compareCart(page).click(); await expect(own(page)).toHaveCount(0); await expect(contextCards(page)).toHaveCount(0); await expect(guest(page)).toContainText('2개')
+    s.contextStatus = 0; await page.getByRole('button', { name: '장바구니 로그인 상태 다시 확인', exact: true }).click(); await expect(own(page).getByRole('spinbutton')).toHaveValue('2'); await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('보존 요청'); expect(contextCalls(s)).toHaveLength(1)
+    await compareCart(page).click(); await expect(contextCards(page)).toHaveCount(1)
+  })
+  for (const status of [200, 401]) test(`수량저장뒤새비교를이전version의지연${status}가덮지않음`, async ({ page, cartApi: s }) => {
+    const g = gate(); let started = false
+    await page.route('**/api/users/me/cart/recommendations', async (route) => {
+      if (started) return route.fallback(); started = true; const data = contextReply(structuredClone(s.carts.member)); await g.promise; await route.fulfill({ status, json: status === 200 ? ok(data) : bad('UNAUTHORIZED') })
+    })
+    try {
+      await page.goto('/cart'); await compareCart(page).click(); await expect.poll(() => started).toBe(true); await own(page).getByRole('spinbutton').fill('3'); await own(page).getByRole('button', { name: '수량 저장', exact: true }).click(); await expect(own(page)).toContainText('저장 수량 3개'); await expect(contextRegion(page)).toContainText('이전 비교를 표시하지 않았습니다')
+      await compareCart(page).click(); await expect(contextCards(page)).toHaveCount(1); g.release(); await expect(own(page).getByRole('spinbutton')).toHaveValue('3'); await expect(contextCards(page)).toHaveCount(1); await expect(page.getByRole('button', { name: '장바구니 로그인 상태 다시 확인', exact: true })).toHaveCount(0)
+    } finally { g.release() }
+  })
+  test('쓰기실패/카트fresh읽기뒤에도예전비교는되살리지않음', async ({ page, cartApi: s }) => {
+    await page.goto('/cart'); await compareCart(page).click(); await expect(contextCards(page)).toHaveCount(1); s.writeStatus = 400; await own(page).getByRole('spinbutton').fill('3'); await own(page).getByRole('button', { name: '수량 저장', exact: true }).click(); await expect(page.getByRole('alert')).toBeVisible(); await expect(contextCards(page)).toHaveCount(0)
+    s.writeStatus = 0; await page.getByRole('button', { name: '계정 장바구니 새로고침', exact: true }).click(); await expect(own(page)).toBeVisible(); await expect(contextCards(page)).toHaveCount(0); expect(contextCalls(s)).toHaveLength(1)
+  })
+  test('늦은추천401이진행된병합nonce/receipt복구를삭제하지않음', async ({ page, cartApi: s }) => {
+    await localCart(page); const g = gate(); let started = false
+    await page.route('**/api/users/me/cart/recommendations', async (route) => { started = true; await g.promise; await route.fulfill({ status: 401, json: bad('UNAUTHORIZED') }) })
+    try {
+      await page.goto('/cart'); await compareCart(page).click(); await expect.poll(() => started).toBe(true); s.lost = 'merge'; await page.getByRole('button', { name: '기기 상품을 계정에 합치기', exact: true }).click(); await expect(page.getByRole('button', { name: '같은 작업 결과 확인', exact: true })).toBeVisible(); g.release()
+      await expect(guest(page)).toContainText('2개'); await page.getByRole('button', { name: '같은 작업 결과 확인', exact: true }).click(); await expect(guest(page)).toHaveCount(0); expect(s.carts.member.items[0].quantity).toBe(4); expect(s.receipts.size).toBe(1)
+    } finally { g.release() }
+  })
+  for (const status of [200, 401]) test(`이전A추천${status}는B/같은IDA복귀후의카트와경로를침범하지않음`, async ({ page, cartApi: s }) => {
+    const g = gate(); let started = false
+    await page.route('**/api/users/me/cart/recommendations', async (route) => { started = true; const value = contextReply(structuredClone(s.carts.member)); await g.promise; await route.fulfill({ status, json: status === 200 ? ok(value) : bad('UNAUTHORIZED') }) })
+    try {
+      await page.goto('/cart'); await compareCart(page).click(); await expect.poll(() => started).toBe(true); await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await signIn(page, 'other'); await nav(page, /장바구니/); g.release(); await expect(contextCards(page)).toHaveCount(0); await expect(page.getByRole('heading', { name: '계정 장바구니가 비어 있습니다', exact: true })).toBeVisible()
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await signIn(page, 'member'); await nav(page, /장바구니/); await expect(own(page).getByRole('spinbutton')).toHaveValue('2'); await expect(contextCards(page)).toHaveCount(0); await expect(page).toHaveURL('/cart')
+    } finally { g.release() }
+  })
+  test('추천대기중데모주문은독립완료하고늦은비교가주문상세를탈취하지않음', async ({ page, cartApi: s }) => {
+    s.carts.member = { version: 3, items: [row(8, 2)] }; const g = gate(); let started = false
+    await page.route('**/api/users/me/cart/recommendations', async (route) => { started = true; const value = contextReply(structuredClone(s.carts.member)); await g.promise; await route.fulfill({ json: ok(value) }) })
+    try {
+      await page.goto('/cart'); await compareCart(page).click(); await expect.poll(() => started).toBe(true); await page.getByLabel('테이블·요청 사항', { exact: true }).fill('별도 주문'); await page.getByRole('button', { name: '10,000원 주문하기', exact: true }).click(); await expect(page.getByRole('heading', { name: '데모 주문 상세', exact: true })).toBeVisible(); g.release(); await expect(page).toHaveURL('/orders/90'); expect(s.orders).toHaveLength(1); expect(s.orders[0].orderTable).toBe('별도 주문')
+    } finally { g.release() }
+  })
+  test('winning/현재상품불일치응답은현재카트조작을보존한채거절', async ({ page, cartApi: s }) => {
+    s.contextResponse = (cart) => { const v = contextReply(cart); v.result.items[0].explanation.comparison.product_id = 8; return v }
+    await page.goto('/cart'); await compareCart(page).click(); await expect(contextRegion(page).getByRole('heading', { name: '상품 비교를 가져오지 못했습니다', exact: true })).toBeVisible(); await expect(contextCards(page)).toHaveCount(0); await expect(own(page).getByRole('spinbutton')).toHaveValue('2'); await expect(page.getByRole('button', { name: '0원 주문하기', exact: true })).toBeEnabled()
+  })
 })

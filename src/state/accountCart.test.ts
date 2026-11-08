@@ -12,6 +12,19 @@ const user = (id = 'member') => ({ id, name: id, role: 'USER' })
 function ready() { const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); client.setQueryData(['session'], user()); return { client, store: createAccountCart(client) } }
 beforeEach(() => { vi.clearAllMocks(); useUi.setState({ pending: {}, notice: null }); for (const item of cartStore.getState().items) cartStore.getState().remove(item.product.id); cartStore.getState().setOrderForm({ orderType: 'TAKEOUT', orderTable: '' }) })
 describe('account cart ownership and exact operations', () => {
+  it('a dependent read401 fences authority without losing a pending merge HTTP or recovery nonce', async () => {
+    const { store } = ready(); cartStore.getState().add(product, 2); vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 0, items: [] }); await store.getState().load()
+    let finish!: (value: any) => void; vi.mocked(api.cartOperation).mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const pending = store.getState().merge(), scope = store.getState().scope!, op = store.getState().operation!
+    store.getState().rejectAuth(scope); expect(store.getState().ready).toBe(false); expect(store.getState().operation).toBe(op); expect(store.getState().pending).toBe(true); expect(store.getState().recoveryOnly).toBe(true)
+    finish({ operationId: op.payload.operationId, replayed: false, status: 'APPLIED', cart: { version: 1, items: [row(2)] }, orderId: null }); await pending
+    expect(store.getState().operation).toBe(op); expect(cartStore.getState().items[0].quantity).toBe(2); expect(api.cartOperation).toHaveBeenCalledTimes(1)
+  })
+  it('a dependent old-scope401 never fences another current account', () => {
+    const { client, store } = ready(), scope = store.getState().scope!
+    client.clear(); client.setQueryData(['session'], user('other')); store.getState().rejectAuth(scope)
+    expect(store.getState().scope?.id).toBe('other'); expect(store.getState().ready).toBe(true)
+  })
   it('rejects malformed/duplicate/deleted-as-zero responses and accepts real zero price', () => {
     expect(checkedCart({ version: 0, items: [row()] }).items[0].currentProduct?.price).toBe(0)
     for (const value of [{ version: -1, items: [] }, { version: 0, items: [row(), row()] }, { version: 0, items: [{ ...row(), quantity: 100 }] }, { version: 0, items: [{ ...row(), currentProduct: undefined }] }]) expect(() => checkedCart(value)).toThrow()
