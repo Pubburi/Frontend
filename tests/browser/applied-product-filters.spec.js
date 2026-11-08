@@ -10,6 +10,7 @@ const test = base.extend({
     const state = { calls: [], unexpected: [], errors: [], failures: 0, items }
     page.on('pageerror', (error) => state.errors.push(error.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const req = route.request(), url = new URL(req.url()), q = url.searchParams
       state.calls.push({ path: url.pathname, method: req.method(), query: [...q] })
       if (req.method() === 'GET' && url.pathname === '/api/auth/me') return route.fulfill({ status: 401, json: bad('UNAUTHORIZED') })

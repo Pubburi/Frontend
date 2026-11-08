@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
 import { safeRedirect, useSession } from '../queries'
 import { useCart, cartTotals } from '../state/cart'
+import { accountCart as accountCartState, useAccountCart } from '../state/accountCart'
+import { AccountCartView } from '../components/AccountCart'
 import { useUi } from '../state/ui'
 import { profilePrivacy } from '../state/authReadPrivacy'
 import { Empty, Image, Loading, Pagination, Quantity } from '../components/ui'
@@ -17,6 +19,13 @@ function checkoutAuthPending(pending: Record<string, boolean>) {
 }
 
 export function CartPage() {
+  const account = useAccountCart(true)
+  if (account.mode === 'unknown') return <DeviceCartPage authorityBlocked verify={() => void account.recheck()} />
+  if (account.mode === 'guest' || account.legacy) return <DeviceCartPage />
+  return <AccountCartView account={account} />
+}
+
+function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked?: boolean; verify?: () => void }) {
   const cart = useCart()
   const totals = cartTotals(cart.items)
   const ui = useUi()
@@ -34,6 +43,8 @@ export function CartPage() {
   }, [])
   async function checkout(event: FormEvent) {
     event.preventDefault()
+    const authority = accountCartState(client).getState()
+    if (authorityBlocked || !authority.ready || !(authority.mode === 'guest' || authority.mode === 'account' && authority.legacy)) return
     const current = client.getQueryState<User | null>(['session'])
     if (checkoutAuthPending(useUi.getState().pending) || current?.status !== 'success' ||
         current.fetchStatus !== 'idle' || current.data !== session.data) return
@@ -69,6 +80,7 @@ export function CartPage() {
           <p className="section-kicker">Cart</p>
           <h1>장바구니</h1>
           <p>선택한 상품과 수량을 주문 전에 확인하세요.</p>
+          {authorityBlocked && <p className="muted">로그인 확인 전에는 이 기기에 담은 상품만 표시합니다. 계정 장바구니와 주문은 확인 후 이용할 수 있습니다.</p>}
         </div>
         {cart.items.length > 0 && (
           <span className="result-count">
@@ -169,21 +181,21 @@ export function CartPage() {
                   }
                 />
               </label>
-              {!checkingSession && session.isError && (
-                <button className="btn btn-outline-dark" type="button" onClick={() => session.refetch()}>
+              {!checkingSession && (session.isError || authorityBlocked) && (
+                <button className="btn btn-outline-dark" type="button" onClick={() => authorityBlocked ? verify?.() : void session.refetch()}>
                   로그인 상태 다시 확인
                 </button>
               )}
               <button
                 className="btn btn-gold btn-wide"
-                disabled={ui.pending.checkout || checkingSession || session.isError}
+                disabled={authorityBlocked || ui.pending.checkout || checkingSession || session.isError}
               >
                 {money(totals.total)}원 주문하기
               </button>
               <p className="muted">
                 <span role="status">{checkingSession
                   ? '로그인 상태를 확인하는 동안 주문을 기다려 주세요.'
-                  : session.isError ? '로그인 상태를 확인하지 못했습니다. 장바구니와 요청 사항은 유지됩니다.' : ''}</span>
+                  : session.isError ? '로그인 상태를 확인하지 못했습니다. 장바구니와 요청 사항은 유지됩니다.' : authorityBlocked ? '로그인 상태를 다시 확인한 뒤 주문해 주세요. 기기 입력은 유지됩니다.' : ''}</span>
                 {(checkingSession || session.isError) && <br />}
                 실제 결제 없이 데모 주문으로 접수합니다.
               </p>
@@ -200,6 +212,7 @@ export function CartPage() {
           </Link>
         </Empty>
       )}
+      {authorityBlocked && !cart.items.length && !checkingSession && <button className="btn btn-outline-dark" onClick={verify}>로그인 상태 다시 확인</button>}
     </section>
   )
 }

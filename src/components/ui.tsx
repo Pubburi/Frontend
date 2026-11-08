@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { useCart } from '../state/cart'
+import { useAccountCart } from '../state/accountCart'
 import { useUi } from '../state/ui'
 import { money, productImage, webpSource } from '../utils/format'
 import type { Page, Product } from '../types'
@@ -166,7 +166,7 @@ export function Quantity({
   )
 }
 export function ProductCard({ product }: { product: Product }) {
-  const cart = useCart()
+  const cart = useAccountCart()
   const status = useUi((state) => state.status)
   return (
     <article className="product-card">
@@ -195,13 +195,14 @@ export function ProductCard({ product }: { product: Product }) {
           </Link>
           <button
             className="btn btn-gold btn-sm"
-            onClick={() => {
-              cart.add(product)
-              status(`${product.name}을(를) 장바구니에 담았습니다.`)
+            disabled={cart.pending || cart.loading || cart.mode === 'account' && !cart.ready}
+            onClick={async () => {
+              if (await cart.add(product)) status(`${product.name}을(를) ${cart.mode === 'unknown' ? '이 기기에만' : '장바구니에'} 담았습니다.`)
             }}
           >
             빠른 담기
           </button>
+          {cart.mode === 'unknown' && <small>로그인 확인 전에는 이 기기에만 담습니다.</small>}
         </div>
         <CompareAction product={product} />
       </div>

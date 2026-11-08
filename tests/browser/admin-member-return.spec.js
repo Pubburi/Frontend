@@ -11,6 +11,7 @@ const test = base.extend({
     s.hold = (method, path) => { let release; const wait = new Promise((resolve) => { release = resolve }); const gate = { method, path, wait, release, started: false }; s.gates.push(gate); return gate }
     page.on('pageerror', (error) => s.errors.push(error.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const request = route.request(), url = new URL(request.url()), method = request.method(), path = url.pathname
       const body = method === 'PUT' || method === 'POST' ? request.postDataJSON() : undefined
       s.calls.push({ method, path, query: [...url.searchParams], body })

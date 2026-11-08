@@ -29,6 +29,7 @@ const test = base.extend({
     }
     page.on('pageerror', (error) => state.pageErrors.push(error.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const request = route.request()
       const url = new URL(request.url())
       const path = url.pathname.slice('/api'.length)
@@ -962,6 +963,16 @@ test('장바구니 세션 조회 장애는 로그인 이동 없이 입력을 보
   await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('2')
   expect(api.calls.filter((call) => call.path === '/auth/me')).toHaveLength(2)
   expect(api.calls.filter((call) => call.method === 'POST')).toEqual([])
+})
+
+test('기기 카트 미지원 복귀 뒤 불확실 로그아웃도 권위 재확인 전에는 주문하지 않음', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  await page.addInitScript((product) => localStorage.setItem('pubburi-cart', JSON.stringify([{ product, quantity: 2 }])), products[0])
+  await page.goto('/cart'); const submit = page.getByRole('button', { name: '12,000원 주문하기', exact: true }); await expect(submit).toBeEnabled()
+  await page.route('**/api/auth/logout', async (route) => { api.user = null; await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') }) })
+  await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect(page.getByRole('alert')).toBeVisible(); await expect(submit).toBeDisabled()
+  await page.locator('.checkout-form').evaluate((form) => form.requestSubmit()); expect(api.calls.filter((call) => call.path === '/orders' && call.method === 'POST')).toEqual([])
+  await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('2')
 })
 
 test('브라우저 보관이 막혀도 담기와 성공 주문은 유지하고 보관 제약만 안내', async ({ page, api }) => {
@@ -4357,6 +4368,7 @@ test('공개 상품 특성은 원값·mL·단일 태그·출처 텍스트를 보
   await expect(source).toHaveAttribute('target', '_blank')
   await expect(source).toHaveAttribute('rel', 'noopener noreferrer')
   await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('pubburi-cart'))).not.toBeNull()
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart')))
   expect(saved[0].product).toEqual(products[0])
   expect(api.calls.filter(call => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(call.method))).toHaveLength(0)
@@ -4411,7 +4423,7 @@ test('유사 상품의 이전 요청을 기다리지 않고 후기·담기·상�
     await expect(similarRegion(page)).toHaveCount(0)
     await expect(page.getByRole('heading', { name: '회원 후기 0', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart'))[0].quantity)).toBe(1)
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart') || 'null')?.[0]?.quantity)).toBe(1)
 
     await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
     await page.getByRole('heading', { name: '시험 사케', exact: true }).getByRole('link').click()
@@ -4610,7 +4622,7 @@ test('이전 백엔드에 추천 피드백 API가 없어도 상세와 장바구�
   await expect(feedbackPanel(page).getByRole('status')).toHaveText('현재 이 상품의 피드백을 사용할 수 없습니다.')
   await expect(feedbackButton(page, '관심 없음')).toHaveCount(0)
   await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart'))[0].quantity)).toBe(1)
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart') || 'null')?.[0]?.quantity)).toBe(1)
   await expect(page.getByRole('heading', { name: '회원 후기 0', exact: true })).toBeVisible()
 })
 
@@ -4658,7 +4670,7 @@ test('공개 특성 로딩 중에도 원래 상품을 담을 수 있고 완료�
     release()
     await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('750 mL')
     await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('1')
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart'))[0].quantity)).toBe(1)
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart') || 'null')?.[0]?.quantity)).toBe(1)
   } finally { release() }
 })
 
@@ -4790,6 +4802,7 @@ test('390px 긴 ASCII 상품명은 상세 그리드를 밀지 않고 전체 제�
   await increase.focus()
   await increase.press('Enter')
   await page.getByRole('button', { name: '2개 장바구니에 담기', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('pubburi-cart'))).not.toBeNull()
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart')))
   expect(saved).toHaveLength(1)
   expect(saved[0].product).toEqual(product)

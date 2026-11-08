@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useSession, safeRedirect } from './queries'
 import { api } from './services/api'
 import { cartTotals, useCart } from './state/cart'
+import { useAccountCart } from './state/accountCart'
 import { useUi } from './state/ui'
 import { Empty, Image, Loading } from './components/ui'
 import { HomePage, ProductsPage, ProductDetailPage } from './pages/CatalogPages'
@@ -70,6 +71,10 @@ function Guard({
 export function App() {
   const session = useSession()
   const cart = useCart()
+  const accountCart = useAccountCart(true)
+  const cartCount = accountCart.mode === 'account' && !accountCart.legacy
+    ? accountCart.ready && !accountCart.error && !accountCart.loading ? accountCart.data?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0 : 0
+    : cartTotals(cart.items).count
   useRecentProducts()
   const comparisonIds = useComparison((state) => state.ids)
   const ui = useUi()
@@ -144,9 +149,9 @@ export function App() {
             <NavLink to={comparisonUrl(comparisonIds)}>상품 비교{comparisonIds.length > 0 ? ` ${comparisonIds.length}` : ''}</NavLink>
             <NavLink to="/cart">
               장바구니{' '}
-              {cartTotals(cart.items).count > 0 && (
+              {cartCount > 0 && (
                 <span className="cart-count">
-                  {cartTotals(cart.items).count}
+                  {cartCount}
                 </span>
               )}
             </NavLink>
@@ -176,6 +181,7 @@ export function App() {
         </div>
       </header>
       <main>
+        {(accountCart.pending || accountCart.loading) && location.pathname !== '/cart' && <p className="notice" role="status">계정 장바구니를 확인·처리하는 동안 담기를 잠시 기다려 주세요. 상품 탐색은 계속할 수 있습니다.</p>}
         {cart.storageWarning && (
           <div className="notice" role="status" aria-live="polite">
             <strong>장바구니 보관 제한</strong>

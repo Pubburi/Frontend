@@ -20,6 +20,7 @@ const test = base.extend({
     }
     page.on('pageerror', (err) => state.errors.push(err.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method()
       const body = request.postData() ? request.postDataJSON() : null
       state.calls.push({ path, method, query: Object.fromEntries(url.searchParams), body })

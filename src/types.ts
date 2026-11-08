@@ -19,6 +19,24 @@ export interface FavoriteState {
   productId: number
   favorited: boolean
 }
+export interface AccountCartItem {
+  productId: number
+  productName: string
+  currentProduct: Product | null
+  quantity: number
+}
+export interface AccountCart {
+  version: number
+  items: AccountCartItem[]
+}
+export interface CartIntentItem { productId: number; quantity: number }
+export interface CartOperation {
+  operationId: string
+  replayed: boolean
+  status: 'APPLIED' | 'RETIRED'
+  cart: AccountCart
+  orderId: number | null
+}
 export interface DefaultProducts {
   items: Product[]
   source: 'BASELINE' | 'FALLBACK'

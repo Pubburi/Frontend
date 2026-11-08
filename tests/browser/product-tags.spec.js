@@ -23,6 +23,7 @@ const test = base.extend({
     const state = { products: [...products], features: Object.fromEntries(products.map((p, i) => [p.id, features[i]])), calls: [], unexpected: [], errors: [], failures: 0 }
     page.on('pageerror', (e) => state.errors.push(e.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const req = route.request(); const url = new URL(req.url()); const q = url.searchParams
       state.calls.push({ method: req.method(), path: url.pathname, query: [...q] })
       if (req.method() === 'GET' && url.pathname === '/api/auth/me') return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
