@@ -5,6 +5,7 @@ import { useCart, cartTotals } from '../state/cart'
 import type { AccountCartItem } from '../types'
 import { money } from '../utils/format'
 import { Confirm, Empty } from './ui'
+import { CartRecommendations } from './CartRecommendations'
 
 type Account = ReturnType<typeof useAccountCart>
 function AccountLine({ item, account }: { item: AccountCartItem; account: Account }) {
@@ -65,6 +66,7 @@ export function AccountCartView({ account }: { account: Account }) {
               <p className="muted">실제 결제 없이 데모 주문으로 접수합니다. 접수된 수량만 계정 장바구니에서 빠집니다.</p>
             </form></aside></div> : <Empty title="계정 장바구니가 비어 있습니다"><Link className="btn btn-dark" to="/products">전체 주류 보기</Link></Empty>}
       </section>}
+      {data && <CartRecommendations account={account} />}
     </>}
     {!!guest.items.length && <section className="settings-card guest-cart-summary" aria-label="이 기기에 담은 상품"><h2>이 기기에 담은 상품</h2><p>계정에 아직 합치지 않은 {cartTotals(guest.items).count}개입니다. 합치기를 확인하기 전에는 기기 원본을 지우지 않습니다.</p>
       <ul>{guest.items.map((item) => <li key={item.product.id}>{item.product.name} · {item.quantity}개 <button className="text-button" aria-label={`${item.product.name} 기기에서 삭제`} onClick={() => guest.remove(item.product.id)}>기기에서 삭제</button></li>)}</ul>

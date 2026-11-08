@@ -14,8 +14,8 @@ export const contentFallbacks = {
   no_supported_preferences: '검수 후보와 비교할 수 있는 선호가 없어 기본순으로 표시합니다.',
   no_matching_features: '검수 후보와 공유하는 취향 근거가 없어 기본순으로 표시합니다.',
 } as const
-const scoreLabels = { category_match: '주종 일치', taste_match: '맛 태그 일치', aroma_match: '향 태그 일치', abv_comparison: '도수 비교 근거', volume_comparison: '용량 비교 근거' } as const
-const filterLabels = { availability_filter: '입력 가용 조건 충족', category_filter: '입력 주종 조건 충족', price_filter: '입력 가격 조건 충족', abv_filter: '입력 도수 조건 충족' } as const
+export const scoreLabels = { category_match: '주종 일치', taste_match: '맛 태그 일치', aroma_match: '향 태그 일치', abv_comparison: '도수 비교 근거', volume_comparison: '용량 비교 근거' } as const
+export const filterLabels = { availability_filter: '입력 가용 조건 충족', category_filter: '입력 주종 조건 충족', price_filter: '입력 가격 조건 충족', abv_filter: '입력 도수 조건 충족' } as const
 export interface ScoreFact {
   kind: keyof typeof scoreLabels
   label: string
