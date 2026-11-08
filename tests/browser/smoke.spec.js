@@ -4387,6 +4387,24 @@ test('공개 상품 특성 null은 미확인이고 확인하지 않은 맛이나
 
 const similarRegion = (page) => page.getByRole('region', { name: '비슷한 상품', exact: true })
 
+for (const width of [1280, 390]) test(`상품 이미지 placeholder는 미등록 캡션과 대체 alt로 실제 사진과 구분 ${width}px`, async ({ page, api }) => {
+  api.catalog[0].img = null; await page.setViewportSize({ width, height: 900 }); await page.goto('/products/901')
+  await expect(page.locator('.detail-media').getByText('상품 이미지 미등록', { exact: true })).toBeVisible(); await expect(page.locator('.detail-media img')).toHaveAttribute('alt', '상품 이미지 미등록 — 기본 아이콘'); await expect(page.locator('.detail-media img')).toHaveAttribute('src', '/images/icon/mainIcon.webp')
+  await expect(page.locator('.brand img')).toHaveAttribute('alt', ''); await expect(page.locator('.brand figcaption')).toHaveCount(0); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  if (width === 390) await page.getByRole('button', { name: '메뉴 열기', exact: true }).click(); await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click(); await expect(page.locator('.product-card').first().getByText('상품 이미지 미등록', { exact: true })).toBeVisible()
+})
+test('상품 이미지 WebP 실패는 원본을 복구하고 실제 등록 이미지 alt를 보존', async ({ page, api }) => {
+  api.catalog[0].img = 'recover-image.png'; const requests = []
+  await page.route('**/images/pub/recover-image.*', async (route) => { const path = new URL(route.request().url()).pathname; requests.push(path); await route.fulfill(path.endsWith('.webp') ? { status: 404, body: '', headers: { 'cache-control': 'no-store' } } : { path: 'public/images/pub/takju1.webp', contentType: 'image/webp', headers: { 'cache-control': 'no-store' } }) })
+  await page.goto('/products/901'); const image = page.locator('.detail-media img'); await expect.poll(() => image.evaluate((node) => node.currentSrc)).toBe(new URL('/images/pub/recover-image.png', page.url()).href); await expect(image).toHaveAttribute('alt', api.catalog[0].name); await expect(page.locator('.detail-media figcaption')).toHaveCount(0); expect(requests).toEqual(['/images/pub/recover-image.webp', '/images/pub/recover-image.png'])
+})
+test('상품 이미지 원본도 실패하면 기본 아이콘을 표시하고 다음 상품의 정상 WebP로 복원', async ({ page, api }) => {
+  api.catalog.forEach((p) => { p.img = 'recover-next.png' }); let available = false; const requests = []
+  await page.route('**/images/pub/recover-next.*', async (route) => { const path = new URL(route.request().url()).pathname; requests.push(path); await route.fulfill(available ? { path: 'public/images/pub/takju1.webp', contentType: 'image/webp', headers: { 'cache-control': 'no-store' } } : { status: 404, body: '', headers: { 'cache-control': 'no-store' } }) })
+  await page.goto('/products/901'); const image = page.locator('.detail-media img'); await expect(image).toHaveAttribute('src', '/images/icon/mainIcon.webp'); await expect(page.locator('.detail-media').getByText('상품 이미지 미등록', { exact: true })).toBeVisible(); expect(requests).toEqual(['/images/pub/recover-next.webp', '/images/pub/recover-next.png'])
+  available = true; await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click(); await page.getByRole('heading', { name: api.catalog[1].name, exact: true }).getByRole('link').click(); await expect(page).toHaveURL('/products/902'); await expect.poll(() => image.evaluate((node) => node.currentSrc)).toBe(new URL('/images/pub/recover-next.webp', page.url()).href); await expect(image).toHaveAttribute('alt', api.catalog[1].name); await expect(page.locator('.detail-media figcaption')).toHaveCount(0)
+})
+
 for (const width of [1280, 390]) test(`로컬 검수 유사상품은 현재 상세·Back으로 연결하고 시연 상품군과 구분 ${width}px`, async ({ page, api }) => {
   const candidate = api.catalog[1]
   await page.route('**/api/products/901/similar', (route) => route.fulfill({ json: success({ items: [candidate], catalogScope: 'REVIEWED_LOCAL_CATALOG' }) }))
@@ -4831,7 +4849,8 @@ for (const width of [320, 720, 721, 980, 1280]) {
     await expectReadableDetailName(page, name)
     const image = page.locator('.detail-media img')
     await expect(image).toBeVisible()
-    await expect(image).toHaveAttribute('alt', name)
+    await expect(image).toHaveAttribute('alt', '상품 이미지 미등록 — 기본 아이콘')
+    await expect(page.locator('.detail-media').getByText('상품 이미지 미등록', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
   })
 }

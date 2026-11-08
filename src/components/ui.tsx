@@ -6,38 +6,33 @@ import { money, productImage, webpSource } from '../utils/format'
 import type { Page, Product } from '../types'
 import { CompareAction } from './CompareAction'
 
-export function Image({
+type ImageProps = { src?: string; alt?: string; loading?: 'lazy' | 'eager'; product?: boolean }
+export function Image(props: ImageProps) {
+  return <ImageSource key={props.src} {...props} />
+}
+function ImageSource({
   src = '',
   alt = '',
   loading = 'lazy',
-}: {
-  src?: string
-  alt?: string
-  loading?: 'lazy' | 'eager'
-}) {
-  const [failedSource, setFailedSource] = useState('')
-  const failed = failedSource === src
-  const webp = !failed && webpSource(src)
-  return (
+  product = false,
+}: ImageProps) {
+  const [failure, setFailure] = useState<'webp' | 'original' | null>(null)
+  const fallback = '/images/icon/mainIcon.webp'
+  const generic = !src || src === fallback || failure === 'original'
+  const webp = !generic && failure === null && webpSource(src)
+  const picture = (
     <picture>
       {webp && <source srcSet={webp} type="image/webp" />}
       <img
-        src={src || '/images/icon/mainIcon.webp'}
-        alt={alt}
+        src={generic ? fallback : src}
+        alt={product && generic ? '상품 이미지 미등록 — 기본 아이콘' : alt}
         loading={loading}
         decoding="async"
-        onError={(event) => {
-          if (!failed && src) {
-            setFailedSource(src)
-            event.currentTarget.src = src
-          } else if (
-            !event.currentTarget.src.endsWith('/images/icon/mainIcon.webp')
-          )
-            event.currentTarget.src = '/images/icon/mainIcon.webp'
-        }}
+        onError={() => { if (!generic) setFailure(webp ? 'webp' : 'original') }}
       />
     </picture>
   )
+  return product ? <figure className="product-image-content">{picture}{generic && <figcaption className="muted">상품 이미지 미등록</figcaption>}</figure> : picture
 }
 export function Loading({ label = '불러오는 중입니다.' }: { label?: string }) {
   return (
@@ -171,7 +166,7 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <article className="product-card">
       <Link className="product-image" to={`/products/${product.id}`}>
-        <Image src={productImage(product)} alt={product.name} />
+        <Image src={productImage(product)} alt={product.name} product />
       </Link>
       <div className="product-body">
         <p className="product-type">{product.type}</p>

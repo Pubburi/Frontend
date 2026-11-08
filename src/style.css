@@ -748,6 +748,17 @@ textarea.form-control {
   object-fit: contain;
 }
 
+.product-image-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  margin: 0;
+}
+
+.product-image-content > picture { flex: 1; min-height: 0; height: auto; }
+.product-image-content figcaption { text-align: center; font-size: 0.875rem; }
+
 .product-body {
   display: grid;
   gap: 9px;
