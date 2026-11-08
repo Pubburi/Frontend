@@ -88,22 +88,22 @@ function FilterText({ fact }: { fact: FilterFact }) {
   if (fact.kind === 'category_filter') return <>{fact.label}: {fact.actual_value} (허용 주종 {fact.allowed_category_count}개)</>
   return <>{fact.label}: {fact.actual_value} {fact.unit} (최소 {fact.minimum === null ? '미지정' : fact.minimum}, 최대 {fact.maximum === null ? '미지정' : fact.maximum})</>
 }
-function ContextResults({ response }: { response: CartContextResponse }) {
+export function ContextResults({ response, context = 'cart', unavailableDescription }: { response: Pick<CartContextResponse, 'source' | 'catalogScope' | 'result' | 'products'> & { references: { productId: number | null; name: string | null }[]; unavailableReason: string | null }; context?: 'cart' | 'order'; unavailableDescription?: string }) {
   const result = response.result
   return <div className="cart-context-results">
-    {response.source === 'UNAVAILABLE' ? <Empty title="이 장바구니를 비교하지 못했습니다" description={contextUnavailable[response.unavailableReason!]} /> : result && <>
+    {response.source === 'UNAVAILABLE' ? <Empty title={context === 'order' ? '이 주문을 비교하지 못했습니다' : '이 장바구니를 비교하지 못했습니다'} description={unavailableDescription ?? contextUnavailable[response.unavailableReason as keyof typeof contextUnavailable]} /> : result && <>
       {result.fallback_reason && <p role="status">{contextFallbacks[result.fallback_reason]} 조건이나 기준을 완화해 채우지 않았습니다.</p>}
       {!result.items.length && <Empty title="비교 근거가 있는 검수 후보가 없습니다" />}
       <ol className="content-cards">{result.items.map((item, index) => {
         const product = response.products[index], facts = item.explanation, match = result.matches[index]
         const reference = response.references.find((ref) => ref.productId === match.reference_product_id)!
-        return <li className="content-card" key={item.product_id} data-cart-context-product={item.product_id}>
+        return <li className="content-card" key={item.product_id} data-cart-context-product={context === 'cart' ? item.product_id : undefined} data-order-context-product={context === 'order' ? item.product_id : undefined}>
           <h3><Link className="text-link" to={`/products/${product.id}`}>{product.name}</Link></h3>
           <p>{product.type} · {response.catalogScope === 'REVIEWED_LOCAL_CATALOG' ? '시연 가격' : '현재 표시 가격'} {money(product.price)}원 · 도수 {product.abv}%</p>
           <p>비교 점수 {item.score < 0.001 ? '<0.001' : item.score.toLocaleString('ko-KR', { maximumFractionDigits: 3 })}</p>
           <p>이 후보는 기준 상품 ‘{reference.name}’의 특성과 비교했습니다.</p>
           <h4>비교에 사용한 실제 근거</h4><ul>{facts.score_evidence.map((fact, i) => <li key={i}>
-            {fact.label}: 후보 {fact.actual_value}{fact.unit ? ` ${fact.unit}` : ''} / 기준 상품 {fact.target_value}{fact.unit ? ` ${fact.unit}` : ''}
+            {context === 'order' && typeof fact.actual_value === 'number' ? <>{fact.kind === 'abv_comparison' ? '도수' : '용량'}: 이 상품 {fact.actual_value}{fact.unit === 'vol%' ? '%' : fact.unit} · 기준 상품 {fact.target_value}{fact.unit === 'vol%' ? '%' : fact.unit}</> : <>{fact.label}: 후보 {fact.actual_value}{fact.unit ? ` ${fact.unit}` : ''} / 기준 상품 {fact.target_value}{fact.unit ? ` ${fact.unit}` : ''}</>}
           </li>)}</ul>
           {facts.score_evidence_truncated && <p>양수 비교 근거 {facts.total_positive_contributions}개 중 상위 {facts.score_evidence.length}개를 표시합니다.</p>}
           <h4>통과한 입력 조건</h4><ul>{facts.filter_evidence.map((fact, i) => <li key={i}><FilterText fact={fact} /></li>)}</ul>

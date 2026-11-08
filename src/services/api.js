@@ -193,6 +193,8 @@ export const api = {
   createOrder: (payload) => request('/orders', { method: 'POST', body: JSON.stringify(payload) }),
   /** @param {number} id @returns {Promise<import('../types').Order>} */
   order: (id) => request(`/orders/${id}`),
+  /** @param {string} owner @param {number} id @param {AbortSignal} signal @returns {Promise<unknown>} */
+  orderRecommendations: (owner, id, signal) => request(`/users/me/orders/${id}/recommendations`, { method: 'POST', cache: 'no-store', signal, headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ limit: 4 }) }),
   userOrders: (userId, params = {}) =>
     request(`/users/${encodeURIComponent(userId)}/orders?${pageQuery(params, { page: 1, size: 10 })}`),
   adminOrders: (params = {}) => request(`/admin/orders?${pageQuery(params, { page: 1, size: 20 })}`),
