@@ -211,6 +211,7 @@ test('미저장 수량이 있는 주문은 버튼과 다른submit 경로 모두 
   await expect(page.getByRole('button', { name: '10,000원 주문하기', exact: true })).toBeDisabled(); await expect(page.getByText(/바꾼 수량을 먼저 저장한 뒤 주문해 주세요/)).toBeVisible()
   await page.locator('.checkout-form').evaluate((form) => form.requestSubmit()); expect(s.orders).toHaveLength(0); await expect(own(page).getByRole('spinbutton')).toHaveValue('3')
   await own(page).getByRole('button', { name: '수량 저장', exact: true }).click(); await expect(page.getByRole('button', { name: '15,000원 주문하기', exact: true })).toBeEnabled()
+  await expect(page.getByRole('alert')).toHaveCount(0); await expect(page.getByText(/바꾼 수량을 먼저 저장한 뒤 주문해 주세요/)).toHaveCount(0)
 })
 
 for (const kind of ['merge', 'checkout']) for (const winner of ['original', 'resolve']) test(`receipt404 ${kind}의 ${winner} 먼저: 미확정 nonce를 안전하게 끝낸 뒤에만 새작업 허용`, async ({ page, cartApi: s }, info) => {

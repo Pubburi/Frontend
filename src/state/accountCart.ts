@@ -208,9 +208,7 @@ export function createAccountCart(client: QueryClient) {
       },
       async checkout() {
         if (!canSubmit() || !get().data!.items.length || get().data!.items.some((item) => !item.currentProduct)) return null
-        if (get().data!.items.some((item) => Number(get().drafts[item.productId] ?? item.quantity) !== item.quantity)) {
-          useUi.getState().error(new Error('바꾼 수량을 먼저 저장한 뒤 주문해 주세요.')); return null
-        }
+        if (get().data!.items.some((item) => Number(get().drafts[item.productId] ?? item.quantity) !== item.quantity)) return null
         const form = cartStore.getState().orderForm
         if (Array.from(form.orderTable).length > 20 || !['TAKEOUT', 'ONLINE', 'OFFLINE'].includes(form.orderType)) {
           useUi.getState().error(new Error('주문 방식과 요청 사항을 확인해 주세요. 요청은20자까지 입력할 수 있습니다.')); return null

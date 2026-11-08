@@ -80,7 +80,7 @@ describe('account cart ownership and exact operations', () => {
   })
   it('guards unsaved quantity and order validity at the checkout function, not just the button', async () => {
     const { store } = ready(); vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 2, items: [row(2)] }); await store.getState().load()
-    store.getState().draft(7, '3'); await store.getState().checkout(); expect(api.cartOperation).not.toHaveBeenCalled(); expect(store.getState().drafts[7]).toBe('3')
+    store.getState().draft(7, '3'); await store.getState().checkout(); expect(api.cartOperation).not.toHaveBeenCalled(); expect(store.getState().drafts[7]).toBe('3'); expect(useUi.getState().notice).toBeNull()
     store.getState().draft(7, '2'); cartStore.getState().setOrderForm({ orderTable: '가'.repeat(21) }); await store.getState().checkout(); expect(api.cartOperation).not.toHaveBeenCalled()
   })
   it('an old add failure cannot re-announce the new account error or a success notice', async () => {
