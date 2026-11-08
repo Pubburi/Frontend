@@ -44,6 +44,7 @@ const test = base.extend({
     s.hold = (path, reply) => { let release; const wait = new Promise((r) => { release = r }); const gate = { path, reply, wait, release, started: false }; s.gates.push(gate); return gate }
     page.on('pageerror', (error) => s.errors.push(error.message))
     await context.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/notifications') return route.fulfill({ status: 404, json: { data: null, error: { code: 'NOTIFICATIONS_NOT_SUPPORTED' } } })
       if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const r = route.request(), url = new URL(r.url()), path = url.pathname.slice(4), method = r.method()
       const body = method === 'POST' && r.postData() ? r.postDataJSON() : null

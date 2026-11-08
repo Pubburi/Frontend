@@ -11,6 +11,7 @@ const test = base.extend({ cartApi: [async ({ page }, use) => {
   const s = { user: user(), carts: { member: { version: 0, items: [] }, other: { version: 0, items: [] } }, receipts: new Map(), orders: [], calls: [], errors: [], unexpected: [], readStatus: 0, writeStatus: 0, afterApply401: null, keepUserAfter401: false, lost: null, hold: null, products: [product(7), product(8)] }
   page.on('pageerror', (e) => s.errors.push(e.message))
   await page.route('**/api/**', async (route) => {
+    if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/notifications') return route.fulfill({ status: 404, json: { data: null, error: { code: 'NOTIFICATIONS_NOT_SUPPORTED' } } })
     const r = route.request(), url = new URL(r.url()), path = url.pathname, method = r.method(), body = r.postData() ? r.postDataJSON() : null
     const owner = r.headers()['x-pubburi-account-owner']; s.calls.push({ path, method, body, owner, query: Object.fromEntries(url.searchParams) })
     const reply = (value, status = 200, code = 'REQUEST_FAILED') => route.fulfill({ status, json: status < 400 ? ok(structuredClone(value)) : bad(code) })

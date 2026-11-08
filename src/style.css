@@ -1533,3 +1533,10 @@ textarea.form-control {
 .notebook-tags li { white-space: pre-wrap; }
 .similar-products h2, .similar-products p, .similar-products ul { margin: 0; }
 .similar-product-link { display: block; overflow-wrap: anywhere; font-weight: 700; }
+/* Internal account notifications share the existing cards and theme. */
+.notification-list { list-style: none; padding: 0; display: grid; gap: 1rem; margin: 1.5rem 0; }
+.notification-card { overflow-wrap: anywhere; }
+.notification-card.unread { border-inline-start: 4px solid var(--forest); }
+.notification-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.notification-heading h2 { font-size: 1.15rem; margin: 0; }
+.notification-card time { display: block; color: var(--muted); font-size: .85rem; margin-bottom: 1rem; }
