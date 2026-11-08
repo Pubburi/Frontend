@@ -9,6 +9,7 @@ const test = base.extend({
     const state = { user: null, sessionFailures: 0, catalog: new Map(Array.from({ length: 25 }, (_, i) => [i + 1, product(i + 1)])), productErrors: new Map(), calls: [], unexpected: [], errors: [] }
     page.on('pageerror', (error) => state.errors.push(error.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const r = route.request(), url = new URL(r.url()), path = url.pathname
       state.calls.push({ method: r.method(), path })
       if (r.method() === 'POST' && path === '/api/auth/login') { state.user = { id: r.postDataJSON().id, name: r.postDataJSON().id, role: 'USER' }; return route.fulfill({ json: success(state.user) }) }

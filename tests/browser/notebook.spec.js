@@ -11,6 +11,7 @@ const test = base.extend({ notebookApi: [async ({ page }, use) => {
   const s = { user: account(), notes: { member: [], other: [] }, calls: [], unexpected: [], errors: [], writeStatus: 0, meFailure: false }
   page.on('pageerror', (e) => s.errors.push(e.message))
   await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
     const r = route.request(), url = new URL(r.url()), path = url.pathname, method = r.method(), body = r.postData() ? r.postDataJSON() : undefined
     const owner = r.headers()['x-pubburi-account-owner']; s.calls.push({ path, method, body, owner, query: Object.fromEntries(url.searchParams) })
     const reply = (data, status = 200) => route.fulfill({ status, json: status < 400 ? ok(data) : bad(status) })
@@ -62,7 +63,7 @@ async function nav(page, name) { const link = page.getByRole('link', { name, exa
 
 for (const width of [1280, 390]) test(`비공개 기록 ${width}px 상세에서 경험0점·개인태그/메모 저장, 본인목록에서 관심 전환·삭제`, async ({ page, notebookApi: s }) => {
   await page.setViewportSize({ width, height: 900 }); await open(page)
-  await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click(); const cart = await page.evaluate(() => localStorage.getItem('pubburi-cart'))
+  await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click(); await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart') || 'null')?.[0]?.quantity)).toBe(1); const cart = await page.evaluate(() => localStorage.getItem('pubburi-cart'))
   await form(page).getByLabel('기록 구분', { exact: true }).selectOption('TRIED')
   await form(page).getByLabel('나의 평점 (선택)', { exact: true }).fill('0')
   await form(page).getByRole('combobox', { name: '내가 느낀 맛 확인 상태', exact: true }).selectOption('empty')

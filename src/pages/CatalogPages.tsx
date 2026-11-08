@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError, pageQuery } from '../services/api'
 import { categories, carouselImages } from '../catalog'
 import { useSession } from '../queries'
-import { useCart } from '../state/cart'
+import { useAccountCart } from '../state/accountCart'
 import { useUi } from '../state/ui'
 import { ProductFavorite } from '../components/FavoriteAction'
 import { SearchTagFields } from '../components/SearchTagFields'
@@ -560,7 +560,7 @@ type ReviewFocus = { editing: ReviewEdit | null; account: object; view: object; 
 function ProductDetail({ id }: { id: string }) {
   const session = useSession()
   const ui = useUi()
-  const cart = useCart()
+  const cart = useAccountCart()
   const client = useQueryClient()
   const location = useLocation()
   const [quantity, setQuantity] = useState(1)
@@ -759,13 +759,14 @@ function ProductDetail({ id }: { id: string }) {
           </div>
           <button
             className="btn btn-gold btn-wide detail-cart-button"
-            onClick={() => {
-              cart.add(item, quantity)
-              ui.status(`${item.name} ${quantity}개를 장바구니에 담았습니다.`)
+            disabled={cart.pending || cart.loading || cart.mode === 'account' && !cart.ready}
+            onClick={async () => {
+              if (await cart.add(item, quantity)) ui.status(`${item.name} ${quantity}개를 ${cart.mode === 'unknown' ? '이 기기에만' : '장바구니에'} 담았습니다.`)
             }}
           >
             {quantity}개 장바구니에 담기
           </button>
+          {cart.mode === 'unknown' && <p className="muted">로그인 확인 전에는 이 기기에만 담습니다.</p>}
           <ProductFavorite product={item} />
           <CompareAction product={item} />
           {currentProduct && <RecommendationFeedback key={location.key} productId={item.id} />}

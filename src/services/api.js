@@ -92,6 +92,18 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   join: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
   idAvailable: (id) => request(`/users/id-available?id=${encodeURIComponent(id)}`),
+  /** @param {string} owner @returns {Promise<import('../types').AccountCart>} */
+  accountCart: (owner) => request('/users/me/cart', { cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
+  /** @param {string} owner @param {string} operationId @returns {Promise<import('../types').CartOperation>} */
+  cartOperationResult: (owner, operationId) => request(`/users/me/cart/operations/${encodeURIComponent(operationId)}`, { cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
+  /** @param {string} owner @param {string} operationId @param {{kind:'MERGE'|'CHECKOUT',items:import('../types').CartIntentItem[],orderType:string|null,orderTable:string|null}} payload @returns {Promise<import('../types').CartOperation>} */
+  resolveCartOperation: (owner, operationId, payload) => request(`/users/me/cart/operations/${encodeURIComponent(operationId)}/resolve`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify(payload) }),
+  /** @param {string} owner @param {number} productId @param {number} quantity @param {number} expectedVersion @returns {Promise<import('../types').AccountCart>} */
+  setCartQuantity: (owner, productId, quantity, expectedVersion) => request(`/users/me/cart/items/${productId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ quantity, expectedVersion }) }),
+  /** @param {string} owner @param {number|null} productId @param {number} expectedVersion @returns {Promise<import('../types').AccountCart>} */
+  removeCartItems: (owner, productId, expectedVersion) => request(`/users/me/cart${productId === null ? '' : `/items/${productId}`}?${pageQuery({ expectedVersion })}`, { method: 'DELETE', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
+  /** @param {string} owner @param {'merge'|'checkout'} kind @param {{operationId:string,expectedVersion:number,items:import('../types').CartIntentItem[],orderType?:string,orderTable?:string|null}} payload @returns {Promise<import('../types').CartOperation>} */
+  cartOperation: (owner, kind, payload) => request(`/users/me/cart/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify(payload) }),
   /** @param {string} owner @param {{page?:number,size?:number}} [params] @returns {Promise<import('../types').Page<import('../types').NotebookEntry>>} */
   notebook: (owner, params = {}) => request(`/users/me/notebook?${pageQuery(params, { page: 1, size: 10 })}`, { cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
   /** @param {string} owner @param {number} productId @param {AbortSignal} [signal] @returns {Promise<import('../types').NotebookEntry|null>} */

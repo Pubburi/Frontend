@@ -9,6 +9,9 @@ export interface CartItem {
   product: Product
   quantity: number
 }
+export interface CartSubmission {
+  items: { productId: number; quantity: number; owner: symbol | undefined }[]
+}
 type Storage = Pick<globalThis.Storage, 'getItem' | 'setItem'>
 export function normalizeQuantity(value: unknown) {
   const quantity = Math.trunc(Number(value))
@@ -38,6 +41,9 @@ interface CartState {
   setQuantity: (id: number, value: unknown) => void
   remove: (id: number) => void
   setOrderForm: (value: Partial<CartState['orderForm']>) => void
+  snapshot: () => CartSubmission
+  consume: (submitted: CartSubmission) => void
+  finishForm: (form: CartState['orderForm']) => void
   checkout: (userId: string) => Promise<Order>
 }
 export function createCartStore(storage: Storage | null) {
@@ -106,14 +112,24 @@ export function createCartStore(storage: Storage | null) {
       setOrderForm(value) {
         set({ orderForm: { ...get().orderForm, ...value } })
       },
+      snapshot: () => ({ items: get().items.map((item) => ({ productId: item.product.id, quantity: item.quantity, owner: lineOwners.get(item.product.id) })) }),
+      consume(snapshot) {
+        const submitted = new Map(snapshot.items.map((item) => [item.productId, item]))
+        save(get().items.flatMap((item) => {
+          const original = submitted.get(item.product.id)
+          if (!original || lineOwners.get(item.product.id) !== original.owner) return [item]
+          const quantity = Math.max(0, item.quantity - original.quantity)
+          if (quantity > 0) return [{ ...item, quantity }]
+          lineOwners.delete(item.product.id)
+          return []
+        }))
+      },
+      finishForm(form) {
+        if (get().orderForm === form) set({ orderForm: { ...form, orderTable: '' } })
+      },
       async checkout(userId) {
         const { items, orderForm } = get()
-        const submitted = new Map(
-          items.map((item) => [
-            item.product.id,
-            { quantity: item.quantity, owner: lineOwners.get(item.product.id) },
-          ]),
-        )
+        const submitted = get().snapshot()
         const order = await api.createOrder({
           userId,
           orderType: orderForm.orderType,
@@ -123,19 +139,8 @@ export function createCartStore(storage: Storage | null) {
             quantity: item.quantity,
           })),
         })
-        save(
-          get().items.flatMap((item) => {
-            const original = submitted.get(item.product.id)
-            if (!original || lineOwners.get(item.product.id) !== original.owner)
-              return [item]
-            const quantity = Math.max(0, item.quantity - original.quantity)
-            if (quantity > 0) return [{ ...item, quantity }]
-            lineOwners.delete(item.product.id)
-            return []
-          }),
-        )
-        if (get().orderForm === orderForm)
-          set({ orderForm: { ...orderForm, orderTable: '' } })
+        get().consume(submitted)
+        get().finishForm(orderForm)
         return order
       },
     }
@@ -148,7 +153,7 @@ function browserStorage(): Storage | null {
     return null
   }
 }
-const cartStore = createCartStore(browserStorage())
+export const cartStore = createCartStore(browserStorage())
 export const useCart = () => useStore(cartStore)
 export const cartTotals = (items: CartItem[]) => ({
   count: items.reduce((sum, item) => sum + item.quantity, 0),

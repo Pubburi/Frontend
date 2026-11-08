@@ -1185,6 +1185,12 @@ textarea.form-control {
 .summary-list dd { font-weight: 800; }
 .summary-total { margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 18px; }
 .checkout-form { display: grid; gap: 12px; }
+.account-cart-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, 140px) auto; gap: 16px; align-items: center; }
+.account-cart-row h3 { margin: 0; overflow-wrap: anywhere; }
+.account-cart-quantity { display: grid; gap: 8px; min-width: 0; }
+.guest-cart-summary { margin-top: 24px; }
+.guest-cart-summary li { overflow-wrap: anywhere; margin-block: 8px; }
+@media (max-width: 700px) { .account-cart-row { grid-template-columns: minmax(0, 1fr); } }
 .order-type-help { margin: -3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .account-layout {

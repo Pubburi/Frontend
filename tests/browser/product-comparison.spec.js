@@ -16,6 +16,7 @@ const test = base.extend({
     state.features.set(203, feature(203, { tasteTags: [], aromaTags: ['<floral>'], sourceName: '별도 검수 표본' }))
     page.on('pageerror', (error) => state.errors.push(error.message))
     await page.route('**/api/**', async (route) => {
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const request = route.request(); const url = new URL(request.url()); const path = url.pathname
       state.calls.push({ method: request.method(), path, query: url.search })
       if (request.method() === 'GET' && path === '/api/auth/me') return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })

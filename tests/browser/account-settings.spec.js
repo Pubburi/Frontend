@@ -9,6 +9,7 @@ const test=base.extend({ settingsApi:[async({page},use)=>{
  const state={ user:account('member'), names:{member:'설정 회원',other:'다른 회원'}, passwords:{member:'old pass',other:'other pass'}, calls:[], errors:[], unexpected:[], writeStatus:0, meFailures:0 }
  page.on('pageerror',(e)=>state.errors.push(e.message))
  await page.route('**/api/**',async(route)=>{
+      if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
   const r=route.request(),path=new URL(r.url()).pathname,method=r.method(),body=r.postData()?r.postDataJSON():undefined
   state.calls.push({path,method,body})
   const reply=(data,status=200)=>route.fulfill({status,json:status<400?ok(data):bad(status)})
