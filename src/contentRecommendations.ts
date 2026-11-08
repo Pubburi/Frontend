@@ -66,6 +66,40 @@ function integer(value: unknown, max: number): value is number { return number(v
 function text(value: unknown): value is string { return typeof value === 'string' && value.length > 0 }
 function fallback(value: unknown) { return value === null || typeof value === 'string' && Object.hasOwn(contentFallbacks, value) }
 
+function checkScoreFact(fact: unknown): asserts fact is ScoreFact {
+  need(object(fact) && typeof fact.kind === 'string' && Object.hasOwn(scoreLabels, fact.kind) && fact.label === scoreLabels[fact.kind as keyof typeof scoreLabels] && number(fact.contribution, 1) && fact.contribution > 0)
+  if (fact.kind === 'abv_comparison' || fact.kind === 'volume_comparison') {
+    const volume = fact.kind === 'volume_comparison', max = volume ? 1000000 : 100
+    need(number(fact.actual_value, max) && number(fact.target_value, max) && fact.unit === (volume ? 'mL' : 'vol%'))
+    need(!volume || integer(fact.actual_value, max) && fact.actual_value > 0 && integer(fact.target_value, max) && fact.target_value > 0)
+  } else need(text(fact.actual_value) && fact.target_value === fact.actual_value && !Object.hasOwn(fact, 'unit'))
+}
+function checkFilterFact(fact: unknown): asserts fact is FilterFact {
+  need(object(fact) && typeof fact.kind === 'string' && Object.hasOwn(filterLabels, fact.kind) && fact.label === filterLabels[fact.kind as keyof typeof filterLabels])
+  if (fact.kind === 'availability_filter') need(fact.actual_value === true)
+  else if (fact.kind === 'category_filter') need(text(fact.actual_value) && integer(fact.allowed_category_count, 32) && fact.allowed_category_count > 0)
+  else {
+    const price = fact.kind === 'price_filter', max = price ? 2147483647 : 100
+    need(number(fact.actual_value, max) && (fact.minimum === null || number(fact.minimum, max)) && (fact.maximum === null || number(fact.maximum, max)) && fact.unit === (price ? 'KRW' : 'vol%'))
+  }
+}
+export function parseReferenceExplanation(value: unknown, referenceId: number): ContentItem['explanation'] {
+  need(object(value) && Object.keys(value).length === 8 && value.version === 'r04-facts-v1' && value.basis === 'content_similarity' && value.fallback_reason === null &&
+    object(value.comparison) && Object.keys(value.comparison).length === 2 && value.comparison.kind === 'reference_product' && value.comparison.product_id === referenceId)
+  need(integer(value.total_positive_contributions, 43) && value.total_positive_contributions > 0 && Array.isArray(value.score_evidence) &&
+    value.score_evidence.length === Math.min(3, value.total_positive_contributions) && value.score_evidence_truncated === (value.total_positive_contributions > 3))
+  for (const fact of value.score_evidence) {
+    checkScoreFact(fact)
+    need(Object.keys(fact).length === (fact.kind === 'abv_comparison' || fact.kind === 'volume_comparison' ? 6 : 5))
+  }
+  need(Array.isArray(value.filter_evidence) && value.filter_evidence.length > 0 && value.filter_evidence.length <= 4)
+  for (const fact of value.filter_evidence) {
+    checkFilterFact(fact)
+    need(Object.keys(fact).length === (fact.kind === 'availability_filter' ? 3 : fact.kind === 'category_filter' ? 4 : 6))
+  }
+  return value as unknown as ContentItem['explanation']
+}
+
 // Consume typed display facts. Ranking, catalog authority and preference binding
 // remain with the provider; this never invents or recalculates a score/reason.
 export function parseContentResponse(value: unknown): ContentResponse {
@@ -136,27 +170,12 @@ export function parseContentResponse(value: unknown): ContentResponse {
     need(Array.isArray(facts.score_evidence) && facts.score_evidence.length === Math.min(3, facts.total_positive_contributions) && facts.score_evidence_truncated === (facts.total_positive_contributions > 3))
     need(item.score > 0 ? facts.basis === 'content_similarity' && facts.total_positive_contributions > 0 : facts.total_positive_contributions === 0 && facts.basis !== 'content_similarity')
     for (const fact of facts.score_evidence) {
-      need(object(fact) && typeof fact.kind === 'string' && Object.hasOwn(scoreLabels, fact.kind) && fact.label === scoreLabels[fact.kind as keyof typeof scoreLabels] && number(fact.contribution, 1) && fact.contribution > 0)
+      checkScoreFact(fact)
       need(value.catalogScope !== 'REVIEWED_FAMILY_BROWSE_DEMO' || fact.kind === 'category_match' || fact.kind === 'abv_comparison')
-      if (fact.kind === 'abv_comparison' || fact.kind === 'volume_comparison') {
-        const volume = fact.kind === 'volume_comparison'
-        need(number(fact.actual_value, volume ? 1000000 : 100) && number(fact.target_value, volume ? 1000000 : 100) && fact.unit === (volume ? 'mL' : 'vol%'))
-        need(!volume || integer(fact.actual_value, 1000000) && fact.actual_value > 0 && integer(fact.target_value, 1000000) && fact.target_value > 0)
-      } else {
-        need(text(fact.actual_value) && fact.target_value === fact.actual_value && !Object.hasOwn(fact, 'unit'))
-        if (activityProfile && fact.kind === 'category_match') need(categoryContribution && fact.actual_value === product.type)
-      }
+      if (activityProfile && fact.kind === 'category_match') need(categoryContribution && fact.actual_value === product.type)
     }
     need(Array.isArray(facts.filter_evidence) && facts.filter_evidence.length > 0 && facts.filter_evidence.length <= 4)
-    for (const fact of facts.filter_evidence) {
-      need(object(fact) && typeof fact.kind === 'string' && Object.hasOwn(filterLabels, fact.kind) && fact.label === filterLabels[fact.kind as keyof typeof filterLabels])
-      if (fact.kind === 'availability_filter') need(fact.actual_value === true)
-      else if (fact.kind === 'category_filter') need(text(fact.actual_value) && integer(fact.allowed_category_count, 32) && fact.allowed_category_count > 0)
-      else {
-        const price = fact.kind === 'price_filter', max = price ? 2147483647 : 100
-        need(number(fact.actual_value, max) && (fact.minimum === null || number(fact.minimum, max)) && (fact.maximum === null || number(fact.maximum, max)) && fact.unit === (price ? 'KRW' : 'vol%'))
-      }
-    }
+    for (const fact of facts.filter_evidence) checkFilterFact(fact)
   })
   need(references.size === usedReferences.size && [...references].every((id) => !seen.has(id)))
   if (hasActivity) {

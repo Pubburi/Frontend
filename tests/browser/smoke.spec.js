@@ -1052,7 +1052,7 @@ test('후기 등록 응답은 제출 뒤 새로 입력한 초안을 지우지 �
     await form.getByLabel('후기', { exact: true }).fill('다음 후기 초안')
     await form.getByRole('combobox', { name: /^평점/ }).selectOption('2')
     release()
-    await expect(page.getByRole('status')).toContainText('후기가 등록되었습니다.')
+    await expect(page.locator('.notice.success[role="status"]')).toContainText('후기가 등록되었습니다.')
     await expect(form.getByLabel('후기', { exact: true })).toHaveValue('다음 후기 초안')
     await expect(form.getByRole('combobox', { name: /^평점/ })).toHaveValue('2')
     await expect(page.locator('.comment-row > p')).toHaveText('먼저 제출한 후기')
@@ -1091,7 +1091,7 @@ for (const nextReview of [{ name: '같은', id: 11 }, { name: '다른', id: 12 }
       await page.getByLabel('후기 내용', { exact: true }).fill('저장할 수정 본문')
       await page.locator('.comment-edit-form').getByRole('combobox', { name: /^평점/ }).selectOption('4')
       release()
-      await expect(page.getByRole('status')).toContainText('후기가 수정되었습니다.')
+      await expect(page.locator('.notice.success[role="status"]')).toContainText('후기가 수정되었습니다.')
       await expect(page.getByLabel('후기 내용', { exact: true })).toHaveValue('저장할 수정 본문')
       await expect(page.locator('.comment-edit-form').getByRole('combobox', { name: /^평점/ })).toHaveValue('4')
       await expect(page.getByRole('button', { name: '저장', exact: true })).toBeEnabled()
@@ -1124,7 +1124,7 @@ test('후기 수정 응답은 저장 대기 중 계속 편집한 내용을 지�
     await expect.poll(() => submissions.length).toBe(1)
     await page.getByLabel('후기 내용', { exact: true }).fill('아직 저장하지 않은 수정')
     release()
-    await expect(page.getByRole('status')).toContainText('후기가 수정되었습니다.')
+    await expect(page.locator('.notice.success[role="status"]')).toContainText('후기가 수정되었습니다.')
     await expect(page.getByLabel('후기 내용', { exact: true })).toHaveValue('아직 저장하지 않은 수정')
     await expect(page.getByRole('button', { name: '저장', exact: true })).toBeEnabled()
     expect(api.reviews[0].comment).toBe('먼저 저장할 본문')
@@ -4387,6 +4387,58 @@ test('공개 상품 특성 null은 미확인이고 확인하지 않은 맛이나
 })
 
 const similarRegion = (page) => page.getByRole('region', { name: '비슷한 상품', exact: true })
+const similarCards = (page) => similarRegion(page).locator('[data-similar-product]')
+function similarFactWire(reference, candidate, referenceVolume = 330, candidateVolume = 500) {
+  const score = [
+    ...(reference.type === candidate.type ? [{ kind: 'category_match', label: '주종 일치', actual_value: candidate.type, target_value: reference.type, contribution: 0.3 }] : []),
+    { kind: 'abv_comparison', label: '도수 비교 근거', actual_value: candidate.abv, target_value: reference.abv, unit: 'vol%', contribution: 0.2 },
+    { kind: 'volume_comparison', label: '용량 비교 근거', actual_value: candidateVolume, target_value: referenceVolume, unit: 'mL', contribution: 0.1 },
+  ]
+  return { items: [candidate], catalogScope: 'REVIEWED_LOCAL_CATALOG', explanations: [{ productId: candidate.id, explanation: { version: 'r04-facts-v1', basis: 'content_similarity', comparison: { kind: 'reference_product', product_id: reference.id }, fallback_reason: null, score_evidence: score, filter_evidence: [{ kind: 'availability_filter', label: '입력 가용 조건 충족', actual_value: true }], total_positive_contributions: score.length, score_evidence_truncated: false } }] }
+}
+for (const width of [1280, 390]) test(`R04 유사상품의 현재 도수0/소수·용량 근거와 키보드 상세/Back ${width}px`, async ({ page, api }, info) => {
+  api.catalog[0].abv = 0; api.catalog[1].abv = 7.5; api.catalog[1].type = api.catalog[0].type
+  const response = similarFactWire(api.catalog[0], api.catalog[1]), requests = []
+  await page.route((url) => url.pathname === '/api/products/901/similar', async (route) => { requests.push(Object.fromEntries(new URL(route.request().url()).searchParams)); await route.fulfill({ json: success(response) }) })
+  await page.setViewportSize({ width, height: 900 }); await page.goto('/products/901'); await expect(similarCards(page)).toHaveCount(1); const card = similarCards(page).first()
+  expect(requests).toEqual([{ includeExplanations: 'true' }]); await expect(card).toContainText('도수: 이 상품 7.5% · 현재 상품 0%'); await expect(card).toContainText('용량: 이 상품 500mL · 현재 상품 330mL'); await expect(card).not.toContainText(/맛 태그|향 태그|비교 점수/)
+  await card.locator('summary').press('Enter'); await expect(card).toContainText('판매·재고 확인을 뜻하지 않습니다.'); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  const screenshot = info.outputPath(`similar-facts-${width}.png`); await similarRegion(page).screenshot({ path: screenshot }); await info.attach(`similar-facts-${width}.png`, { path: screenshot, contentType: 'image/png' })
+  await card.getByRole('link', { name: api.catalog[1].name, exact: true }).press('Enter'); await expect(page).toHaveURL('/products/902'); await expect(page.getByRole('heading', { name: api.catalog[1].name, level: 1, exact: true })).toBeVisible(); await page.goBack(); await expect(page).toHaveURL('/products/901'); await expect(similarCards(page)).toContainText('현재 상품 0%')
+})
+test('R04 재확인400·빈결과·구wire 복구는 상세 초안/수량을 보존하고 기본 재요청0', async ({ page, api }) => {
+  api.user = api.users[0]; let mode = 'facts', release, waiting = false; const gate = new Promise((r) => { release = r }), requests = []
+  await page.route((url) => url.pathname === '/api/products/901/similar', async (route) => {
+    requests.push(Object.fromEntries(new URL(route.request().url()).searchParams))
+    if (mode === 'error') { waiting = true; await gate; return route.fulfill({ status: 400, json: failure('BAD_REQUEST') }) }
+    await route.fulfill({ json: success(mode === 'empty' ? { items: [], explanations: [] } : mode === 'legacy' ? { items: [api.catalog[1]] } : similarFactWire(api.catalog[0], api.catalog[1])) })
+  })
+  try {
+    await page.goto('/products/901'); await expect(similarCards(page)).toHaveCount(1); await page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true }).fill('3'); await page.getByLabel('후기', { exact: true }).fill('미제출 후기 원문')
+    const refresh = similarRegion(page).getByRole('button', { name: '비슷한 상품 다시 확인', exact: true }); mode = 'error'; await refresh.press('Enter'); await expect.poll(() => waiting).toBe(true); await expect(similarCards(page)).toHaveCount(0); await expect(refresh).toBeFocused(); await refresh.press('Enter'); expect(requests).toHaveLength(2); release(); await expect(similarRegion(page)).toContainText('불러오지 못했습니다.')
+    mode = 'empty'; await refresh.press('Enter'); await expect(similarRegion(page)).toContainText('현재 표시할 수 있는 비슷한 상품이 없습니다.'); mode = 'legacy'; await refresh.press('Enter'); await expect(similarCards(page)).toHaveCount(1); await expect(similarCards(page).locator('li, details')).toHaveCount(0)
+    await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량', exact: true })).toHaveValue('3'); await expect(page.getByLabel('후기', { exact: true })).toHaveValue('미제출 후기 원문'); expect(requests).toEqual(Array(4).fill({ includeExplanations: 'true' })); expect(api.calls.filter((c) => c.method !== 'GET')).toEqual([])
+  } finally { release() }
+})
+for (const defect of ['candidate', 'reference', 'missing']) test(`R04 명시 설명의 ${defect} 오류는 링크까지 전부 차폐`, async ({ page, api }) => {
+  const body = similarFactWire(api.catalog[0], api.catalog[1])
+  if (defect === 'candidate') body.explanations[0].productId = 999
+  if (defect === 'reference') body.explanations[0].explanation.comparison.product_id = 902
+  if (defect === 'missing') body.explanations = []
+  await page.route((url) => url.pathname === '/api/products/901/similar', (route) => route.fulfill({ json: success(body) })); await page.goto('/products/901'); await expect(similarRegion(page)).toContainText('불러오지 못했습니다.'); await expect(similarRegion(page).getByRole('link')).toHaveCount(0); await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+})
+for (const status of [200, 503]) test(`R04 이전 상세의 지연${status}는 현재 상세의 링크/근거를 침범하지 않음`, async ({ page, api }) => {
+  let release, started = false; const gate = new Promise((r) => { release = r })
+  await page.route((url) => url.pathname === '/api/products/901/similar', async (route) => { started = true; await gate; await route.fulfill({ status, json: status === 200 ? success(similarFactWire(api.catalog[0], api.catalog[1])) : failure('SERVICE_UNAVAILABLE') }) })
+  await page.route((url) => url.pathname === '/api/products/902/similar', (route) => route.fulfill({ json: success(similarFactWire(api.catalog[1], api.catalog[0], 500, 330)) }))
+  try {
+    await page.goto('/products/901'); await expect.poll(() => started).toBe(true); await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click(); await page.getByRole('heading', { name: api.catalog[1].name, exact: true }).getByRole('link').click(); await expect(page).toHaveURL('/products/902'); await expect(similarCards(page)).toContainText('도수: 이 상품 6% · 현재 상품 14%'); release(); await expect(similarCards(page).getByRole('link')).toHaveText(api.catalog[0].name); await expect(similarCards(page)).toContainText('현재 상품 14%')
+  } finally { release() }
+})
+test('R04 태그 원자는 쉼표/개행/HTML문자를 그대로 text로 보존', async ({ page, api }) => {
+  const body = similarFactWire(api.catalog[0], api.catalog[1]), atom = 'dry,\n<b>:atom'; body.explanations[0].explanation.score_evidence = [{ kind: 'taste_match', label: '맛 태그 일치', actual_value: atom, target_value: atom, contribution: 0.3 }]; body.explanations[0].explanation.total_positive_contributions = 1
+  await page.route((url) => url.pathname === '/api/products/901/similar', (route) => route.fulfill({ json: success(body) })); await page.goto('/products/901'); await expect(similarCards(page)).toHaveCount(1); await expect(similarCards(page).locator('b')).toHaveCount(0); expect(await similarCards(page).locator('.content-fact').first().textContent()).toBe(`맛 태그 일치: ${atom}`); await expect(similarCards(page).locator('.content-fact').first()).toHaveCSS('white-space', 'pre-wrap')
+})
 
 for (const width of [1280, 390]) test(`상품 이미지 placeholder는 미등록 캡션과 대체 alt로 실제 사진과 구분 ${width}px`, async ({ page, api }) => {
   api.catalog[0].img = null; await page.setViewportSize({ width, height: 900 }); await page.goto('/products/901')
@@ -4408,13 +4460,13 @@ test('상품 이미지 원본도 실패하면 기본 아이콘을 표시하고 �
 
 for (const width of [1280, 390]) test(`로컬 검수 유사상품은 현재 상세·Back으로 연결하고 시연 상품군과 구분 ${width}px`, async ({ page, api }) => {
   const candidate = api.catalog[1]
-  await page.route('**/api/products/901/similar', (route) => route.fulfill({ json: success({ items: [candidate], catalogScope: 'REVIEWED_LOCAL_CATALOG' }) }))
+  await page.route((url) => url.pathname === '/api/products/901/similar', (route) => route.fulfill({ json: success({ items: [candidate], catalogScope: 'REVIEWED_LOCAL_CATALOG' }) }))
   await page.setViewportSize({ width, height: 900 }); await page.goto('/products/901'); const region = similarRegion(page)
   await expect(region).toContainText('검수한 로컬 상품의 확인된 특성'); await expect(region).not.toContainText('시연 상품의 특성'); await region.getByRole('link', { name: candidate.name, exact: true }).focus(); await page.keyboard.press('Enter'); await expect(page).toHaveURL(`/products/${candidate.id}`); await expect(page.getByRole('heading', { name: candidate.name, level: 1, exact: true })).toBeVisible(); await page.goBack(); await expect(region.getByRole('link', { name: candidate.name, exact: true })).toBeVisible(); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 test('유사상품의 알 수 없는 scope metadata는 시연이나 로컬로 표시하지 않음', async ({ page, api }) => {
-  await page.route('**/api/products/901/similar', (route) => route.fulfill({ json: success({ items: [api.catalog[1]], catalogScope: 'LOCAL_CATALOG' }) }))
-  const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/products/901/similar'); await page.goto('/products/901'); await (await response).finished(); await expect(similarRegion(page)).toHaveCount(0); await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+  await page.route((url) => url.pathname === '/api/products/901/similar', (route) => route.fulfill({ json: success({ items: [api.catalog[1]], catalogScope: 'LOCAL_CATALOG' }) }))
+  const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/products/901/similar'); await page.goto('/products/901'); await (await response).finished(); await expect(similarRegion(page).getByRole('link')).toHaveCount(0); await expect(similarRegion(page)).toContainText('불러오지 못했습니다.'); await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
 })
 
 test('유사 상품은 작은 화면에서 검수 시연 범위를 밝히고 키보드로 실제 상세에 연결', async ({ page, api }) => {
@@ -4435,14 +4487,15 @@ test('유사 상품은 작은 화면에서 검수 시연 범위를 밝히고 키
   await expect(page).toHaveURL('/products/902')
   await expect(page.getByRole('heading', { name: candidate.name, level: 1, exact: true })).toBeVisible()
   expect(await (await empty).json()).toMatchObject({ data: { items: [] } })
-  await expect(region).toHaveCount(0)
+  await expect(region.getByRole('link')).toHaveCount(0)
+  await expect(region).toContainText('현재 표시할 수 있는 비슷한 상품이 없습니다.')
 })
 
 test('유사 상품의 이전 요청을 기다리지 않고 후기·담기·상세 이동을 유지', async ({ page, api }) => {
   api.similar[902] = [api.catalog[0]]
   let release, started = false
   const gate = new Promise(resolve => { release = resolve })
-  await page.route('**/api/products/901/similar', async (route) => {
+  await page.route((url) => url.pathname === '/api/products/901/similar', async (route) => {
     started = true
     await gate
     await route.fulfill({ json: success({ items: [api.catalog[1]] }) })
@@ -4451,7 +4504,8 @@ test('유사 상품의 이전 요청을 기다리지 않고 후기·담기·상�
     const abandoned = page.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/api/products/901/similar')
     await page.goto('/products/901')
     await expect.poll(() => started).toBe(true)
-    await expect(similarRegion(page)).toHaveCount(0)
+    await expect(similarRegion(page).getByRole('link')).toHaveCount(0)
+    await expect(similarRegion(page)).toContainText('확인하는 중입니다.')
     await expect(page.getByRole('heading', { name: '회원 후기 0', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart') || 'null')?.[0]?.quantity)).toBe(1)
@@ -4467,11 +4521,12 @@ test('유사 상품의 이전 요청을 기다리지 않고 후기·담기·상�
 
 test('유사 상품 오류 뒤 상세를 다시 열면 그 상품의 새 결과만 표시', async ({ page, api }) => {
   api.similar[901] = [api.catalog[1]]
-  await page.route('**/api/products/901/similar', (route) => route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') }), { times: 1 })
+  await page.route((url) => url.pathname === '/api/products/901/similar', (route) => route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') }), { times: 1 })
   const failed = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/products/901/similar')
   await page.goto('/products/901')
   expect((await failed).status()).toBe(503)
-  await expect(similarRegion(page)).toHaveCount(0)
+  await expect(similarRegion(page).getByRole('link')).toHaveCount(0)
+  await expect(similarRegion(page)).toContainText('불러오지 못했습니다.')
   await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
 
   await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
@@ -4482,13 +4537,14 @@ test('유사 상품 오류 뒤 상세를 다시 열면 그 상품의 새 결과�
 test('유사 상품은 404와 기준 상품이 섞인 응답을 표시하지 않음', async ({ page, api }) => {
   const path = '/api/products/901/similar'
   api.similar[901] = [api.catalog[1], api.catalog[0]]
-  await page.route(`**${path}`, (route) => route.fulfill({ status: 404, json: failure('NOT_FOUND') }), { times: 1 })
+  await page.route((url) => url.pathname === path, (route) => route.fulfill({ status: 404, json: failure('NOT_FOUND') }), { times: 1 })
   for (const status of [404, 200]) {
     const reply = page.waitForResponse((response) => new URL(response.url()).pathname === path)
     await page.goto('/products/901')
     expect((await reply).status()).toBe(status)
     await expect(page.getByRole('heading', { name: '시험 탁주', level: 1, exact: true })).toBeVisible()
-    await expect(similarRegion(page)).toHaveCount(0)
+    await expect(similarRegion(page).getByRole('link')).toHaveCount(0)
+    await expect(similarRegion(page)).toContainText('불러오지 못했습니다.')
   }
 })
 

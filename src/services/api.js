@@ -167,7 +167,7 @@ export const api = {
   defaultProducts: (size = 4) => request(`/recommendations/default?${new URLSearchParams({ size: String(size) })}`),
   product: (id) => request(`/products/${id}`),
   /** @param {number} id @param {AbortSignal} signal @returns {Promise<unknown>} */
-  similarProducts: (id, signal) => request(`/products/${id}/similar`, { signal, cache: 'no-store' }),
+  similarProducts: (id, signal) => request(`/products/${id}/similar?includeExplanations=true`, { signal, cache: 'no-store' }),
   /** @param {number} id @returns {Promise<import('../types').ProductFeatures>} */
   productFeatures: (id) => request(`/products/${id}/features`),
   /** @param {number} id @param {import('../types').ProductFeatureValues} payload @returns {Promise<import('../types').ProductFeatures>} */
