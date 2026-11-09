@@ -106,6 +106,7 @@ export function HomePage() {
         </div>
       </section>
       <ContentRecommendations />
+      <ContentRecommendations exploration />
       <section className="section-band">
         <div className="section-heading">
           <div>

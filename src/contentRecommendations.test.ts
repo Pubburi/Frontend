@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseContentResponse } from './contentRecommendations'
+import { parseContentResponse, parseExplorationResponse } from './contentRecommendations'
 
 // Authored display contract, not a fitted model or service SKU.
 function wire() {
@@ -152,5 +152,52 @@ describe('owned content typed display boundary', () => {
     ['empty hidden as success', (v: ReturnType<typeof wire>) => { v.result.items = []; v.products = []; v.result.eligible_count = 0 }],
   ])('rejects %s before showing facts', (_name, mutate) => {
     const value = wire(); mutate(value); expect(() => parseContentResponse(value)).toThrow()
+  })
+})
+
+
+function explorationWire() {
+  const base = wire()
+  const items = [0.8, 0.2, 0.4].map((score, index) => ({ ...structuredClone(base.result.items[0]), product_id: 7 + index, score }))
+  const selections = ['highest_relevance_anchor', 'observed_text', 'unknown_conservative'].map((basis, index) => ({ product_id: 7 + index, basis }))
+  return { ...base, catalogScope: 'REVIEWED_LOCAL_CATALOG', products: items.map(({ product_id }) => ({ ...base.products[0], id: product_id })),
+    result: { ...base.result, eligible_count: 6, items, selections, exploration_reason: 'selected' } }
+}
+
+describe('owned exploration display boundary', () => {
+  it('preserves shorter selection order and raw B1 scores with their typed facts', () => {
+    const value = explorationWire()
+    expect(parseExplorationResponse(value)).toBe(value)
+    expect(value.result.items.map(({ product_id, score }) => [product_id, score])).toEqual([[7, 0.8], [8, 0.2], [9, 0.4]])
+    expect(() => parseContentResponse(value)).toThrow()
+  })
+
+  it.each(['no_eligible_products', 'no_supported_preferences', 'no_matching_features', null])('keeps a successful empty result for %s', (reason) => {
+    const value = explorationWire()
+    const result = { ...value.result, items: [], selections: [], eligible_count: reason === 'no_eligible_products' ? 0 : 6,
+      exploration_reason: reason === null ? 'below_relevance_floor' : 'baseline_fallback', fallback_reason: reason }
+    expect(parseExplorationResponse({ ...value, products: [], result }).source).toBe('PROVIDER')
+    expect(parseExplorationResponse({ source: 'UNAVAILABLE', catalogScope: 'REVIEWED_LOCAL_CATALOG', result: null, products: [] }).source).toBe('UNAVAILABLE')
+  })
+
+  it.each([
+    ['reordered selections', (v: ReturnType<typeof explorationWire>) => { v.result.selections.reverse() }],
+    ['unbound product', (v: ReturnType<typeof explorationWire>) => { v.products[1].id = 70 }],
+    ['misplaced anchor', (v: ReturnType<typeof explorationWire>) => { v.result.selections[1].basis = 'highest_relevance_anchor' }],
+    ['invented basis', (v: ReturnType<typeof explorationWire>) => { v.result.selections[2].basis = 'new_taste' }],
+    ['zero-score padding', (v: ReturnType<typeof explorationWire>) => { v.result.items[1].score = 0 }],
+    ['nonempty fallback', (v: ReturnType<typeof explorationWire>) => { v.result.exploration_reason = 'baseline_fallback' }],
+    ['family scope', (v: ReturnType<typeof explorationWire>) => { v.catalogScope = 'REVIEWED_FAMILY_BROWSE_DEMO' }],
+  ])('rejects %s without partial cards', (_label, mutate) => {
+    const value = explorationWire(); mutate(value)
+    expect(() => parseExplorationResponse(value)).toThrow()
+  })
+
+  it('rejects activity, feedback reference profiles, and private MMR fields in the public wire', () => {
+    const value = explorationWire()
+    expect(() => parseExplorationResponse({ ...value, activityEvidence: {} })).toThrow()
+    expect(() => parseExplorationResponse({ ...value, result: { ...value.result, policy: {} } })).toThrow()
+    Object.assign(value.result.items[0].explanation.comparison, { kind: 'reference_product', product_id: 13 })
+    expect(() => parseExplorationResponse(value)).toThrow()
   })
 })

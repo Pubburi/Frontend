@@ -4,6 +4,7 @@ import { test as base, expect } from '@playwright/test'
 const users = [{ id: 'member', name: '회원A', role: 'USER' }, { id: 'other', name: '회원B', role: 'USER' }]
 const product = { id: 7, name: '직접 작성한 검수 DEMO', type: '맥주', price: 0, abv: 0, img: null, orderCount: 0 }
 const localProduct = { ...product, name: '직접 작성한 로컬 검수 상품' }
+const explorationPath = '/users/me/recommendations/exploration'
 const ok = (data) => ({ data, message: 'ok', error: null })
 const bad = (status) => ({ data: null, error: { code: status === 401 ? 'UNAUTHORIZED' : 'REQUEST_FAILED' } })
 const pageOf = (items) => ({ items, page: 1, size: 12, total: items.length, totalPages: items.length ? 1 : 0, hasNext: false })
@@ -42,13 +43,21 @@ function localWire() {
   Object.assign(item.explanation.score_evidence[0], { kind: 'category_match', label: '주종 일치', actual_value: '맥주', target_value: '맥주', contribution: item.score - 0.3 })
   return value
 }
+function explorationWire(products, scope = 'REVIEWED_LOCAL_CATALOG') {
+  const base = wire(scope)
+  const items = products.map((p, index) => ({ ...structuredClone(base.result.items[0]), product_id: p.id, score: [0.8, 0.2, 0.4][index] }))
+  const selections = items.map(({ product_id }, index) => ({ product_id, basis: ['highest_relevance_anchor', 'observed_text', 'unknown_conservative'][index] }))
+  return { ...base, products, result: { ...base.result, eligible_count: items.length ? items.length + 2 : 0, items, selections,
+    exploration_reason: items.length ? 'selected' : 'baseline_fallback', fallback_reason: items.length ? null : 'no_eligible_products' } }
+}
 const panel = (page) => page.getByRole('region', { name: '내 취향 추천', exact: true })
 const button = (page) => panel(page).getByRole('button', { name: '취향 추천 보기', exact: true })
 const cards = (page) => panel(page).locator('[data-content-product]')
 const test = base.extend({
   fixture: [async ({ page, context }, use) => {
-    const s = { user: users[0], replies: [], meReplies: [], calls: [], errors: [], unexpected: [], gates: [], logoutStatus: 200, products: [localProduct, { ...product, id: 8, name: '직접 작성한 로컬 검수 후보' }], feedback: {}, feedbackCalls: [] }
+    const s = { user: users[0], replies: [], explorationReplies: [], meReplies: [], calls: [], errors: [], unexpected: [], gates: [], logoutStatus: 200, products: [localProduct, { ...product, id: 8, name: '직접 작성한 로컬 검수 후보' }, { ...product, id: 9, name: '직접 작성한 세 번째 후보' }], feedback: {}, feedbackCalls: [] }
     s.posts = () => s.calls.filter((c) => c.path === '/users/me/recommendations/content')
+    s.explorationPosts = () => s.calls.filter((c) => c.path === explorationPath)
     s.hold = (path, reply) => { let release; const wait = new Promise((r) => { release = r }); const gate = { path, reply, wait, release, started: false }; s.gates.push(gate); return gate }
     page.on('pageerror', (error) => s.errors.push(error.message))
     await context.route('**/api/**', async (route) => {
@@ -56,7 +65,7 @@ const test = base.extend({
       if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/cart') return route.fulfill({ status: 404, json: { data: null, error: { code: 'CART_NOT_SUPPORTED' } } })
       const r = route.request(), url = new URL(r.url()), path = url.pathname.slice(4), method = r.method()
       const body = r.postData() ? r.postDataJSON() : null
-      s.calls.push({ path, method, query: [...url.searchParams], ...(path === '/users/me/recommendations/content' ? { body, owner: r.headers()['x-pubburi-feedback-owner'] } : {}) })
+      s.calls.push({ path, method, query: [...url.searchParams], ...(path === '/users/me/recommendations/content' || path === explorationPath ? { body, owner: r.headers()['x-pubburi-feedback-owner'] } : {}) })
       let reply
       if (path === '/auth/me' && method === 'GET') reply = s.meReplies.shift() ?? { status: s.user ? 200 : 401, data: s.user }
       else if (path === '/auth/login' && method === 'POST') { s.user = users.find((u) => u.id === body.id); reply = { status: 200, data: s.user } }
@@ -65,16 +74,24 @@ const test = base.extend({
         reply = s.user && r.headers()['x-pubburi-feedback-owner'] === encodeURIComponent(s.user.id)
           ? s.replies.shift() ?? { status: 200, data: wire() } : { status: 401 }
       }
-      else if (/^\/users\/me\/recommendations\/feedback\/[78]$/.test(path) && ['GET', 'PUT', 'DELETE'].includes(method)) {
+      else if (path === explorationPath && method === 'POST') {
+        const owner = r.headers()['x-pubburi-feedback-owner']
+        expect(body).toEqual({ limit: 4 })
+        expect([...url.searchParams]).toEqual([])
+        const candidates = s.user ? s.products.filter(({ id }) => s.feedback[s.user.id]?.[id] !== 'NOT_INTERESTED') : []
+        reply = s.user && owner === encodeURIComponent(s.user.id)
+          ? s.explorationReplies.shift() ?? { status: 200, data: explorationWire(candidates) } : { status: 401 }
+      }
+      else if (/^\/users\/me\/recommendations\/feedback\/[789]$/.test(path) && ['GET', 'PUT', 'DELETE'].includes(method)) {
         const productId = Number(path.split('/').at(-1)), owner = r.headers()['x-pubburi-feedback-owner']; s.feedbackCalls.push({ method, owner, productId, body })
         if (!s.user || owner !== encodeURIComponent(s.user.id)) reply = { status: 401 }
         else { const choices = s.feedback[s.user.id] ??= {}; if (method === 'PUT') choices[productId] = body.feedback; if (method === 'DELETE') delete choices[productId]; reply = { status: 200, data: { productId, feedback: choices[productId] ?? null } } }
       }
-      else if (method === 'GET' && /^\/products\/[78]$/.test(path)) reply = { status: 200, data: s.products.find((p) => p.id === Number(path.split('/').at(-1))) }
-      else if (method === 'GET' && /^\/products\/[78]\/features$/.test(path)) reply = { status: 200, data: { productId: Number(path.split('/').at(-2)), volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null } }
-      else if (method === 'GET' && /^\/products\/[78]\/comments$/.test(path)) reply = { status: 200, data: { ...pageOf([]), size: 10, ratingSummary: { count: 0, average: null } } }
-      else if (method === 'GET' && /^\/products\/[78]\/similar$/.test(path)) reply = { status: 200, data: { items: [] } }
-      else if (method === 'GET' && /^\/users\/me\/favorites\/[78]$/.test(path)) reply = { status: 200, data: { productId: Number(path.split('/').at(-1)), favorited: false } }
+      else if (method === 'GET' && /^\/products\/[789]$/.test(path)) reply = { status: 200, data: s.products.find((p) => p.id === Number(path.split('/').at(-1))) }
+      else if (method === 'GET' && /^\/products\/[789]\/features$/.test(path)) reply = { status: 200, data: { productId: Number(path.split('/').at(-2)), volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null } }
+      else if (method === 'GET' && /^\/products\/[789]\/comments$/.test(path)) reply = { status: 200, data: { ...pageOf([]), size: 10, ratingSummary: { count: 0, average: null } } }
+      else if (method === 'GET' && /^\/products\/[789]\/similar$/.test(path)) reply = { status: 200, data: { items: [] } }
+      else if (method === 'GET' && /^\/users\/me\/favorites\/[789]$/.test(path)) reply = { status: 200, data: { productId: Number(path.split('/').at(-1)), favorited: false } }
       else if (path === '/products/popular') reply = { status: 200, data: [] }
       else if (path === '/products/suggestions' && method === 'GET') reply = { status: 200, data: { items: [] } }
       else if (path === '/markets' || /\/orders$/.test(path)) reply = { status: 200, data: pageOf([]) }
@@ -86,7 +103,7 @@ const test = base.extend({
       if (reply) return route.fulfill({ status: reply.status, json: reply.status === 200 ? ok(reply.data) : bad(reply.status) })
       s.unexpected.push({ path, method }); return route.fulfill({ status: 501, json: bad(501) })
     })
-    try { await use(s) } finally { s.gates.forEach((g) => g.release()); expect(s.errors).toEqual([]); expect(s.unexpected).toEqual([]); expect(s.calls.filter((c) => c.method !== 'GET' && !['/auth/login', '/auth/logout', '/users/me/recommendations/content'].includes(c.path) && !/^\/users\/me\/recommendations\/feedback\/[78]$/.test(c.path))).toEqual([]) }
+    try { await use(s) } finally { s.gates.forEach((g) => g.release()); expect(s.errors).toEqual([]); expect(s.unexpected).toEqual([]); expect(s.calls.filter((c) => c.method !== 'GET' && !['/auth/login', '/auth/logout', '/users/me/recommendations/content', explorationPath].includes(c.path) && !/^\/users\/me\/recommendations\/feedback\/[789]$/.test(c.path))).toEqual([]) }
   }, { auto: true }],
 })
 async function open(page) { await page.goto('/'); await expect(panel(page)).toHaveCount(1); await expect(button(page)).toBeVisible() }
@@ -261,4 +278,149 @@ test('잘못 연결된 Product7 응답은 이전 카드로 대체하지 않고 �
   const unearned = activityWire(); unearned.activityEvidence.highlyRatedCategories = ['탁주']; fixture.replies.push({ status: 200, data: unearned })
   await button(page).click(); await expect(panel(page).getByRole('heading', { name: '추천을 가져오지 못했습니다' })).toBeVisible(); await expect(cards(page)).toHaveCount(0)
   expect(fixture.posts()).toHaveLength(3); await load(page)
+})
+
+
+const exploration = (page) => page.getByRole('region', { name: '취향 탐색', exact: true })
+const explore = (page) => exploration(page).getByRole('button', { name: '다른 후보 둘러보기', exact: true })
+const explorationCards = (page) => exploration(page).locator('[data-content-product]')
+const explorationCard = (page, id) => exploration(page).locator(`[data-content-product="${id}"]`)
+async function openFeedback(page, id) {
+  const card = explorationCard(page, id)
+  await card.getByText('추천 피드백', { exact: true }).press('Enter')
+  await expect(card.getByRole('button', { name: '관심 없음', exact: true })).toBeVisible()
+  return card
+}
+
+for (const width of [1280, 390]) test(`R08 별도 명시 탐색은 서버 순서·현재 근거·키보드 상세 이동을 보존 ${width}`, async ({ page, fixture: s }, info) => {
+  await page.setViewportSize({ width, height: 900 })
+  s.replies.push({ status: 200, data: localWire() })
+  await open(page); await load(page)
+  const search = page.getByLabel('상품 검색', { exact: true })
+  await search.fill('탐색 전 검색 초안')
+  expect(s.explorationPosts()).toHaveLength(0)
+  await explore(page).press('Enter'); await expect(explorationCards(page)).toHaveCount(3)
+  expect(s.explorationPosts()).toEqual([{ path: explorationPath, method: 'POST', query: [], body: { limit: 4 }, owner: 'member' }])
+  expect(await explorationCards(page).evaluateAll((nodes) => nodes.map((node) => Number(node.dataset.contentProduct)))).toEqual([7, 8, 9])
+  await expect(explorationCards(page).nth(0)).toContainText('저장한 취향에 가장 가까운 기준 후보')
+  await expect(explorationCards(page).nth(1)).toContainText('비교 점수 0.2')
+  await expect(explorationCards(page).nth(2)).toContainText('비교 점수 0.4')
+  await expect(explorationCards(page).nth(2)).toContainText('특성 정보가 제한적인 후보')
+  await expect(explorationCards(page).first()).toContainText('dry,sweet\natom:<b>')
+  await expect(explorationCards(page).locator('b')).toHaveCount(0)
+  await expect(cards(page)).toContainText('비교 점수 0.698')
+  await expect(search).toHaveValue('탐색 전 검색 초안')
+  await expect(explore(page)).toBeFocused()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  const screenshot = info.outputPath(`exploration-${width}.png`)
+  await exploration(page).screenshot({ path: screenshot })
+  await info.attach(`exploration-${width}.png`, { path: screenshot, contentType: 'image/png' })
+  await explorationCards(page).first().getByRole('link', { name: localProduct.name, exact: true }).press('Enter')
+  await expect(page.getByRole('heading', { name: localProduct.name, level: 1, exact: true })).toBeVisible()
+  await page.goBack(); await expect(explore(page)).toBeVisible(); await expect(explorationCards(page)).toHaveCount(0)
+  expect(s.explorationPosts()).toHaveLength(1); expect(s.posts()).toHaveLength(1)
+})
+
+test('R08 DEMO는 탐색 이유를 읽을 수 있고 현지 상품 링크나 피드백 쓰기를 제공하지 않음', async ({ page, fixture: s }) => {
+  s.explorationReplies.push({ status: 200, data: explorationWire([product], 'REVIEWED_DEMO') })
+  await open(page); await explore(page).click(); await expect(explorationCards(page)).toHaveCount(1)
+  await expect(exploration(page)).toContainText('검수 상품 DEMO · 열람 전용')
+  await expect(explorationCards(page).locator('a, button, details')).toHaveCount(0)
+  expect(s.feedbackCalls).toEqual([])
+})
+
+test('R08 후보 부족·기준 미달·제공자 장애·HTTP409를 구분하고 별도 기본 목록으로 이동', async ({ page, fixture: s }) => {
+  await open(page); await load(page)
+  const unavailable = { source: 'UNAVAILABLE', catalogScope: 'REVIEWED_LOCAL_CATALOG', result: null, products: [] }
+  const floor = explorationWire([])
+  Object.assign(floor.result, { eligible_count: 3, exploration_reason: 'below_relevance_floor', fallback_reason: null })
+  const cases = [
+    [{ status: 200, data: explorationWire([]) }, '저장한 필수 조건을 충족하는 검수 후보가 없습니다'],
+    [{ status: 200, data: floor }, '비교할 근거가 충분한 검수 상품을 찾지 못했습니다'],
+    [{ status: 409 }, '취향이나 검수 후보가 변경되었습니다'],
+    [{ status: 200, data: unavailable }, '탐색 후보를 준비하지 못했습니다'],
+  ]
+  for (const [reply, message] of cases) {
+    s.explorationReplies.push(reply)
+    await explore(page).click(); await expect(exploration(page)).toContainText(message)
+    await expect(explorationCards(page)).toHaveCount(0); await expect(cards(page)).toHaveCount(1)
+    expect(s.calls.filter((call) => call.path === '/recommendations/default')).toHaveLength(0)
+  }
+  await exploration(page).getByRole('link', { name: '기본 목록 보기', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '기본 주류 둘러보기', exact: true })).toBeVisible()
+  expect(s.explorationPosts()).toHaveLength(4)
+})
+
+test('R08 현재401은 기존 후보를 차폐하고 현재 주소의 명시 로그인으로 복구', async ({ page, fixture: s }) => {
+  await page.goto('/?occasion=demo'); await explore(page).click(); await expect(explorationCards(page)).toHaveCount(3)
+  s.explorationReplies.push({ status: 401 }); await explore(page).click()
+  await expect(exploration(page)).toContainText('탐색하려면 다시 로그인해 주세요')
+  await expect(explorationCards(page)).toHaveCount(0)
+  await exploration(page).getByRole('button', { name: '탐색 다시 로그인', exact: true }).click()
+  expect(new URL(page.url()).searchParams.get('redirect')).toBe('/?occasion=demo')
+  await page.getByLabel('아이디', { exact: true }).fill('member')
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture')
+  await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+  await expect(page).toHaveURL('/?occasion=demo'); await expect(explorationCards(page)).toHaveCount(0)
+  expect(s.explorationPosts()).toHaveLength(2)
+  await explore(page).click(); await expect(explorationCards(page)).toHaveCount(3)
+})
+
+for (const status of [200, 401]) test(`R08 이전 계정의 늦은 ${status}가 새 계정의 결과를 바꾸지 않음`, async ({ page, fixture: s }) => {
+  await open(page)
+  const previous = explorationWire([{ ...s.products[0], name: '이전 계정의 응답' }])
+  const gate = s.hold(explorationPath, { status, data: previous })
+  await explore(page).click(); await expect.poll(() => gate.started).toBe(true)
+  await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await login(page, 'other')
+  await explore(page).click(); await expect(explorationCards(page)).toHaveCount(3)
+  const old = page.waitForResponse((response) => response.url().endsWith(explorationPath) && response.status() === status)
+  gate.release(); await (await old).finished()
+  await expect(explorationCards(page)).toHaveCount(3)
+  await expect(exploration(page)).not.toContainText('이전 계정의 응답')
+  await expect(exploration(page).getByRole('button', { name: '탐색 다시 로그인', exact: true })).toHaveCount(0)
+  expect(s.explorationPosts().map(({ owner }) => owner)).toEqual(['member', 'other'])
+})
+
+test('R08 확인된 관심 없음은 해당 후보를 숨기고 현재 취향 추천과 명시 재요청을 보존', async ({ page, fixture: s }) => {
+  s.replies.push({ status: 200, data: localWire() })
+  await open(page); await load(page); await explore(page).click()
+  const card = await openFeedback(page, 7)
+  await card.getByRole('button', { name: '관심 없음', exact: true }).press('Enter')
+  await expect(explorationCard(page, 7)).toHaveCount(0)
+  await expect(exploration(page)).toContainText('관심 없음으로 저장한 상품을 숨겼습니다.')
+  await expect(explore(page)).toBeFocused(); await expect(cards(page)).toHaveCount(1)
+  expect(s.feedback.member[7]).toBe('NOT_INTERESTED')
+  expect(s.explorationPosts()).toHaveLength(1); expect(s.posts()).toHaveLength(1)
+  await explore(page).press('Enter'); await expect(explorationCards(page)).toHaveCount(2)
+  await expect(explorationCard(page, 7)).toHaveCount(0)
+})
+
+test('R08 피드백 응답 유실은 같은 쓰기를 반복하지 않고 명시 조회로 복구', async ({ page, fixture: s }) => {
+  await open(page); await explore(page).click()
+  const card = await openFeedback(page, 7)
+  const gate = s.hold('/users/me/recommendations/feedback/7', { status: 503 })
+  await card.getByRole('button', { name: '관심 없음', exact: true }).click()
+  await expect.poll(() => gate.started).toBe(true); gate.release()
+  await expect(card).toContainText('저장 결과를 확인하지 못했습니다')
+  const read = s.hold('/users/me/recommendations/feedback/7', { status: 200, data: { productId: 7, feedback: 'NOT_INTERESTED' } })
+  const retry = card.getByRole('button', { name: '내 피드백 다시 확인', exact: true })
+  await retry.press('Enter'); await expect.poll(() => read.started).toBe(true)
+  await expect(retry).toBeFocused(); await expect(retry).toHaveAttribute('aria-disabled', 'true')
+  await retry.press('Enter'); expect(s.feedbackCalls.map(({ method }) => method)).toEqual(['GET', 'PUT', 'GET'])
+  read.release(); await expect(explorationCard(page, 7)).toHaveCount(0)
+  await expect(explore(page)).toBeFocused()
+  expect(s.feedbackCalls.map(({ method }) => method)).toEqual(['GET', 'PUT', 'GET'])
+  expect(s.explorationPosts()).toHaveLength(1)
+})
+
+test('R08 같은 계정의 진행 중 피드백 뒤 한 번만 명시 탐색을 읽음', async ({ page, fixture: s }) => {
+  await open(page); await explore(page).click()
+  const card = await openFeedback(page, 7)
+  const gate = s.hold('/users/me/recommendations/feedback/7', { status: 200, data: { productId: 7, feedback: 'NOT_INTERESTED' } })
+  await card.getByRole('button', { name: '관심 없음', exact: true }).click()
+  await expect.poll(() => gate.started).toBe(true)
+  await explore(page).click(); await expect(explore(page)).toHaveAttribute('aria-disabled', 'true')
+  await explore(page).press('Enter'); expect(s.explorationPosts()).toHaveLength(1)
+  gate.release(); await expect(explorationCards(page)).toHaveCount(2)
+  expect(s.explorationPosts()).toHaveLength(2); await expect(explorationCard(page, 7)).toHaveCount(0)
 })

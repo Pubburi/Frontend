@@ -140,6 +140,13 @@ export const api = {
     headers: { 'Content-Type': 'application/json', 'X-Pubburi-Feedback-Owner': encodeURIComponent(accountId) },
     body: JSON.stringify({ limit: 4, includeActivity: true }),
   }),
+  /** @param {string} accountId @returns {Promise<unknown>} */
+  ownExplorationRecommendations: (accountId) => request('/users/me/recommendations/exploration', {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Pubburi-Feedback-Owner': encodeURIComponent(accountId) },
+    body: JSON.stringify({ limit: 4 }),
+  }),
   /** @param {number} productId @param {string} accountId @param {'MATCHED'|'NOT_INTERESTED'|null} [feedback] @param {AbortSignal} [signal] @returns {Promise<unknown>} */
   ownRecommendationFeedback: (productId, accountId, feedback, signal) => request(`/users/me/recommendations/feedback/${productId}`, {
     method: feedback === undefined ? 'GET' : feedback === null ? 'DELETE' : 'PUT',
