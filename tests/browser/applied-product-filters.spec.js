@@ -7,7 +7,7 @@ const items = Array.from({ length: 14 }, (_, i) => ({ id: 1900 + i, name: `초�
 const applied = () => new URLSearchParams([['q', '초기'], ['type', '탁주'], ['minPriceKrw', '0'], ['maxPriceKrw', '12000'], ['minAbvPercent', '0'], ['maxAbvPercent', '15'], ['tasteTag', 'dry,sweet'], ['tasteTag', 'line\nbreak'], ['aromaTag', 'floral'], ['sort', 'name'], ['page', '2']])
 const test = base.extend({
   filtersApi: [async ({ page }, use) => {
-    const state = { calls: [], unexpected: [], errors: [], failures: 0, items }
+    const state = { calls: [], unexpected: [], errors: [], failures: 0, items, hints: new Map() }
     page.on('pageerror', (error) => state.errors.push(error.message))
     await page.route('**/api/**', async (route) => {
       if (route.request().method() === 'GET' && new URL(route.request().url()).pathname === '/api/users/me/notifications') return route.fulfill({ status: 404, json: { data: null, error: { code: 'NOTIFICATIONS_NOT_SUPPORTED' } } })
@@ -22,7 +22,11 @@ const test = base.extend({
           (!q.has('minAbvPercent') || p.abv >= Number(q.get('minAbvPercent'))) && (!q.has('maxAbvPercent') || p.abv <= Number(q.get('maxAbvPercent'))) &&
           q.getAll('tasteTag').every((v) => ['dry,sweet', 'line\nbreak'].includes(v)) && q.getAll('aromaTag').every((v) => v === 'floral'))
         const current = Number(q.get('page') || 1), size = 12
-        return route.fulfill({ json: ok({ items: matches.slice((current - 1) * size, current * size), page: current, size, total: matches.length, totalPages: Math.ceil(matches.length / size), hasNext: current * size < matches.length }) })
+        const hint = state.hints.get(q.get('q'))
+        return route.fulfill({
+          headers: hint ? { 'X-Pubburi-Search-Hint': hint } : {},
+          json: ok({ items: matches.slice((current - 1) * size, current * size), page: current, size, total: matches.length, totalPages: Math.ceil(matches.length / size), hasNext: current * size < matches.length }),
+        })
       }
       state.unexpected.push(`${req.method()} ${url.pathname}`)
       return route.fulfill({ status: 501, json: bad('UNEXPECTED_TEST_REQUEST') })
@@ -36,6 +40,104 @@ const catalogCalls = (api) => api.calls.filter((call) => call.path === '/api/pro
 const urlQuery = (page) => new URL(page.url()).searchParams
 const requestQuery = (api) => new URLSearchParams(catalogCalls(api).at(-1).query)
 const remove = (page, name) => page.getByRole('button', { name, exact: true })
+const hintAction = (page, keyword) => page.getByRole('button', { name: `‘${keyword}’로 다시 검색`, exact: true })
+
+for (const [width, original, canonical, kind] of [
+  [1280, '약주', '약 · 청주', 'ALIAS'],
+  [390, '과실쥬', '과실주', 'TYPO'],
+]) test(`F02 검색 보조 ${width}px는 명시 적용으로 현재 조건·다른 초안·포커스·Back 보존`, async ({ page, filtersApi }, info) => {
+  const query = applied()
+  query.set('q', original); query.set('type', canonical); query.set('from', 'saved-search')
+  const corrected = new URLSearchParams(query)
+  corrected.set('q', canonical); corrected.set('page', '1')
+  filtersApi.items = [{ ...items[0], type: canonical, name: `${canonical} 시험 상품` }]
+  filtersApi.hints.set(original, `${kind}:${encodeURIComponent(canonical)}`)
+  await page.setViewportSize({ width, height: 900 })
+  await page.addInitScript(() => {
+    const scrollTo = window.scrollTo.bind(window)
+    window.hintScrollRequests = 0
+    window.scrollTo = (...args) => { window.hintScrollRequests++; return scrollTo(...args) }
+  })
+  await page.goto(`/products?${query}`)
+  const hint = hintAction(page, canonical)
+  await expect(hint).toBeVisible()
+  await expect(page.getByRole('region', { name: '상품 검색 결과' })).toContainText(kind === 'ALIAS' ? '검수 동의어' : '비슷한 검색어')
+  await expect(page).toHaveURL(`/products?${query}`)
+  expect(catalogCalls(filtersApi)).toHaveLength(1)
+  const input = page.getByLabel('상품 검색', { exact: true })
+  await input.fill('별도의 검색어 초안')
+  await page.getByRole('combobox', { name: '주종', exact: true }).selectOption('맥주')
+  await page.getByRole('combobox', { name: '정렬', exact: true }).selectOption('priceDesc')
+  await page.getByLabel('최대 가격(원)', { exact: true }).fill('9999')
+  await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('나중,태그\n원문')
+  await hint.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: info.outputPath(`search-hint-${width}.png`) })
+  await page.evaluate(() => { window.hintScrollRequests = 0 })
+  await hint.press(width === 1280 ? 'Enter' : 'Space')
+  await expect(page).toHaveURL(`/products?${corrected}`)
+  await expect(page.locator('.product-card')).toHaveCount(1)
+  await expect(page.getByRole('region', { name: '상품 검색 결과' })).toBeFocused()
+  expect(await page.evaluate(() => window.hintScrollRequests)).toBe(0)
+  await expect(hint).toHaveCount(0)
+  await expect(input).toHaveValue(canonical)
+  await expect(page.getByRole('combobox', { name: '주종', exact: true })).toHaveValue('맥주')
+  await expect(page.getByRole('combobox', { name: '정렬', exact: true })).toHaveValue('priceDesc')
+  await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('9999')
+  await expect(page.getByLabel('맛 태그 조건 1', { exact: true })).toHaveValue('나중,태그\n원문')
+  expect([...urlQuery(page)]).toEqual([...corrected])
+  const expectedRequest = new URLSearchParams(corrected); expectedRequest.delete('from'); expectedRequest.set('size', '12')
+  for (const key of expectedRequest.keys()) expect(requestQuery(filtersApi).getAll(key)).toEqual(expectedRequest.getAll(key))
+  expect(requestQuery(filtersApi).has('from')).toBe(false)
+  expect(catalogCalls(filtersApi)).toHaveLength(2)
+  await page.goBack()
+  await expect(page).toHaveURL(`/products?${query}`)
+  await expect(input).toHaveValue(original)
+  await expect(hint).toBeVisible()
+  expect(catalogCalls(filtersApi)).toHaveLength(3)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+for (const destination of ['latest query', 'route']) test(`F02 검색 보조의 늦은 응답이 ${destination}에 나타나지 않음`, async ({ page, filtersApi }) => {
+  filtersApi.hints.set('약주', `ALIAS:${encodeURIComponent('약 · 청주')}`)
+  let release, started = false
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/products?**', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('q') === '약주') { started = true; await gate }
+    await route.fallback()
+  })
+  try {
+    await page.goto('/products?q=약주')
+    await expect.poll(() => started).toBe(true)
+    await expect(hintAction(page, '약 · 청주')).toHaveCount(0)
+    if (destination === 'route') {
+      await page.locator('header').getByRole('link', { name: '장바구니', exact: true }).click()
+      await expect(page.getByRole('heading', { name: '장바구니', exact: true })).toBeVisible()
+    } else {
+      await page.getByLabel('상품 검색', { exact: true }).fill('검수되지 않은 현재 검색')
+      await remove(page, '검색하기').press('Enter')
+      await expect(page.getByRole('heading', { name: '조건에 맞는 상품이 없습니다', exact: true })).toBeVisible()
+    }
+    const old = page.waitForResponse((response) => new URL(response.url()).searchParams.get('q') === '약주')
+    release(); await (await old).finished()
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+    await expect(hintAction(page, '약 · 청주')).toHaveCount(0)
+    if (destination === 'route') await expect(page).toHaveURL('/cart')
+    else expect(urlQuery(page).get('q')).toBe('검수되지 않은 현재 검색')
+  } finally { release() }
+})
+
+test('F02 검색 보조는 장애 또는 정상 결과를 현재 추천 문구로 바꾸지 않음', async ({ page, filtersApi }) => {
+  filtersApi.hints.set('초기', `ALIAS:${encodeURIComponent('약 · 청주')}`)
+  filtersApi.failures = 1
+  await page.goto('/products?q=초기')
+  await expect(page.getByRole('heading', { name: '상품을 불러오지 못했습니다', exact: true })).toBeVisible()
+  await expect(hintAction(page, '약 · 청주')).toHaveCount(0)
+  await remove(page, '다시 시도').press('Enter')
+  await expect(page.locator('.product-card')).toHaveCount(12)
+  await expect(hintAction(page, '약 · 청주')).toHaveCount(0)
+  expect(catalogCalls(filtersApi)).toHaveLength(2)
+  expect(urlQuery(page).get('q')).toBe('초기')
+})
 async function fits(page) {
   const width = page.viewportSize().width
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)

@@ -237,16 +237,17 @@ export function ProductsPage() {
   type Removal = { token: number; fromLocationKey: string; destination: string }
   const removalDraft = useRef<Removal | null>(null)
   const removalFocus = useRef<(Removal & { source: HTMLButtonElement; index: number }) | null>(null)
-  const pageRepairDraft = useRef<{ fromLocationKey: string; destination: string } | null>(null)
+  const retainedDraft = useRef<{ fromLocationKey: string; destination: string } | null>(null)
   useEffect(() => {
     const removal = removalDraft.current
     removalDraft.current = null
-    const repair = pageRepairDraft.current
-    pageRepairDraft.current = null
+    const retained = retainedDraft.current
+    retainedDraft.current = null
+    const intent = location.state?.catalogPageRepair ?? location.state?.catalogResultsNavigation
     if (removal && location.state?.catalogFilterRemoval?.token === removal.token &&
         location.pathname + location.search === removal.destination) return
-    if (repair && location.state?.catalogPageRepair?.fromLocationKey === repair.fromLocationKey &&
-        location.pathname + location.search === repair.destination) {
+    if (retained && intent?.fromLocationKey === retained.fromLocationKey &&
+        location.pathname + location.search === retained.destination) {
       setForm((current) => ({ ...current, page: filters.page }))
       return
     }
@@ -254,22 +255,24 @@ export function ProductsPage() {
     setRangeErrors(urlRangeErrors)
     setTagIssues(urlTagIssues)
   }, [search.toString()])
-  const products = useQuery<Page<Product>>({
+  const products = useQuery({
     queryKey: ['catalog', 'products', filters],
-    queryFn: () => api.products(filters),
+    queryFn: () => api.catalogProducts(filters),
     enabled: !invalidUrlFilters,
     refetchOnReconnect: (query) => !(query.state.error instanceof ApiClientError && query.state.error.status === 400),
   })
-  const resultPage = products.data
+  const resultPage = products.data?.page
+  const searchHint = !invalidUrlFilters && products.isSuccess && products.fetchStatus === 'idle' && resultPage?.page === filters.page
+    ? products.data.hint : null
   const repairPage = !invalidUrlFilters && products.isSuccess && resultPage && resultPage.page === filters.page &&
     resultPage.items.length === 0 && resultPage.total > 0 && Number.isSafeInteger(resultPage.totalPages) &&
     resultPage.totalPages > 0 && filters.page > resultPage.totalPages ? resultPage.totalPages : null
   useEffect(() => {
-    if (repairPage === null || products.fetchStatus !== 'idle' || pageRepairDraft.current?.fromLocationKey === location.key) return
+    if (repairPage === null || products.fetchStatus !== 'idle' || retainedDraft.current?.fromLocationKey === location.key) return
     const destination = new URLSearchParams(search)
     destination.set('page', String(repairPage))
     const repair = { fromLocationKey: location.key, destination: location.pathname + '?' + destination.toString() }
-    pageRepairDraft.current = repair
+    retainedDraft.current = repair
     setSearch(destination, { replace: true, state: { catalogPageRepair: repair } })
   }, [repairPage, products.fetchStatus, search, location.key, location.pathname, setSearch])
   const rejectedTags = products.isError && products.error instanceof ApiClientError && products.error.status === 400 &&
@@ -348,10 +351,21 @@ export function ProductsPage() {
     // This element survives loading, success and rejection. No response moves focus.
     results.current.focus({ preventScroll: true })
     results.current.scrollIntoView({ block: 'start', behavior: 'instant' })
-    setSearch(destination, { state: { catalogPagination: {
+    setSearch(destination, { state: { catalogResultsNavigation: {
       fromLocationKey: location.key,
       destination: location.pathname + '?' + destination.toString(),
     } } })
+  }
+  function applySearchHint() {
+    if (!searchHint) return
+    const destination = new URLSearchParams(search)
+    destination.set('q', searchHint.q)
+    destination.set('page', '1')
+    const intent = { fromLocationKey: location.key, destination: location.pathname + '?' + destination.toString() }
+    retainedDraft.current = intent
+    setForm((current) => ({ ...current, q: searchHint.q, page: 1 }))
+    results.current?.focus({ preventScroll: true })
+    setSearch(destination, { state: { catalogResultsNavigation: intent } })
   }
   function reset() {
     setRangeErrors({})
@@ -380,7 +394,7 @@ export function ProductsPage() {
           <p>탁주·청주부터 맥주, 위스키와 사케까지 한 곳에서 비교해 보세요.</p>
         </div>
         <span className="result-count">
-          {invalidUrlFilters || rejectedTags ? '조건 확인 필요' : <>총 <strong>{products.data?.total || 0}</strong>개</>}
+          {invalidUrlFilters || rejectedTags ? '조건 확인 필요' : <>총 <strong>{resultPage?.total || 0}</strong>개</>}
         </span>
       </div>
       <form
@@ -528,9 +542,9 @@ export function ProductsPage() {
             다시 시도
           </button>
         </Empty>
-      ) : products.data.items.length ? (
+      ) : resultPage?.items.length ? (
         <div className="product-grid">
-          {products.data.items.map((product) => (
+          {resultPage.items.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
@@ -538,8 +552,13 @@ export function ProductsPage() {
         <Empty
           icon="⌕"
           title="조건에 맞는 상품이 없습니다"
-          description="검색어·주종이나 가격·도수·태그 조건을 바꿔 다시 찾아보세요."
+          description={searchHint
+            ? searchHint.kind === 'ALIAS' ? '검수 동의어로 찾아보세요.' : '비슷한 검색어로 찾아보세요.'
+            : '검색어·주종이나 가격·도수·태그 조건을 바꿔 다시 찾아보세요.'}
         >
+          {searchHint && <button type="button" className="btn btn-dark" onClick={applySearchHint}>
+            ‘{searchHint.q}’로 다시 검색
+          </button>}
           <button className="btn btn-outline-dark" onClick={reset}>
             모든 상품 보기
           </button>

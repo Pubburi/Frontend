@@ -47,7 +47,7 @@ export function pageQuery(params = {}, defaults = {}) {
   return query.toString()
 }
 
-async function request(path, options = {}) {
+async function request(path, options = {}, readResponse) {
   let response
   try {
     response = await fetch(`${API_BASE}${path}`, {
@@ -83,8 +83,24 @@ async function request(path, options = {}) {
     throw new ApiClientError(error, response.status)
   }
 
-  return hasEnvelope ? envelope.data : envelope
+  const data = hasEnvelope ? envelope.data : envelope
+  return readResponse ? readResponse(data, response.headers) : data
 }
+
+function readSearchHint(value, original) {
+  if (!value || !original || value.length > 1206) return null
+  const match = /^(ALIAS|TYPO):((?:[A-Za-z0-9._~-]|%[0-9A-F]{2})+)$/.exec(value)
+  if (!match) return null
+  try {
+    const q = decodeURIComponent(match[2])
+    if (q === original || q.length > 100 || q !== q.trim() || q !== q.normalize('NFC') || /[\p{C}%_\\]/u.test(q)) return null
+    return { kind: match[1], q }
+  } catch {
+    return null
+  }
+}
+
+const productList = (params, readResponse) => request(`/products?${pageQuery(params, { page: 1, size: 12 })}`, {}, readResponse)
 
 export const api = {
   me: () => request('/auth/me'),
@@ -166,7 +182,13 @@ export const api = {
   /** @param {number} id @returns {Promise<import('../types').FavoriteState>} */
   removeFavorite: (id) => request(`/users/me/favorites/${id}`, { method: 'DELETE' }),
 
-  products: (params = {}) => request(`/products?${pageQuery(params, { page: 1, size: 12 })}`),
+  products: (params = {}) => productList(params),
+  /** @param {ReturnType<typeof import('../utils/productFilters').parseProductQuery>} params @returns {Promise<{page: import('../types').Page<import('../types').Product>, hint: {kind: 'ALIAS'|'TYPO', q: string}|null}>} */
+  catalogProducts: (params) => productList(params, (page, headers) => ({
+    page,
+    hint: page?.total === 0 && Array.isArray(page.items) && page.items.length === 0
+      ? readSearchHint(headers?.get('X-Pubburi-Search-Hint'), params.q) : null,
+  })),
   /** @param {string} q @param {AbortSignal} signal @returns {Promise<unknown>} */
   productSuggestions: (q, signal) => request(`/products/suggestions?${new URLSearchParams({ q })}`, { signal, cache: 'no-store' }),
   /** @param {AbortSignal} signal @returns {Promise<unknown>} */
