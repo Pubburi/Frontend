@@ -1529,6 +1529,10 @@ textarea.form-control {
 .content-card { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .content-card ul { padding-left: 20px; line-height: 1.7; }
 .content-card h3, .content-fact { white-space: pre-wrap; overflow-wrap: anywhere; }
+.theme-options { flex-wrap: wrap; }
+.theme-criterion, .theme-cards, .theme-cards h4, .theme-cards p { margin: 0; }
+.theme-cards h4 { overflow-wrap: anywhere; }
+.theme-cards p { margin-top: 8px; }
 .similar-products { margin-top: 32px; }
 .recommendation-feedback summary { display: list-item; cursor: pointer; width: fit-content; }
 .recommendation-feedback .button-row { flex-wrap: wrap; }

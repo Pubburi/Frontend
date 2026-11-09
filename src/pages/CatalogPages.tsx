@@ -39,6 +39,7 @@ import { SimilarProducts } from '../components/SimilarProducts'
 import { RecommendationFeedback } from '../components/RecommendationFeedback'
 import { ProductNotebook } from '../components/Notebook'
 import { HomeProductSearch } from '../components/HomeProductSearch'
+import { HomeProductThemes } from '../components/HomeProductThemes'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
 
 export function HomePage() {
@@ -105,6 +106,7 @@ export function HomePage() {
           ))}
         </div>
       </section>
+      <HomeProductThemes />
       <ContentRecommendations />
       <ContentRecommendations exploration />
       <section className="section-band">
