@@ -169,6 +169,8 @@ export const api = {
   products: (params = {}) => request(`/products?${pageQuery(params, { page: 1, size: 12 })}`),
   /** @param {string} q @param {AbortSignal} signal @returns {Promise<unknown>} */
   productSuggestions: (q, signal) => request(`/products/suggestions?${new URLSearchParams({ q })}`, { signal, cache: 'no-store' }),
+  /** @param {AbortSignal} signal @returns {Promise<unknown>} */
+  productThemes: (signal) => request('/products/themes', { signal, cache: 'no-store' }),
   popularProducts: () => request('/products/popular'),
   /** @param {number} size @returns {Promise<import('../types').DefaultProducts>} */
   defaultProducts: (size = 4) => request(`/recommendations/default?${new URLSearchParams({ size: String(size) })}`),

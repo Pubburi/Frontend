@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ProductThemeId } from '../productThemes'
 
 export function errorMessage(error: unknown): string {
   if (error && typeof error === 'object') {
@@ -15,6 +16,8 @@ type Result<T> = { ok: true; data: T } | { ok: false; error: unknown }
 interface UiState {
   notice: { type: 'success' | 'error'; message: string } | null
   pending: Record<string, boolean>
+  homeTheme: { locationKey: string; id: ProductThemeId } | null
+  selectHomeTheme: (locationKey: string, id: ProductThemeId) => void
   clear: () => void
   status: (message: string) => void
   error: (error: unknown) => void
@@ -27,6 +30,8 @@ interface UiState {
 export const useUi = create<UiState>((set, get) => ({
   notice: null,
   pending: {},
+  homeTheme: null,
+  selectHomeTheme: (locationKey, id) => set({ homeTheme: { locationKey, id } }),
   clear: () => set({ notice: null }),
   status: (message) => set({ notice: { type: 'success', message } }),
   error: (error) =>
