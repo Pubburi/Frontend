@@ -59,6 +59,19 @@ interface FeedbackEvidence {
 }
 export type ContentResponse = { source: 'UNAVAILABLE'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_LOCAL_CATALOG'; result: null; products: [] } |
   { source: 'PROVIDER'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_FAMILY_BROWSE_DEMO' | 'REVIEWED_LOCAL_CATALOG'; result: { items: ContentItem[]; fallback_reason: keyof typeof contentFallbacks | null }; products: Product[]; activityEvidence?: ActivityEvidence; feedbackEvidence?: FeedbackEvidence }
+export const explorationSelectionLabels = {
+  highest_relevance_anchor: '저장한 취향에 가장 가까운 기준 후보',
+  observed_text: '확인된 상품 특성의 중복을 고려한 후보',
+  unknown_conservative: '상품끼리 비교할 수 있는 특성 정보가 제한적인 후보',
+} as const
+type ExplorationSelection = { product_id: number; basis: keyof typeof explorationSelectionLabels }
+type ExplorationResult = Extract<ContentResponse, { source: 'PROVIDER' }>['result'] & {
+  exploration_reason: 'selected' | 'baseline_fallback' | 'below_relevance_floor'
+  selections: ExplorationSelection[]
+}
+export type ExplorationResponse = Extract<ContentResponse, { source: 'UNAVAILABLE' }> | {
+  source: 'PROVIDER'; catalogScope: 'REVIEWED_DEMO' | 'REVIEWED_LOCAL_CATALOG'; result: ExplorationResult; products: Product[]
+}
 function need(value: unknown): asserts value { if (!value) throw new Error('검수 추천 응답을 확인하지 못했습니다.') }
 function object(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)) }
 function number(value: unknown, max: number): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max }
@@ -103,6 +116,33 @@ export function parseReferenceExplanation(value: unknown, referenceId: number): 
 // Consume typed display facts. Ranking, catalog authority and preference binding
 // remain with the provider; this never invents or recalculates a score/reason.
 export function parseContentResponse(value: unknown): ContentResponse {
+  return checkContentResponse(value, false)
+}
+
+export function parseExplorationResponse(value: unknown): ExplorationResponse {
+  return checkContentResponse(value, true) as ExplorationResponse
+}
+
+function checkExplorationSelection(result: Record<string, unknown>, items: unknown[], maximum: number) {
+  need(Object.keys(result).length === 12 && Array.isArray(result.selections) && result.selections.length === items.length && items.length <= maximum)
+  if (result.exploration_reason === 'selected') {
+    need(items.length > 0 && result.fallback_reason === null && result.representation_fitted && result.model_fingerprint !== null)
+  } else {
+    need(items.length === 0)
+    if (result.exploration_reason === 'baseline_fallback') {
+      need(result.fallback_reason !== null && (result.eligible_count === 0) === (result.fallback_reason === 'no_eligible_products'))
+    } else {
+      need(result.exploration_reason === 'below_relevance_floor' && result.fallback_reason === null && maximum > 0 && result.representation_fitted)
+    }
+  }
+  result.selections.forEach((selection, index) => {
+    const item = items[index]
+    need(object(selection) && Object.keys(selection).length === 2 && object(item) && selection.product_id === item.product_id)
+    need(index === 0 ? selection.basis === 'highest_relevance_anchor' : selection.basis === 'observed_text' || selection.basis === 'unknown_conservative')
+  })
+}
+
+function checkContentResponse(value: unknown, exploration: boolean): ContentResponse {
   need(object(value) && Array.isArray(value.products))
   const hasActivity = Object.hasOwn(value, 'activityEvidence')
   const hasFeedback = Object.hasOwn(value, 'feedbackEvidence')
@@ -112,11 +152,13 @@ export function parseContentResponse(value: unknown): ContentResponse {
     return value as unknown as ContentResponse
   }
   need(value.source === 'PROVIDER' && (value.catalogScope === 'REVIEWED_DEMO' || value.catalogScope === 'REVIEWED_FAMILY_BROWSE_DEMO' || value.catalogScope === 'REVIEWED_LOCAL_CATALOG'))
+  if (exploration) need(!hasActivity && !hasFeedback && value.catalogScope !== 'REVIEWED_FAMILY_BROWSE_DEMO')
   const result = value.result
   need(object(result) && result.algorithm === 'b1-tfidf-minmax-v1' && result.fit_scope === 'request_catalog' &&
     typeof result.representation_fitted === 'boolean' && (result.model_fingerprint === null || typeof result.model_fingerprint === 'string' && /^[a-f0-9]{64}$/.test(result.model_fingerprint)))
   need(fallback(result.fallback_reason) && integer(result.eligible_count, 1000) && integer(result.supported_profile_tokens, 72) && integer(result.unknown_profile_tokens, 72))
   need(Array.isArray(result.active_numeric_preferences) && result.active_numeric_preferences.every((part) => part === 'abv_percent'))
+  if (exploration) need(result.active_numeric_preferences.length <= 1 && result.representation_fitted === (result.model_fingerprint !== null))
   need(Array.isArray(result.items) && value.products.length === result.items.length)
   const references = new Set<number>()
   let positiveOnly = false
@@ -135,7 +177,9 @@ export function parseContentResponse(value: unknown): ContentResponse {
     }
   }
   const maximum = Math.min(4, result.eligible_count)
-  if (positiveOnly) {
+  if (exploration) {
+    checkExplorationSelection(result, result.items, maximum)
+  } else if (positiveOnly) {
     need(result.items.length <= maximum && result.fallback_reason ===
       (maximum === 0 ? 'no_eligible_products' : result.items.length === 0 ? 'no_matching_features' : null))
   } else {
@@ -151,7 +195,7 @@ export function parseContentResponse(value: unknown): ContentResponse {
     const product = products[index]
     need(object(product) && product.id === item.product_id && text(product.name) && text(product.type) && integer(product.price, 2147483647) && number(product.abv, 100) && integer(product.orderCount, 2147483647) && (product.img == null || typeof product.img === 'string'))
     need(number(item.score, 1) && Array.isArray(item.reasons) && item.reasons.length > 0 && item.reasons.every((reason) => typeof reason === 'string' && Object.hasOwn(contentReasons, reason)))
-    need(!positiveOnly || item.score > 0)
+    need(!(positiveOnly || exploration) || item.score > 0)
     const facts = item.explanation
     need(object(facts) && facts.version === 'r04-facts-v1' && object(facts.comparison))
     const isReference = facts.comparison.kind === 'reference_product'
