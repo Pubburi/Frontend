@@ -24,7 +24,7 @@ export function HomeProductThemes() {
   const items = query.data?.themes.find((theme) => theme.id === selected?.id)?.items
   const changed = query.error instanceof ApiClientError && query.error.status === 409
 
-  return <section className="section-band content-recommendations" aria-labelledby={title}>
+  return <section className="section-band content-recommendations catalog-home-themes" aria-labelledby={title}>
     <div className="section-heading">
       <div>
         <h2 id={title}>테마로 둘러보기</h2>

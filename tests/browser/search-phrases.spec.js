@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test'
+import { openCatalogFilters } from './catalog-filters'
 
 // Authored typed Backend/provider contracts; not real preference or drink facts.
 const users = [{ id: 'member', name: '회원A', role: 'USER' }, { id: 'other', name: '회원B', role: 'USER' }]
@@ -149,7 +150,7 @@ for (const width of [1280, 390]) {
   test(`same URL phrase apply restores every draft field;modifier preserves current tab at${width}`, async ({ page, context }) => {
     await page.setViewportSize({ width, height: 900 }); const url = urlFor(wire(['tasteTags'])); await open(page, url)
     await panel(page).getByRole('checkbox', { name: labels[1], exact: true }).check(); await requestPhrase(page)
-    await page.getByLabel('상품 검색', { exact: true }).fill('같은 URL의 미제출 입력'); await page.getByRole('combobox', { name: '주종', exact: true }).selectOption('탁주'); await page.getByLabel('최소 가격(원)', { exact: true }).fill('9999'); await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('바뀐 태그'); await page.getByRole('combobox', { name: '정렬', exact: true }).selectOption('priceDesc')
+    await page.getByLabel('상품 검색', { exact: true }).fill('같은 URL의 미제출 입력'); await page.getByRole('combobox', { name: '주종', exact: true }).selectOption('탁주'); await openCatalogFilters(page); await page.getByLabel('최소 가격(원)', { exact: true }).fill('9999'); await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('바뀐 태그'); await page.getByRole('combobox', { name: '정렬', exact: true }).selectOption('priceDesc')
     const popupReady = context.waitForEvent('page'); await links(page).click({ modifiers: ['ControlOrMeta'] }); const popup = await popupReady
     await expect(popup).toHaveURL(url); await expect(popup.getByRole('heading', { name: '전체 주류 둘러보기', exact: true })).toBeVisible(); await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('같은 URL의 미제출 입력'); await expect(page.getByLabel('최소 가격(원)', { exact: true })).toHaveValue('9999'); await expect(page).toHaveURL(url); await popup.close()
     await links(page).focus(); await links(page).press('Enter'); await expect(page).toHaveURL(url)

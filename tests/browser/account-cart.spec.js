@@ -177,6 +177,8 @@ for (const width of [1280, 390]) test(`F10 ${width}px 명시 병합·현재0원�
   await page.setViewportSize({ width, height: 900 }); await localCart(page)
   s.carts.member = { version: 1, items: [row(7, 1)] }
   await page.goto('/cart'); await expect(own(page)).toContainText('현재 병당 0원'); await expect(guest(page)).toContainText('2개')
+  await expect(guest(page)).toContainText('카트 표본 7')
+  expect((await guest(page).boundingBox()).y).toBeLessThan((await own(page).boundingBox()).y)
   expect(s.calls.filter((c) => c.path.endsWith('/merge'))).toHaveLength(0)
   await page.getByRole('button', { name: '기기 상품을 계정에 합치기', exact: true }).focus(); await page.keyboard.press('Enter')
   await expect(guest(page)).toHaveCount(0); await expect(own(page).getByRole('spinbutton')).toHaveValue('3')
@@ -187,6 +189,22 @@ for (const width of [1280, 390]) test(`F10 ${width}px 명시 병합·현재0원�
   expect(await page.evaluate(() => localStorage.getItem('pubburi-cart'))).toBe('[]')
   expect(s.calls.filter((c) => c.path.startsWith('/api/users/me/cart')).every((c) => c.owner === 'member')).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+})
+test('320px에서 긴 상품명과 주문 예정 금액이 요약 영역 안에 표시됨', async ({ page, cartApi: s }) => {
+  const name = 'N'.repeat(100)
+  s.carts.member = { version: 1, items: [{
+    ...row(8), productName: name, currentProduct: { ...product(8), name, price: 2147483647 },
+  }] }
+  await page.setViewportSize({ width: 320, height: 900 })
+  await page.goto('/cart')
+  await expect(own(page).getByRole('link', { name, exact: true })).toBeVisible()
+  const summary = page.getByRole('complementary', { name: '주문 요약', exact: true })
+  const submit = summary.getByRole('button', { name: '2,147,483,647원 주문하기', exact: true })
+  await expect(submit).toBeVisible()
+  const bounds = await submit.boundingBox()
+  expect(bounds.height).toBeGreaterThanOrEqual(44)
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(320)
+  expect(await summary.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(await summary.evaluate((el) => el.clientWidth))
 })
 test('병합 응답유실은 같은UUID로 현재결과만 확인하고 clear뒤에도 부활·중복합산 없음', async ({ page, cartApi: s }) => {
   await localCart(page); s.lost = 'merge'; await page.goto('/cart'); await page.getByRole('button', { name: '기기 상품을 계정에 합치기', exact: true }).click()
@@ -393,8 +411,13 @@ test.describe('R07 cart-only context consumer', () => {
     if (width === 390) await info.attach('cart-context-390.png', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' })
     await contextCards(page).getByRole('link', { name: '카트 표본 9', exact: true }).click(); await expect(page).toHaveURL('/products/9'); await expect(page.getByRole('heading', { name: '카트 표본 9', level: 1, exact: true })).toBeVisible(); await page.goBack(); await expect(own(page).getByRole('spinbutton')).toHaveValue('2'); await expect(contextCards(page)).toHaveCount(0); expect(contextCalls(s)).toHaveLength(1)
   })
-  test('빈카트는자동비교/B0없이설명하고조작을요구하지않음', async ({ page, cartApi: s }) => {
-    s.carts.member.items = []; await page.goto('/cart'); await expect(compareCart(page)).toBeDisabled(); await expect(contextRegion(page)).toContainText('계정 장바구니에 상품을 담은 뒤'); expect(contextCalls(s)).toEqual([])
+  test('빈 카트는 둘러보기만 안내하고 사용할 수 없는 비교 버튼을 표시하지 않음', async ({ page, cartApi: s }) => {
+    s.carts.member.items = []
+    await page.goto('/cart')
+    await expect(own(page).getByRole('heading', { name: '계정 장바구니가 비어 있습니다', exact: true })).toBeVisible()
+    await expect(own(page).getByRole('link', { name: '전체 주류 보기', exact: true })).toHaveAttribute('href', '/products')
+    await expect(compareCart(page)).toHaveCount(0)
+    expect(contextCalls(s)).toEqual([])
   })
   test('비교중중복클릭은막되수량초안·다음주문입력과탐색은보존', async ({ page, cartApi: s }) => {
     const g = gate(); let started = false

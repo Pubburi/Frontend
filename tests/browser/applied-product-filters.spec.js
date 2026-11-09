@@ -1,4 +1,5 @@
 import { expect, test as base } from '@playwright/test'
+import { openCatalogFilters } from './catalog-filters'
 
 // Authored filter envelopes, separate from actual Backend/catalog acceptance.
 const ok = (data) => ({ data, message: 'ok', error: null })
@@ -68,6 +69,7 @@ for (const [width, original, canonical, kind] of [
   await input.fill('별도의 검색어 초안')
   await page.getByRole('combobox', { name: '주종', exact: true }).selectOption('맥주')
   await page.getByRole('combobox', { name: '정렬', exact: true }).selectOption('priceDesc')
+  await openCatalogFilters(page)
   await page.getByLabel('최대 가격(원)', { exact: true }).fill('9999')
   await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('나중,태그\n원문')
   await hint.scrollIntoViewIfNeeded()
@@ -147,6 +149,17 @@ async function fits(page) {
   }
 }
 
+async function positionAppliedChip(page, chip) {
+  await openCatalogFilters(page)
+  await chip.evaluate((element) => window.scrollTo({
+    top: Math.max(1, window.scrollY + element.getBoundingClientRect().top - innerHeight / 2),
+    behavior: 'instant',
+  }))
+  const before = await page.evaluate(() => window.scrollY)
+  expect(before).toBeGreaterThan(0)
+  return before
+}
+
 for (const width of [1280, 390]) test(`사라진 결과 페이지는 적용 조건·입력·뒤로 가기를 보존해 복구 ${width}px`, async ({ page, filtersApi }, info) => {
   filtersApi.items = items.slice(0, 2)
   await page.setViewportSize({ width, height: 900 })
@@ -174,6 +187,7 @@ for (const width of [1280, 390]) test(`사라진 결과 페이지는 적용 조�
     await expect(page.locator('.product-card')).toHaveCount(2)
     await page.goto(`/products?${target}`)
     await expect.poll(() => started).toBe(true)
+    await openCatalogFilters(page)
     await page.getByLabel('최대 가격(원)', { exact: true }).fill('9999')
     const input = page.getByLabel('상품 검색', { exact: true })
     await input.fill('아직 제출하지 않은 검색')
@@ -226,6 +240,7 @@ for (const width of [1280, 390]) test(`applied-draft-baseline: 적용 URL과 결
   await expect(page.locator('.product-card')).toHaveCount(2)
   await page.getByRole('combobox', { name: '주종', exact: true }).selectOption('맥주')
   await page.getByLabel('상품 검색', { exact: true }).fill('미제출 검색')
+  await openCatalogFilters(page)
   await page.getByLabel('최대 가격(원)', { exact: true }).fill('9999')
   const summary = page.getByLabel('적용된 필터', { exact: true })
   const observed = { width, url: page.url(), applied: await summary.textContent(), request: catalogCalls(filtersApi).at(-1), reads: catalogCalls(filtersApi).length }
@@ -258,6 +273,7 @@ for (const width of [1280, 390]) test(`개별 해제는 URL 한 조건/page1만 
   await page.getByRole('combobox', { name: '주종', exact: true }).selectOption('맥주')
   await page.getByRole('combobox', { name: '정렬', exact: true }).selectOption('priceDesc')
   await page.getByLabel('상품 검색', { exact: true }).fill('미제출 검색')
+  await openCatalogFilters(page)
   await page.getByLabel('최대 가격(원)', { exact: true }).fill('9999')
   await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('아직 적용하지 않은 태그')
   await remove(page, '최대 가격(원) 12000 해제').click()
@@ -326,9 +342,9 @@ for (const width of [1280, 390]) for (const restoration of ['auto', 'manual']) t
   await page.setViewportSize({ width, height: 900 }); await page.goto(`/products?${applied()}`)
   expect(await page.evaluate(() => history.scrollRestoration)).toBe('auto')
   await expect(page.locator('.product-card')).toHaveCount(2)
-  const target = remove(page, '최대 가격(원) 12000 해제'); await target.scrollIntoViewIfNeeded()
-  const source = await target.elementHandle(), before = await page.evaluate(() => window.scrollY)
-  expect(before).toBeGreaterThan(0)
+  const target = remove(page, '최대 가격(원) 12000 해제')
+  const before = await positionAppliedChip(page, target)
+  const source = await target.elementHandle()
   await target.click(); await expect(page.locator('.product-card')).toHaveCount(12)
   const observed = await page.evaluate(() => ({ scrollY: window.scrollY, active: document.activeElement.tagName }))
   await info.attach('pointer-scroll.json', { body: JSON.stringify({ width, before, ...observed, removed: await source.evaluate((el) => !el.isConnected) }), contentType: 'application/json' })
@@ -342,22 +358,22 @@ for (const width of [1280, 390]) for (const restoration of ['auto', 'manual']) t
   }
   const backUrl = page.url()
   await page.getByLabel('상품 검색', { exact: true }).fill('이탈 전 미제출 초안')
-  if (width === 390) await remove(page, '메뉴 열기').click()
   await page.locator('header').getByRole('link', { name: '장바구니', exact: true }).click()
   await expect(page).toHaveURL(/\/cart$/); await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   await page.evaluate(() => { window.__appliedScrollRequests = [] })
   await page.goBack(); await expect(page).toHaveURL(backUrl)
   await expect(page.locator('.product-card')).toHaveCount(12)
   await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('초기')
-  await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('')
-  await expect(page.getByLabel('최소 가격(원)', { exact: true })).toHaveValue('0')
-  await expect(page.getByLabel('맛 태그 조건 1', { exact: true })).toHaveValue('dry,sweet')
-  await expect(page.getByLabel('맛 태그 조건 2', { exact: true })).toHaveValue('line\nbreak')
   await expect.poll(() => page.evaluate(() => window.__appliedScrollRequests.filter((call) => call.args[0]?.top === 0 && call.destination === location.pathname + location.search).length)).toBe(1)
   expect(await page.evaluate(() => history.scrollRestoration)).toBe(restoration)
   // In auto mode native history may restore a remembered position after App's request.
   if (restoration === 'manual') await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   await info.attach('back-scroll-owner.json', { body: JSON.stringify(await page.evaluate(() => ({ mode: history.scrollRestoration, scrollY, requests: window.__appliedScrollRequests, url: location.pathname + location.search }))), contentType: 'application/json' })
+  await openCatalogFilters(page)
+  await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('')
+  await expect(page.getByLabel('최소 가격(원)', { exact: true })).toHaveValue('0')
+  await expect(page.getByLabel('맛 태그 조건 1', { exact: true })).toHaveValue('dry,sweet')
+  await expect(page.getByLabel('맛 태그 조건 2', { exact: true })).toHaveValue('line\nbreak')
 })
 
 test.describe('터치 가능한 웹 브라우저', () => {
@@ -366,8 +382,8 @@ test.describe('터치 가능한 웹 브라우저', () => {
     await page.setViewportSize({ width: 390, height: 900 }); await page.goto(`/products?${applied()}`)
     await expect(page.locator('.product-card')).toHaveCount(2)
     await page.getByLabel('상품 검색', { exact: true }).fill('터치 전 새 초안')
-    const target = remove(page, '최대 가격(원) 12000 해제'); await target.scrollIntoViewIfNeeded()
-    const before = await page.evaluate(() => window.scrollY)
+    const target = remove(page, '최대 가격(원) 12000 해제')
+    const before = await positionAppliedChip(page, target)
     await target.tap(); await expect(page.locator('.product-card')).toHaveCount(12)
     const after = await page.evaluate(() => window.scrollY)
     await info.attach('touch-scroll.json', { body: JSON.stringify({ before, after }), contentType: 'application/json' })
@@ -380,6 +396,7 @@ test.describe('터치 가능한 웹 브라우저', () => {
 
 test('수정한 태그 초안 배열은 적용된 한 태그를 해제해도 다시 쓰지 않음', async ({ page }) => {
   await page.goto(`/products?${applied()}`); await expect(page.locator('.product-card')).toHaveCount(2)
+  await openCatalogFilters(page)
   await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('새,초안\n원문')
   await page.getByRole('button', { name: /맛 태그 line\s+break 해제/ }).click()
   await expect(page.locator('.product-card')).toHaveCount(12)

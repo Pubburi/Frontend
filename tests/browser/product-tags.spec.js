@@ -1,4 +1,5 @@
 import { expect, test as base } from '@playwright/test'
+import { openCatalogFilters } from './catalog-filters'
 
 // Authored search contracts, not actual drink facts or training data.
 const products = Array.from({ length: 7 }, (_, i) => ({ id: 1400 + i, name: `태그 시연 ${i}`, type: '탁주', price: i === 6 ? 20000 : 7777, abv: 6, img: null, orderCount: 0 }))
@@ -49,11 +50,30 @@ const test = base.extend({
   }, { auto: true }],
 })
 async function addTag(page, kind, value) {
+  await openCatalogFilters(page)
   await page.getByRole('button', { name: `${kind} 조건 추가`, exact: true }).click()
   const inputs = page.getByRole('textbox', { name: new RegExp(`^${kind} 태그 조건 \\d+$`) })
   await inputs.last().fill(value)
 }
 const catalogCalls = (api) => api.calls.filter((c) => c.path === '/api/products')
+
+test('맛과 향을 키보드로 골라 입력 없이 필터로 적용', async ({ page, tagsApi }) => {
+  await page.goto('/products')
+  await expect(page.locator('.product-card')).toHaveCount(7)
+  await openCatalogFilters(page)
+  const taste = page.getByRole('button', { name: '드라이한 맛', exact: true })
+  const aroma = page.getByRole('button', { name: '꽃향', exact: true })
+  await taste.press('Enter')
+  await aroma.press('Space')
+  await expect(taste).toHaveAttribute('aria-pressed', 'true')
+  await expect(aroma).toHaveAttribute('aria-pressed', 'true')
+  expect(catalogCalls(tagsApi)).toHaveLength(1)
+  await page.getByRole('button', { name: '세부 조건 적용', exact: true }).click()
+  await expect(page.locator('.product-card')).toHaveCount(1)
+  const query = new URLSearchParams(catalogCalls(tagsApi).at(-1).query)
+  expect(query.getAll('tasteTag')).toEqual(['dry'])
+  expect(query.getAll('aromaTag')).toEqual(['floral'])
+})
 
 test('맛·향 태그 행은 쉼표·개행을 한 값으로 정규화하고 모든 조건을 반복 query로 검색', async ({ page, tagsApi }) => {
   await page.goto('/products')
@@ -77,6 +97,7 @@ test('맛·향 태그 행은 쉼표·개행을 한 값으로 정규화하고 모
 test('직접 반복 태그 URL을 복원하고 원문 초안과 적용 조건을 구분', async ({ page, tagsApi }) => {
   await page.goto(`/products?${queryFor([' DRY,SWEET ', 'Line\nBreak'], ['Floral'])}`)
   await expect(page.locator('.product-card')).toHaveCount(1)
+  await openCatalogFilters(page)
   await expect(page.getByLabel('맛 태그 조건 1', { exact: true })).toHaveValue(' DRY,SWEET ')
   await expect(page.getByLabel('맛 태그 조건 2', { exact: true })).toHaveValue('Line\nBreak')
   const applied = page.getByLabel('현재 적용된 태그 조건', { exact: true })
@@ -84,7 +105,7 @@ test('직접 반복 태그 URL을 복원하고 원문 초안과 적용 조건을
   await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('새 초안')
   await expect(applied).toContainText('dry,sweet'); await expect(applied).not.toContainText('새 초안')
   expect(catalogCalls(tagsApi)).toHaveLength(1)
-  await page.reload(); await expect(page.getByLabel('맛 태그 조건 1', { exact: true })).toHaveValue(' DRY,SWEET ')
+  await page.reload(); await openCatalogFilters(page); await expect(page.getByLabel('맛 태그 조건 1', { exact: true })).toHaveValue(' DRY,SWEET ')
 })
 
 for (const values of [[''], ['Dry', ' dry '], ['x'.repeat(41)]]) {
@@ -111,6 +132,7 @@ for (const invalid of ['tasteTag=', 'tasteTag=dry&tasteTag=DRY', `aromaTag=${'x'
 
 test('쉼표가 든 한 태그와 별도 두 태그는 다른 결과이며 빈 조건은 unknown·빈 배열을 제외하지 않음', async ({ page }) => {
   await page.goto(`/products?${queryFor()}`); await expect(page.locator('.product-card')).toHaveCount(1)
+  await openCatalogFilters(page)
   await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('dry')
   await addTag(page, '맛', 'sweet')
   await page.getByRole('button', { name: '검색하기', exact: true }).click()
@@ -126,6 +148,7 @@ test('태그 페이지는 미제출 행 대신 적용 조건을 쓰고 Enter 검
   tagsApi.products = Array.from({ length: 14 }, (_, i) => ({ ...products[0], id: 1500 + i, name: `태그 페이지 ${i}` }))
   tagsApi.features = Object.fromEntries(tagsApi.products.map((p) => [p.id, features[0]]))
   await page.goto(`/products?${queryFor()}`); await expect(page.locator('.product-card')).toHaveCount(12)
+  await openCatalogFilters(page)
   await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('미제출')
   await page.getByRole('button', { name: '다음', exact: true }).click()
   await expect(page.locator('.product-card')).toHaveCount(2)
@@ -144,6 +167,7 @@ test('각 종류20개는 허용하고 추가를 막으며 행을 삭제하면 �
   await page.goto(`/products?${query}`)
   await expect(page.getByRole('heading', { name: '조건에 맞는 상품이 없습니다', exact: true })).toBeVisible()
   expect(catalogCalls(tagsApi)).toHaveLength(1)
+  await openCatalogFilters(page)
   await expect(page.getByRole('button', { name: '맛 조건 추가', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: '향 조건 추가', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: '맛 태그 조건 20 삭제', exact: true }).click()
@@ -160,6 +184,7 @@ test('이전 태그의 보류 응답은 새 반복 태그 검색을 덮지 않�
   })
   try {
     await page.goto(`/products?${queryFor()}`); await expect.poll(() => started).toBe(true)
+    await openCatalogFilters(page)
     await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('dry'); await addTag(page, '맛', 'sweet')
     await page.getByRole('button', { name: '검색하기', exact: true }).click()
     await expect(page.getByRole('heading', { name: '태그 시연 1', exact: true })).toBeVisible()
@@ -190,6 +215,7 @@ for (const terms of [['Ä', 'ä'], ['a'.repeat(39) + 'İ']]) {
     try {
       await page.goto(`/products?${queryFor(terms, [])}`)
       await expect.poll(() => started).toBe(true)
+      await openCatalogFilters(page)
       await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('아직 제출하지 않은 값')
       release()
       await expect(page.getByRole('heading', { name: '검색 조건을 확인해 주세요', exact: true })).toBeVisible()
@@ -202,6 +228,7 @@ for (const terms of [['Ä', 'ä'], ['a'.repeat(39) + 'İ']]) {
       expect(catalogCalls(tagsApi)).toHaveLength(1)
       await page.getByRole('button', { name: '태그 조건 수정', exact: true }).click()
       await expect(page.getByLabel('맛 태그 조건 1', { exact: true })).toBeFocused()
+      await openCatalogFilters(page)
       await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('dry,sweet')
       if (terms.length === 2) await page.getByRole('button', { name: '맛 태그 조건 2 삭제', exact: true }).click()
       await addTag(page, '맛', 'line\nbreak')
@@ -221,6 +248,7 @@ test('이전 Unicode조건400은 이미 성공한 새 태그 검색을 차폐하
   })
   try {
     await page.goto(`/products?${queryFor(['Ä', 'ä'])}`); await expect.poll(() => started).toBe(true)
+    await openCatalogFilters(page)
     await page.getByLabel('맛 태그 조건 1', { exact: true }).fill('dry,sweet')
     await page.getByLabel('맛 태그 조건 2', { exact: true }).fill('line\nbreak')
     await page.getByRole('button', { name: '검색하기', exact: true }).click()
@@ -240,6 +268,7 @@ test('태그503의 명시 재시도와390px 행 추가·개행·오류 수정·�
   await expect(page.getByRole('heading', { name: '상품을 불러오지 못했습니다', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '다시 시도', exact: true }).click(); await expect(page.locator('.product-card')).toHaveCount(1)
   const beforeNewline = catalogCalls(tagsApi).length
+  await openCatalogFilters(page)
   await page.getByLabel('맛 태그 조건 2', { exact: true }).fill('line')
   await page.getByLabel('맛 태그 조건 2', { exact: true }).press('End')
   await page.getByLabel('맛 태그 조건 2', { exact: true }).press('Enter')

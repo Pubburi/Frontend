@@ -1,4 +1,5 @@
 import { expect, test as base } from '@playwright/test'
+import { openCatalogFilters } from './catalog-filters'
 
 // Authored contract fixtures, not actual product or recommendation evidence.
 const product = (id, name, price, abv) => ({ id, name, price, abv, type: '탁주', img: null, orderCount: 0 })
@@ -42,6 +43,7 @@ const test = base.extend({
   }, { auto: true }],
 })
 async function fillRanges(page, values) {
+  await openCatalogFilters(page)
   for (const [key, value] of Object.entries(values)) await page.getByLabel(labels[key], { exact: true }).fill(value)
 }
 const ranges = { minPriceKrw: '6000', maxPriceKrw: '12000', minAbvPercent: '6.25', maxAbvPercent: '15' }
@@ -66,6 +68,7 @@ test('직접 URL의 실제 영점 범위를 복원하고 미제출 초안과 적
   const zero = { minPriceKrw: '0', maxPriceKrw: '0', minAbvPercent: '0', maxAbvPercent: '0' }
   await page.goto(`/products?${new URLSearchParams(zero)}`)
   await expect(page.locator('.product-card')).toHaveCount(1)
+  await openCatalogFilters(page)
   for (const key of Object.keys(zero)) await expect(page.getByLabel(labels[key], { exact: true })).toHaveValue('0')
   await expect(page.getByRole('heading', { name: '범위 영점', exact: true })).toBeVisible()
   const applied = page.getByLabel('현재 적용된 가격·도수 범위', { exact: true })
@@ -75,6 +78,7 @@ test('직접 URL의 실제 영점 범위를 복원하고 미제출 초안과 적
   await expect(applied).not.toContainText('12,000원 이하')
   expect(rangeApi.calls.filter((call) => call.path === '/api/products')).toHaveLength(1)
   await page.reload()
+  await openCatalogFilters(page)
   await expect(page.getByLabel(labels.maxPriceKrw, { exact: true })).toHaveValue('0')
   expect(rangeApi.calls.filter((call) => call.path === '/api/products').at(-1).query).toMatchObject(zero)
 })
@@ -117,6 +121,7 @@ test('범위의 페이지 이동은 적용 조건을 쓰고 Enter·뒤로·전�
   rangeApi.products = [products[0], ...Array.from({ length: 14 }, (_, i) => product(1300 + i, `페이지 범위 ${i + 1}`, 6000, 6.25))]
   await page.goto(`/products?${rangeQuery}&page=1`)
   await expect(page.locator('.product-card')).toHaveCount(12)
+  await openCatalogFilters(page)
   await page.getByLabel(labels.maxPriceKrw, { exact: true }).fill('6000')
   await page.getByRole('button', { name: '다음', exact: true }).click()
   await expect(page).toHaveURL((url) => url.searchParams.get('maxPriceKrw') === '12000' && url.searchParams.get('page') === '2')
@@ -186,13 +191,65 @@ test('390px 범위 입력의 오류 안내와 Tab·Enter 제출은 단위·영�
   await last.fill('0')
   await last.focus()
   await last.press('Tab')
+  const dry = page.getByRole('button', { name: '드라이한 맛', exact: true })
+  const sweet = page.getByRole('button', { name: '단맛', exact: true })
+  await expect(dry).toBeFocused()
+  await dry.press('Tab')
+  await expect(sweet).toBeFocused()
+  await sweet.press('Tab')
   await expect(page.getByRole('button', { name: '맛 조건 추가', exact: true })).toBeFocused()
   await page.getByRole('button', { name: '맛 조건 추가', exact: true }).press('Tab')
+  const floral = page.getByRole('button', { name: '꽃향', exact: true })
+  await expect(floral).toBeFocused()
+  await floral.press('Tab')
   await expect(page.getByRole('button', { name: '향 조건 추가', exact: true })).toBeFocused()
   await page.getByRole('button', { name: '향 조건 추가', exact: true }).press('Tab')
-  await expect(page.getByRole('button', { name: '검색하기', exact: true })).toBeFocused()
-  await page.getByRole('button', { name: '검색하기', exact: true }).press('Enter')
+  await expect(page.getByRole('button', { name: '세부 조건 적용', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: '세부 조건 적용', exact: true }).press('Enter')
   await expect(page.getByRole('heading', { name: '범위 영점', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   await expect(page.getByRole('group', { name: '가격·도수 범위', exact: true })).toContainText('원')
+})
+
+test('390px 세부 조건을 접어도 입력을 보존하고 오류 제출은 해당 필드를 다시 연다', async ({ page, rangeApi }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/products')
+  await expect(page.locator('.product-card')).toHaveCount(7)
+  const disclosure = page.locator('details.catalog-search-advanced')
+  const summary = disclosure.locator('summary')
+  expect(await disclosure.getAttribute('open')).toBeNull()
+  await summary.press('Enter')
+  const minimum = page.getByLabel(labels.minPriceKrw, { exact: true })
+  await minimum.fill('1e3')
+  await summary.press('Space')
+  expect(await disclosure.getAttribute('open')).toBeNull()
+  const search = page.getByRole('button', { name: '검색하기', exact: true })
+  await search.press('Enter')
+  await expect(minimum).toHaveValue('1e3')
+  await expect(minimum).toBeFocused()
+  await expect(minimum).toHaveAttribute('aria-invalid', 'true')
+  expect(rangeApi.calls.filter(({ path }) => path === '/api/products')).toHaveLength(1)
+  await summary.press('Space')
+  await expect(summary).toContainText('조건 확인 필요')
+  await openCatalogFilters(page)
+  await minimum.fill('0')
+  await page.getByRole('button', { name: '세부 조건 적용', exact: true }).press('Enter')
+  await expect(page).toHaveURL((url) => url.searchParams.get('minPriceKrw') === '0')
+  await expect(page.getByLabel('현재 적용된 가격·도수 범위', { exact: true })).toContainText('0원 이상')
+  await page.goBack()
+  await expect(page).toHaveURL('/products')
+  await expect(disclosure).toHaveAttribute('open', '')
+  await expect(minimum).toHaveValue('')
+})
+
+test('잘못된 범위로 돌아가면 캐시된 검색 결과 수를 보여주지 않는다', async ({ page, rangeApi }) => {
+  await page.goto('/products?minPriceKrw=0&minPriceKrw=0&sort=popular&page=1')
+  await expect(page.getByRole('heading', { name: '검색 조건을 확인해 주세요', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '검색하기', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '검색 결과 7개', exact: true })).toBeVisible()
+  const reads = rangeApi.calls.filter(({ path }) => path === '/api/products').length
+  await page.goBack()
+  await expect(page.getByRole('heading', { name: '검색 결과', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '검색 결과 7개', exact: true })).toHaveCount(0)
+  expect(rangeApi.calls.filter(({ path }) => path === '/api/products')).toHaveLength(reads)
 })

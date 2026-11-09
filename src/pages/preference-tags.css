@@ -1,0 +1,32 @@
+.preferences-view .preference-tag-choices {
+  align-content: start;
+  border-radius: 16px;
+}
+
+.preference-tag-choices .button-row {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.preference-tag-choices .button-row .btn {
+  min-height: 44px;
+  max-width: 100%;
+  padding-inline: 0.85rem;
+  border-radius: 999px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.preference-legacy-tags {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.preference-legacy-tags > p {
+  margin: 0;
+}
+
+.preference-legacy-tags .btn > span:first-child {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

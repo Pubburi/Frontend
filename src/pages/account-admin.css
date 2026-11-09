@@ -1,0 +1,244 @@
+.account-redesign.account-layout {
+  width: 100%;
+  max-width: 980px;
+  margin-inline: auto;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+  gap: 0;
+  min-height: 0;
+  border-radius: 20px;
+}
+
+.account-redesign .auth-panel {
+  align-content: start;
+  gap: 18px;
+  min-width: 0;
+  padding: clamp(24px, 5vw, 52px);
+}
+
+.account-redesign .auth-brand { margin: 0; color: var(--forest-dark); }
+.account-redesign .segmented { gap: 4px; }
+.account-redesign .segmented button { min-height: 44px; border-radius: 8px; }
+.account-redesign .segmented button.active { color: white; background: var(--forest-dark); }
+.account-redesign .auth-form { gap: 18px; }
+.account-redesign .auth-form-heading h1,
+.account-redesign .account-story h2 {
+  margin: 0;
+  font-size: clamp(27px, 3.8vw, 42px);
+  line-height: 1.18;
+  letter-spacing: -.045em;
+}
+.account-redesign .auth-form-heading p {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  line-height: 1.65;
+}
+.account-redesign .inline-field { display: flex; align-items: stretch; }
+.account-redesign .inline-field input { min-width: 0; }
+.account-redesign .inline-field button { flex: none; white-space: nowrap; }
+.account-redesign .field-group small { line-height: 1.55; }
+.account-redesign .auth-panel .btn,
+.account-redesign .auth-panel .form-control { min-height: 44px; }
+.account-redesign .account-password-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.account-redesign .account-password-field .btn { padding-inline: 10px; font-size: .8rem; white-space: nowrap; }
+.account-redesign .signup-taste {
+  display: grid;
+  gap: 10px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--canvas);
+}
+.account-redesign .signup-taste legend { padding-inline: 4px; font-weight: 750; }
+.account-redesign .signup-taste legend small { margin-left: 4px; color: var(--ink-soft); font-weight: 500; }
+.account-redesign .signup-taste p { margin: 0; color: var(--ink-soft); font-size: .88rem; line-height: 1.55; }
+.account-redesign .signup-taste-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.account-redesign .signup-taste-group button {
+  min-height: 44px;
+  padding-inline: 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+}
+.account-redesign .signup-taste-group button[aria-pressed="true"] { border-color: var(--forest-dark); background: var(--forest-dark); color: white; }
+.preferences-view .signup-review { max-width: 620px; border-radius: 18px; }
+.preferences-view .signup-review dl { display: grid; gap: 10px; margin: 0; }
+.preferences-view .signup-review dl div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px; }
+.preferences-view .signup-review dt { color: var(--ink-soft); }
+.preferences-view .signup-review dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.preferences-view .signup-review .btn { min-height: 44px; }
+.account-redesign .account-story {
+  min-height: 0;
+  padding: clamp(24px, 5vw, 52px);
+  background: radial-gradient(ellipse at top right, var(--forest), transparent 65%), var(--forest-dark);
+}
+.account-redesign .account-story ul { gap: 0; margin-top: 18px; }
+.account-redesign .account-story li {
+  display: grid;
+  gap: 4px;
+  padding-block: 12px;
+  border-top: 1px solid rgb(255 255 255 / 24%);
+}
+.account-redesign .account-story li::before { content: none; }
+.account-redesign .account-story li span { color: #e4ebe6; font-size: .9rem; line-height: 1.55; }
+
+.profile-redesign .profile-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(230px, 1fr);
+  gap: 14px;
+}
+.profile-redesign .profile-hero {
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-width: 0;
+  border-radius: 20px;
+}
+.profile-redesign .profile-hero h1 { font-size: clamp(26px, 4vw, 42px); }
+.profile-redesign .profile-hero .btn { min-height: 44px; width: auto; }
+.profile-redesign .profile-hero .profile-account-id { margin-top: 8px; overflow-wrap: anywhere; }
+.profile-redesign .grade-card {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  gap: 12px;
+  min-width: 0;
+  border-radius: 18px;
+}
+.profile-redesign .grade-copy h2 { font-size: clamp(22px, 3vw, 30px); }
+.profile-redesign .profile-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 164px), 1fr));
+  gap: 10px;
+}
+.profile-redesign .profile-shortcut {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  align-items: center;
+  gap: 5px 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--ink);
+  text-decoration: none;
+}
+.profile-redesign .profile-shortcut:hover { background: var(--cream); border-color: var(--forest); }
+.profile-redesign .profile-shortcut span:not(.profile-shortcut-arrow) {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
+  font-size: .82rem;
+  line-height: 1.5;
+}
+.profile-redesign .profile-shortcut-arrow {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--forest-dark);
+  font-weight: 700;
+}
+.profile-redesign .profile-order-history { border-radius: 18px; }
+.profile-redesign .profile-order-history,
+.profile-redesign .profile-order-history h2 { scroll-margin-top: 6rem; }
+
+.admin-redesign .admin-intro,
+.settings-redesign .account-settings-intro {
+  padding: clamp(18px, 4vw, 30px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+}
+.admin-redesign .admin-intro h1,
+.settings-redesign .account-settings-intro h1 {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 38px);
+  letter-spacing: -.035em;
+}
+.admin-redesign .admin-intro p:last-child,
+.settings-redesign .account-settings-intro p:last-child,
+.admin-redesign .admin-section-heading p { margin: 6px 0 0; color: var(--ink-soft); }
+.admin-redesign .admin-workspace {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.admin-redesign .admin-tabs {
+  display: grid;
+  gap: 5px;
+  padding: 6px;
+  overflow: visible;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+}
+.admin-redesign .admin-tabs button { min-height: 44px; border-radius: 10px; }
+.admin-redesign .admin-tabs button.active { color: white; background: var(--forest-dark); }
+.admin-redesign .admin-panel { min-width: 0; border-radius: 18px; padding: clamp(14px, 2vw, 24px); }
+.admin-redesign .admin-section-heading { gap: 10px 18px; }
+.admin-redesign .admin-list-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.admin-redesign .admin-form {
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 162px), 1fr));
+  border-radius: 16px;
+}
+.admin-redesign .admin-form h3 { margin: 0; }
+.admin-redesign .admin-editor-heading,
+.admin-redesign .admin-form-actions { grid-column: 1 / -1; }
+.admin-redesign .admin-panel .btn,
+.admin-redesign .admin-panel .form-control,
+.admin-redesign .admin-panel .form-select,
+.admin-redesign .order-id { min-height: 44px; }
+.admin-redesign .table-row > * { min-width: 0; overflow-wrap: anywhere; }
+.admin-redesign .table-row { gap: 10px; }
+.admin-redesign .table-row .table-actions { justify-content: end; }
+.admin-redesign .table-actions .text-link { display: inline-flex; align-items: center; min-height: 44px; }
+.admin-redesign .table-head > :last-child { text-align: right; }
+.admin-redesign .admin-table--products .table-row { grid-template-columns: 3rem minmax(0, 1.2fr) minmax(0, .7fr) minmax(0, .6fr) minmax(154px, .9fr); }
+.admin-redesign .admin-table--markets .table-row { grid-template-columns: 3rem minmax(0, 1fr) minmax(0, 1fr) minmax(110px, .7fr); }
+.admin-redesign .admin-table--orders .table-row { grid-template-columns: 4rem minmax(0, .8fr) minmax(0, .55fr) minmax(0, .5fr) minmax(0, .75fr) minmax(154px, 1fr); }
+.admin-redesign .admin-table--comments .table-row { grid-template-columns: 3rem minmax(0, .65fr) minmax(0, .7fr) 2.5rem minmax(0, 1.35fr) minmax(60px, .45fr); }
+.admin-redesign .admin-table--users .table-row { grid-template-columns: minmax(0, .95fr) minmax(0, .85fr) minmax(0, .55fr) minmax(0, .45fr) minmax(110px, .6fr); }
+.admin-redesign .feature-editor { border-radius: 16px; }
+
+.settings-redesign .settings-grid { gap: 14px; margin-block: 0; align-items: start; }
+.settings-redesign .settings-card { gap: 14px; padding: clamp(18px, 3vw, 26px); border-radius: 18px; }
+.settings-redesign .settings-card-heading h2 { margin: 0; font-size: 1.3rem; }
+.settings-redesign .settings-card-heading .muted { margin-top: 5px; line-height: 1.55; }
+.settings-redesign .settings-field-hint { color: var(--ink-soft); font-size: .85rem; line-height: 1.6; }
+.settings-redesign .btn, .settings-redesign .form-control { min-height: 44px; }
+.settings-redesign .settings-shortcut { flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+
+@media (max-width: 1000px) {
+  .admin-redesign .admin-workspace { grid-template-columns: minmax(0, 1fr); }
+  .admin-redesign .admin-tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+@media (max-width: 980px) {
+  .admin-redesign .admin-table .table-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-redesign .admin-table .table-head { display: none; }
+  .admin-redesign .admin-table [data-label] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+    justify-items: start;
+  }
+  .admin-redesign .admin-table [data-label="내용"],
+  .admin-redesign .table-row .table-actions { grid-column: 1 / -1; }
+  .admin-redesign .table-row .table-actions { justify-content: start; }
+}
+
+@media (max-width: 720px) {
+  .account-redesign.account-layout,
+  .profile-redesign .profile-overview { grid-template-columns: minmax(0, 1fr); }
+  .account-redesign .account-story h2 { font-size: clamp(23px, 5vw, 30px); }
+  .admin-redesign .admin-tabs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 84px), 1fr)); }
+  .admin-redesign .admin-tabs button { padding-inline: 8px; }
+}
+
+@media (max-width: 360px) {
+  .account-redesign .inline-field { display: grid; }
+  .admin-redesign .admin-table .table-row { grid-template-columns: minmax(0, 1fr); }
+}

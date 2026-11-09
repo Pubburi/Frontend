@@ -54,21 +54,24 @@ export function RecentPage() {
   function focus(event: MouseEvent<HTMLButtonElement>) {
     if (event.detail === 0 && document.activeElement === event.currentTarget) heading.current?.focus({ preventScroll: true })
   }
-  return <section className="view recent-view">
-    <div className="shop-intro compact-intro"><div><p className="section-kicker">Recently Viewed</p><h1 ref={heading} tabIndex={-1}>최근 본 상품</h1><p>다시 살펴보고 싶은 상품을 찾아보세요. 상품 정보는 현재 값으로 다시 확인합니다.</p></div></div>
-    <div className="recent-policy">
+  return <section className="view recent-view catalog-recent">
+    <div className="shop-intro compact-intro"><div><h1 ref={heading} tabIndex={-1}>최근 본 상품</h1><p>열어 본 상품의 현재 가격과 정보를 다시 확인하세요.</p></div></div>
+    <div className="button-row catalog-recent-actions"><Link className="btn btn-dark" to="/products">전체 주류 보기</Link>{allowed && entries.length > 0 && <button className="text-button" onClick={(event) => { focus(event); if (history.owner) history.clear(history.owner) }}>최근 기록 전체 삭제</button>}</div>
+    <details className="recent-policy">
+      <summary>최근 기록 보관 안내</summary>
       <p>비회원 기록은 이 브라우저에 최대 20개·30일간 보관합니다. 로그인 중 기록은 현재 인증 중의 이 창에서만 보관하며, 새로고침·로그아웃·계정 전환 시 초기화합니다.</p>
       <p>상품 번호와 열람 시각만 보관합니다. 계정·다른 기기와 동기화하지 않으며, 로그인 전 비회원 기록을 계정 기록에 합치지 않습니다.</p>
-    </div>
-    <div className="button-row"><Link className="btn btn-outline-dark" to="/products">전체 주류 보기</Link>{allowed && entries.length > 0 && <button className="btn btn-outline-dark" onClick={(event) => { focus(event); if (history.owner) history.clear(history.owner) }}>최근 기록 전체 삭제</button>}</div>
+    </details>
     {session.isError || checkError ? <div className="state-panel" role="status"><h2>로그인 상태를 확인하지 못했습니다</h2><p>이전 기록을 표시하지 않았습니다. 다시 확인해 주세요.</p><button className="btn btn-dark" onClick={() => void confirmSession()}>로그인 상태 다시 확인</button></div> : !allowed ? <p role="status">로그인 상태를 확인하는 동안 최근 기록을 표시하지 않습니다.</p> : <>
       {history.kind === 'guest' && history.storageWarning && <p className="notice" role="status">이 브라우저에 기록 변경을 저장하지 못했습니다. 이 창에서는 계속 이용할 수 있지만, 새로고침하면 이전 비회원 기록이 다시 나타나거나 최근 기록이 사라질 수 있습니다. 로그인 중 기록은 브라우저에 저장하지 않습니다.</p>}
       {history.invalidStorage && <p role="status">저장된 기록 형식을 확인하지 못해 복원하지 않았습니다. 새로 본 상품부터 기록합니다.</p>}
       {!entries.length ? <div className="state-panel" role="status"><h2>최근 본 상품이 없습니다</h2><p>상품 상세를 열면 이곳에서 다시 찾아볼 수 있습니다.</p></div> : <div className="product-grid recent-grid">{entries.map((entry, index) => {
         const query = queries[index]
         return <section key={entry.id} className="recent-item" aria-label={`최근 상품 ${entry.id}`}>
-          <p className="muted recent-time"><time dateTime={new Date(entry.viewedAt).toISOString()}>{new Date(entry.viewedAt).toLocaleString('ko-KR')}</time> 열람</p>
-          <button className="text-button danger-text" aria-label={`상품 ${entry.id} 최근 기록 삭제`} onClick={(event) => { focus(event); if (history.owner) history.remove(history.owner, entry.id) }}>기록 삭제</button>
+          <div className="catalog-recent-item-meta">
+            <p className="muted recent-time"><time dateTime={new Date(entry.viewedAt).toISOString()}>{new Date(entry.viewedAt).toLocaleString('ko-KR')}</time> 열람</p>
+            <button className="text-button danger-text" aria-label={`상품 ${entry.id} 최근 기록 삭제`} onClick={(event) => { focus(event); if (history.owner) history.remove(history.owner, entry.id) }}>기록 삭제</button>
+          </div>
           {query.isPaused ? <p role="status">연결을 기다리는 중입니다.</p> : query.isPending || query.isFetching ? <p role="status">상품 정보를 불러오는 중입니다.</p> : query.isError ? <div className="state-panel" role="status"><h2>{query.error instanceof ApiClientError && query.error.status === 404 ? '상품을 찾을 수 없습니다' : '상품을 불러오지 못했습니다'}</h2><button className="btn btn-outline-dark btn-sm" onClick={() => { if (recentProducts(client).getState().owner === history.owner && recentProducts(client).getState().ready) void query.refetch() }}>상품 다시 불러오기</button></div> : <ProductCard product={query.data} />}
         </section>
       })}</div>}

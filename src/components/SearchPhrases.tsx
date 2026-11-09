@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type Ref } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient, type Query } from '@tanstack/react-query'
 import { useSession } from '../queries'
@@ -17,7 +17,7 @@ function inCurrentTab(event: MouseEvent<HTMLAnchorElement>) {
   return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
     (!event.currentTarget.target || event.currentTarget.target === '_self')
 }
-export function SearchPhrases({ onApply }: { onApply: (url: string) => void }) {
+export function SearchPhrases({ onApply, headingRef }: { onApply: (url: string) => void; headingRef: Ref<HTMLHeadingElement> }) {
   const session = useSession()
   const client = useQueryClient()
   const location = useLocation()
@@ -25,11 +25,11 @@ export function SearchPhrases({ onApply }: { onApply: (url: string) => void }) {
   const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
   if (auth && !owners.has(auth)) owners.set(auth, ++nextOwner)
   return <section className="search-phrases" aria-labelledby="search-phrases-title">
-    <h2 id="search-phrases-title">취향 조건으로 검색</h2>
-    <p>저장한 필수 범위를 사용합니다. 선호 주종·맛·향·목표 도수는 이번 검색에 사용할 항목만 따로 선택해 주세요. 취향 설정은 바뀌지 않습니다.</p>
+    <h2 id="search-phrases-title" ref={headingRef} tabIndex={-1}>취향 조건으로 검색</h2>
+    {session.data && <p>저장한 필수 범위를 사용합니다. 이번 검색에 넣을 취향만 골라 주세요. 취향 설정은 그대로예요.</p>}
     {transitioning || session.isPending || session.fetchStatus !== 'idle' ? <p role="status">현재 로그인 상태를 확인하는 중입니다.</p> : session.isError ?
       <><p role="status">로그인 상태를 확인하지 못했습니다.</p><button className="btn btn-outline-dark" onClick={() => session.refetch()}>로그인 상태 다시 확인</button></> :
-      !session.data ? <><p>비회원은 전체 상품에서 직접 조건을 선택할 수 있습니다.</p><Link className="btn btn-outline-dark" to="/products" onClick={(event) => { if (inCurrentTab(event)) onApply('/products') }}>전체 상품 보기</Link></> : auth ?
+      !session.data ? <><p>로그인하면 저장한 취향을 검색에 쓸 수 있어요.</p><Link className="text-link" to="/products" onClick={(event) => { if (inCurrentTab(event)) onApply('/products') }}>전체 상품 보기</Link></> : auth ?
         <OwnedSearchPhrases key={`${owners.get(auth)}:${session.data.id}:${location.key}`} user={session.data} auth={auth} onApply={onApply} /> : null}
   </section>
 }

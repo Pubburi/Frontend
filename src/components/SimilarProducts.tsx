@@ -43,7 +43,7 @@ export function SimilarProducts({ productId }: { productId: number }) {
   const result = query.isSuccess && !busy ? query.data : null
 
   return (
-    <section className="section-band similar-products" aria-labelledby={heading}>
+    <section className="section-band similar-products catalog-similar" aria-labelledby={heading}>
       <div>
         <h2 id={heading}>비슷한 상품</h2>
         {result && result.links.length > 0 && <p className="muted">{result.local ? '검수한 로컬 상품의 확인된 특성을 기준으로 보여드려요.' : '검수한 시연 상품의 특성을 기준으로 보여드려요.'}</p>}

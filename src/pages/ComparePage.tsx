@@ -79,25 +79,25 @@ export function ComparePage() {
       return <><span>{f.sourceName ?? '미확인'}</span>{link && <a href={link} target="_blank" rel="noopener noreferrer">출처 보기 (새 창)</a>}{f.sourceNote && <p>{f.sourceNote}</p>}</>
     }) },
   ]
-  return <section className="view comparison-view">
+  return <section className="view comparison-view catalog-compare">
     <div className="shop-intro compact-intro">
-      <div><p className="section-kicker">Compare</p><h1 tabIndex={-1} ref={heading}>상품 비교</h1><p>최대 4개의 현재 상품 정보를 나란히 확인하세요. 확인하지 못한 특성은 추정하지 않습니다.</p></div>
+      <div><h1 tabIndex={-1} ref={heading}>상품 비교</h1><p>선택한 상품의 가격과 확인된 특성을 나란히 살펴보세요.</p></div>
     </div>
     <div className="button-row comparison-actions">
-      <Link className="btn btn-outline-dark" to="/products">상품 더 고르기</Link>
-      {(ids.length > 0 || error) && <button className="btn btn-outline-dark" onClick={(event) => select([], event)}>비교 전체 해제</button>}
+      <Link className="btn btn-dark" to="/products">상품 더 고르기</Link>
+      {(ids.length > 0 || error) && <button className="text-button" onClick={(event) => select([], event)}>비교 전체 해제</button>}
     </div>
     {error ? <div className="state-panel" role="alert"><h2>비교 상품 주소를 확인해 주세요</h2><p>{error} 선택을 해제한 뒤 상품을 다시 골라 주세요.</p></div> : !ids.length ?
       <div className="state-panel" role="status"><h2>비교할 상품을 골라 주세요</h2><p>목록이나 상세에서 비교 선택을 누르면 이 화면에서 함께 볼 수 있습니다. 선택은 이 창에서 유지되며 비교 주소로 다시 열 수 있습니다.</p></div> : <>
-        <p className="muted" id="comparison-scroll-hint">좁은 화면에서는 비교 표를 좌우로 이동해 모든 상품을 확인하세요.</p>
+        <p className="muted catalog-compare-hint" id="comparison-scroll-hint">좌우로 이동해 상품을 비교할 수 있어요.</p>
         <div className="comparison-scroll" role="region" aria-label="상품 비교 표" aria-describedby="comparison-scroll-hint" tabIndex={0}>
-          <table className="comparison-table" style={{ minWidth: 110 + ids.length * 240 }}>
+          <table className="comparison-table" style={{ minWidth: 84 + ids.length * 192 }}>
             <caption>선택한 {ids.length}개 상품의 현재 가격·도수·주종과 확인된 특성 비교</caption>
             <thead><tr><th scope="col">비교 항목</th>{ids.map((id, index) => {
               const query = products[index]
               return <th scope="col" key={id} data-product-id={id}>
-                <button className="btn btn-outline-dark btn-sm" aria-label={`상품 ${id} 비교 해제`} onClick={(event) => select(ids.filter((value) => value !== id), event)}>비교 해제</button>
                 <h2>{productValue(index, (p) => <Link to={`/products/${id}`}>{p.name}</Link>)}</h2>
+                <button className="text-button" aria-label={`상품 ${id} 비교 해제`} onClick={(event) => select(ids.filter((value) => value !== id), event)}>비교 해제</button>
                 {query.isPaused ? <p role="status">연결을 기다리는 중입니다.</p> : (query.isPending || query.isFetching) ? <p role="status">상품 {id} 정보를 불러오는 중입니다.</p> : query.isError ? <div role="status"><p>{query.error instanceof ApiClientError && query.error.status === 404 ? '상품을 찾을 수 없습니다.' : '상품을 불러오지 못했습니다.'}</p><button className="btn btn-outline-dark btn-sm" onClick={() => query.refetch()}>상품 다시 불러오기</button></div> : null}
               </th>
             })}</tr></thead>

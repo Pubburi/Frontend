@@ -153,8 +153,8 @@ for (const departure of ['page', 'route', 'sameURL']) test(`늦은 저장은 ${d
       await page.getByRole('button', { name: '다음', exact: true }).click(); await expect(page).toHaveURL('/admin?tab=users&page=2')
       await expect(row(page, 'member-20')).toBeVisible(); await memberTab(page).focus()
     } else if (departure === 'sameURL') await memberTab(page).click()
-    else { await page.locator('header').getByRole('link', { name: '장바구니', exact: true }).click(); await expect(page).toHaveURL(/\/cart$/) }
-    const current = page.url(), target = departure === 'route' ? page.locator('header').getByRole('link', { name: '장바구니', exact: true }) : memberTab(page)
+    else { await page.getByRole('banner').getByRole('link', { name: '장바구니', exact: true }).click(); await expect(page).toHaveURL(/\/cart$/) }
+    const current = page.url(), target = departure === 'route' ? page.getByRole('banner').getByRole('link', { name: '장바구니', exact: true }) : memberTab(page)
     await expect(target).toBeFocused(); await settle(page, gate)
     await expect(page).toHaveURL(current); await expect(target).toBeFocused()
     if (departure === 'page') await expect(row(page, 'member-20')).toBeVisible()
@@ -172,7 +172,7 @@ for (const account of ['operator', 'other-operator']) test(`${account} 재로그
     await expect(edit(page)).toBeVisible(); await edit(page).focus(); await edit(page).press('Enter')
     const name = form(page).getByLabel('이름', { exact: true }); await name.fill('새 인증 세대의 입력')
     await settle(page, gate); await expect(name).toHaveValue('새 인증 세대의 입력'); await expect(name).toBeFocused()
-    await expect(page.locator('header')).toContainText('운영 관리자님')
+    await expect(page.getByRole('banner')).toContainText('운영 관리자님')
   } finally { gate.release() }
 })
 
@@ -204,7 +204,7 @@ test('관리자 본인 정보 갱신의 새 me도 같은 인증 소유 안에서
   await page.setViewportSize({ width: 390, height: 900 }); await page.goto('/admin?tab=users&page=1')
   await edit(page, admin.id).focus(); await edit(page, admin.id).press('Enter')
   await form(page).getByLabel('이름', { exact: true }).fill('이름을 바꾼 관리자'); await keyboardSave(page)
-  await expect(form(page)).toHaveCount(0); await expect(page.locator('header')).toContainText('이름을 바꾼 관리자님')
+  await expect(form(page)).toHaveCount(0); await expect(page.getByRole('banner')).toContainText('이름을 바꾼 관리자님')
   const observed = { active: await page.evaluate(() => document.activeElement.tagName), currentRowFocused: await edit(page, admin.id).evaluate((el) => el === document.activeElement) }
   await info.attach('self-update-return.json', { body: JSON.stringify(observed), contentType: 'application/json' })
   await expect(edit(page, admin.id)).toBeFocused()

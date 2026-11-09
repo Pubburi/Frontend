@@ -12,6 +12,7 @@ import {
 } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSession, safeRedirect } from './queries'
+import { signupPreferenceReviews } from './preferences'
 import { api } from './services/api'
 import { cartTotals, useCart } from './state/cart'
 import { useAccountCart } from './state/accountCart'
@@ -44,24 +45,29 @@ function Guard({
   const session = useSession()
   const location = useLocation()
   const [search] = useSearchParams()
-  if (session.isPending)
-    return <Loading label="로그인 상태를 확인하는 중입니다." />
-  if (session.isError)
+  if (session.isError || (session.isPending && session.fetchStatus === 'paused'))
     return (
-      <Empty title="로그인 상태를 확인하지 못했습니다">
-        <button onClick={() => session.refetch()}>다시 시도</button>
+      <Empty
+        title="로그인 상태를 확인하지 못했습니다"
+        description="연결을 확인한 뒤 다시 시도해 주세요."
+      >
+        <button className="btn btn-dark" onClick={() => void session.refetch()}>다시 시도</button>
       </Empty>
     )
-  if (mode === 'guest')
-    return session.data ? (
-      <Navigate to={safeRedirect(search.get('redirect'))} replace />
+  if (session.isPending)
+    return <p className="session-status" role="status">로그인 상태를 확인하는 중입니다.</p>
+  if (mode === 'guest') {
+    if (!session.data) return children
+    return signupPreferenceReviews.has(session.data) ? (
+      <Navigate to="/preferences" state={{ signupPreferenceReview: true }} replace />
     ) : (
-      children
+      <Navigate to={safeRedirect(search.get('redirect'))} replace />
     )
+  }
   if (!session.data)
     return (
       <Navigate
-        to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`}
+        to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search + location.hash })}`}
         replace
       />
     )
@@ -85,29 +91,56 @@ export function App() {
   const currentLocation = useRef(location.key)
   currentLocation.current = location.key
   const [menu, setMenu] = useState(false)
+  const header = useRef<HTMLElement>(null)
+  const menuButton = useRef<HTMLButtonElement>(null)
+  const member = session.isSuccess && session.fetchStatus === 'idle' ? session.data : null
+  useEffect(() => {
+    if (!menu) return
+    function dismissOnEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      setMenu(false)
+      menuButton.current?.focus({ preventScroll: true })
+    }
+    function dismissOutside(event: PointerEvent) {
+      if (event.target instanceof Node && !header.current?.contains(event.target)) setMenu(false)
+    }
+    document.addEventListener('keydown', dismissOnEscape)
+    document.addEventListener('pointerdown', dismissOutside)
+    return () => {
+      document.removeEventListener('keydown', dismissOnEscape)
+      document.removeEventListener('pointerdown', dismissOutside)
+    }
+  }, [menu])
   const navigationType = useNavigationType()
   const previousLocation = useRef<{ key: string; destination: string } | null>(null)
   useEffect(() => {
     const previous = previousLocation.current
-    const destination = location.pathname + location.search
+    const destination = location.pathname + location.search + location.hash
     previousLocation.current = { key: location.key, destination }
     setMenu(false)
     // Consume navigation ownership once, including same-URL entries. POP never opts out.
     if (previous?.destination === destination) return
+    if (location.hash) {
+      const target = document.getElementById(location.hash.slice(1))
+      if (target) {
+        target.scrollIntoView({ behavior: 'instant' })
+        target.focus({ preventScroll: true })
+        return
+      }
+    }
     const intent = location.state?.catalogResultsNavigation
     const focusedResults = navigationType === 'PUSH' && previous &&
       intent?.fromLocationKey === previous.key && intent?.destination === destination &&
       document.activeElement instanceof HTMLElement &&
       document.activeElement.dataset.catalogResults === 'true'
     const removal = location.state?.catalogFilterRemoval
-    const focusedFilter = navigationType === 'PUSH' && previous && removal?.fromLocationKey === previous.key &&
-      removal?.destination === destination && document.activeElement instanceof HTMLElement &&
-      document.activeElement.dataset.catalogFilterControl === 'true'
+    const removedFilter = navigationType === 'PUSH' && previous && removal?.fromLocationKey === previous.key &&
+      removal?.destination === destination
     const pageRepair = location.state?.catalogPageRepair
     const repairedPage = navigationType === 'REPLACE' && previous && pageRepair?.fromLocationKey === previous.key &&
       pageRepair.destination === destination
-    if (!focusedResults && !focusedFilter && !repairedPage) window.scrollTo({ top: 0 })
-  }, [location.key, location.pathname, location.search, navigationType])
+    if (!focusedResults && !removedFilter && !repairedPage) window.scrollTo({ top: 0 })
+  }, [location.key, location.pathname, location.search, location.hash, navigationType])
   async function logout() {
     const submittedLocation = location.key
     const result = await ui.run(
@@ -123,66 +156,66 @@ export function App() {
   }
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <Link className="brand" to="/">
-          <Image src="/images/icon/mainIcon.webp" loading="eager" />
-          <span>주점부리</span>
-        </Link>
-        <button
-          className="menu-toggle"
-          aria-expanded={menu}
-          aria-controls="main-navigation"
-          aria-label="메뉴 열기"
-          onClick={() => setMenu(!menu)}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
-        <div
-          id="main-navigation"
-          className={`navigation-panel ${menu ? 'open' : ''}`}
-        >
+      <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
+      <header className="topbar" ref={header}>
+        <div className="topbar-inner">
+          <Link className="brand" to="/" onClick={() => setMenu(false)}>
+            <Image src="/images/icon/mainIcon.webp" loading="eager" />
+            <span>주점부리</span>
+          </Link>
+          <button
+            ref={menuButton}
+            className="menu-toggle"
+            aria-expanded={menu}
+            aria-controls="navigation-more"
+            aria-label="메뉴 열기"
+            onClick={() => setMenu(!menu)}
+          >
+            <span className="menu-glyph" aria-hidden="true"><i /><i /><i /></span>
+            더 보기
+          </button>
           <nav className="nav-actions" aria-label="주요 메뉴">
-            <NavLink to="/">홈</NavLink>
-            <NavLink to="/products">전체 주류</NavLink>
-            <NavLink to="/recent">최근 본 상품</NavLink>
-            <NavLink to={comparisonUrl(comparisonIds)}>상품 비교{comparisonIds.length > 0 ? ` ${comparisonIds.length}` : ''}</NavLink>
-            <NavLink to="/cart">
-              장바구니{' '}
-              {cartCount > 0 && (
-                <span className="cart-count">
-                  {cartCount}
-                </span>
-              )}
-            </NavLink>
-            <NotificationNav />
-            <NavLink to={session.data ? '/profile' : '/account'}>마이</NavLink>
-            {session.data?.role === 'ADMIN' && (
-              <NavLink to="/admin">관리</NavLink>
-            )}
+            <div className="nav-primary">
+              <NavLink to="/products">전체 주류</NavLink>
+              <NavLink to="/cart" aria-label={cartCount > 99 ? `장바구니 ${cartCount}개` : undefined}>
+                장바구니
+                {cartCount > 0 && <span className="cart-count">{cartCount > 99 ? '99+' : cartCount}</span>}
+              </NavLink>
+              <NotificationNav />
+              <NavLink to={member ? '/profile' : '/account'}>마이</NavLink>
+            </div>
+            <div id="navigation-more" className={`nav-more ${menu ? 'open' : ''}`}>
+              <div className="nav-extra">
+                <NavLink to="/" end onClick={() => setMenu(false)}>홈</NavLink>
+                <NavLink to="/recent" onClick={() => setMenu(false)}>최근 본 상품</NavLink>
+                <NavLink to={comparisonUrl(comparisonIds)} onClick={() => setMenu(false)}>
+                  상품 비교{comparisonIds.length > 0 ? ` ${comparisonIds.length}` : ''}
+                </NavLink>
+                {member?.role === 'ADMIN' && <NavLink to="/admin" onClick={() => setMenu(false)}>관리</NavLink>}
+              </div>
+              <div className="user-pill">
+                {member ? (
+                  <>
+                    <span className="user-name" title={member.name}>{member.name}님</span>
+                    <button className="btn btn-sm btn-outline-dark" disabled={ui.pending.logout} onClick={logout}>
+                      {ui.pending.logout ? '로그아웃 중' : '로그아웃'}
+                    </button>
+                  </>
+                ) : session.isError || session.fetchStatus === 'paused' ? (
+                  <button className="btn btn-sm btn-outline-dark" onClick={() => void session.refetch()}>
+                    로그인 다시 확인
+                  </button>
+                ) : session.isPending || session.isFetching ? (
+                  <span className="header-session-status" role="status">로그인 확인 중</span>
+                ) : (
+                  <Link className="btn btn-sm btn-dark" to="/account" onClick={() => setMenu(false)}>로그인</Link>
+                )}
+              </div>
+            </div>
           </nav>
-          <div className="user-pill">
-            {session.data ? (
-              <>
-                <span className="user-name">{session.data.name}님</span>
-                <button
-                  className="btn btn-sm btn-outline-dark"
-                  disabled={ui.pending.logout}
-                  onClick={logout}
-                >
-                  로그아웃
-                </button>
-              </>
-            ) : (
-              <Link className="btn btn-sm btn-dark" to="/account">
-                로그인
-              </Link>
-            )}
-          </div>
         </div>
       </header>
-      <main>
+      <main id="main-content" tabIndex={-1}>
         {(accountCart.pending || accountCart.loading) && location.pathname !== '/cart' && <p className="notice" role="status">계정 장바구니를 확인·처리하는 동안 담기를 잠시 기다려 주세요. 상품 탐색은 계속할 수 있습니다.</p>}
         {cart.storageWarning && (
           <div className="notice" role="status" aria-live="polite">

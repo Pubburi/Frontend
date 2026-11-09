@@ -14,6 +14,7 @@ import { publishAdminDeletion, reconcileDeletedEditor, subscribeAdminDeletion, t
 import { focusAdminEdit, type AdminEditFocusIntent } from '../adminEditFocus'
 import { money, orderType } from '../utils/format'
 import type { Market, Order, Page, Product, Review, User } from '../types'
+import './account-admin.css'
 
 export const adminTabs = [
   'products',
@@ -50,33 +51,35 @@ export default function AdminPage() {
     : 'products'
   const page = Math.max(1, Number.parseInt(search.get('page') || '1', 10) || 1)
   return (
-    <section className="view admin-layout">
-      <div className="shop-intro compact-intro">
-        <div>
-          <p className="section-kicker">Operations</p>
-          <h1>관리자 센터</h1>
-          <p>상품, 매장, 주문과 회원 데이터를 한 곳에서 관리합니다.</p>
-        </div>
+    <section className="view admin-layout admin-redesign">
+      <header className="admin-intro">
+        <p className="section-kicker">주점부리 운영</p>
+        <h1>관리자 센터</h1>
+        <p>상품, 매장, 주문과 회원 데이터를 한 곳에서 관리합니다.</p>
+      </header>
+      <div className="admin-workspace">
+        <nav className="admin-tabs" aria-label="관리 메뉴">
+          {adminTabs.map((key) => (
+            <button
+              key={key}
+              type="button"
+              className={key === tab ? 'active' : ''}
+              aria-current={key === tab ? 'page' : undefined}
+              onClick={() => setSearch({ tab: key, page: '1' })}
+            >
+              {labels[key]}
+            </button>
+          ))}
+        </nav>
+        <AdminPanel
+          key={tab}
+          tab={tab}
+          page={page}
+          onPage={(value, replace = false) =>
+            setSearch({ tab, page: String(value) }, { replace })
+          }
+        />
       </div>
-      <nav className="admin-tabs" aria-label="관리 메뉴">
-        {adminTabs.map((key) => (
-          <button
-            key={key}
-            className={key === tab ? 'active' : ''}
-            onClick={() => setSearch({ tab: key, page: '1' })}
-          >
-            {labels[key]}
-          </button>
-        ))}
-      </nav>
-      <AdminPanel
-        key={tab}
-        tab={tab}
-        page={page}
-        onPage={(value, replace = false) =>
-          setSearch({ tab, page: String(value) }, { replace })
-        }
-      />
     </section>
   )
 }
@@ -401,20 +404,25 @@ function AdminPanel({
         <div className="admin-section-heading">
           <div>
             <h2 ref={memberHeading} tabIndex={tab === 'users' ? -1 : undefined}>{tab === 'comments' ? '후기' : labels[tab]} 관리</h2>
-            <p>{labels[tab]} 정보를 조회하고 관리합니다.</p>
+            <p>현재 목록을 확인하고 필요한 항목을 선택하세요.</p>
           </div>
-          <span className="result-count">총 {query.data?.total || 0}개</span>
-          <button
-            className="btn btn-outline-dark btn-sm"
-            disabled={query.isFetching}
-            onClick={() => query.refetch()}
-          >
-            현재 탭 새로고침
-          </button>
+          <div className="admin-list-tools">
+            {query.data && <span className="result-count">총 {query.data.total}개</span>}
+            <button
+              className="btn btn-outline-dark btn-sm"
+              disabled={query.isFetching}
+              onClick={() => query.refetch()}
+            >
+              현재 탭 새로고침
+            </button>
+          </div>
         </div>
         {formVisible && (
           <form className="admin-form" onSubmit={save} tabIndex={tab === 'users' ? -1 : undefined} aria-label={tab === 'users' ? '회원 편집' : undefined}
             onInvalidCapture={() => { memberSaveFocus.current = null }}>
+            <div className="admin-editor-heading">
+              <h3>{labels[tab]} {editing ? '편집' : '등록'}</h3>
+            </div>
             {draft.deleted && <p className="form-context deleted-editor-notice" role="status">
               이 항목은 삭제되어 저장할 수 없습니다. 현재 입력은 남겨두었습니다.
               필요한 내용을 복사하거나 편집을 취소해 주세요.
@@ -539,7 +547,7 @@ function AdminPanel({
           </Empty>
         ) : query.data.items.length ? (
           <div
-            className={`admin-table ${tab === 'orders' ? 'order-admin-table' : ''}`}
+            className={`admin-table admin-table--${tab} ${tab === 'orders' ? 'order-admin-table' : ''}`}
           >
             <div
               className={`table-row table-head ${tab === 'orders' || tab === 'comments' || tab === 'users' ? 'wide' : ''}`}
@@ -578,6 +586,7 @@ function AdminPanel({
                       </span>
                       <span
                         className={`badge ${order.completed !== 'Y' ? 'muted' : ''}`}
+                        data-label="상태"
                       >
                         {order.completed === 'Y' ? '완료' : '진행 중'}
                       </span>
@@ -620,15 +629,15 @@ function AdminPanel({
                   <span data-label="ID">{id}</span>
                   {tab === 'products' && (
                     <>
-                      <strong>{(item as Product).name}</strong>
-                      <span>{(item as Product).type}</span>
-                      <span>{money((item as Product).price)}원</span>
+                      <strong data-label="상품명">{(item as Product).name}</strong>
+                      <span data-label="주종">{(item as Product).type}</span>
+                      <span data-label="가격">{money((item as Product).price)}원</span>
                     </>
                   )}
                   {tab === 'markets' && (
                     <>
-                      <strong>{(item as Market).name}</strong>
-                      <span>
+                      <strong data-label="매장명">{(item as Market).name}</strong>
+                      <span data-label="위치">
                         {Number((item as Market).latitude).toFixed(5)},{' '}
                         {Number((item as Market).longitude).toFixed(5)}
                       </span>
@@ -636,11 +645,11 @@ function AdminPanel({
                   )}
                   {tab === 'comments' && (
                     <>
-                      <strong>{(item as Review).userId}</strong>
-                      <Link to={`/products/${(item as Review).productId}`}>
+                      <strong data-label="회원">{(item as Review).userId}</strong>
+                      <Link data-label="상품" to={`/products/${(item as Review).productId}`}>
                         상품 #{(item as Review).productId}
                       </Link>
-                      <span className="rating-stars">
+                      <span className="rating-stars" data-label="평점">
                         {'★'.repeat(
                           Math.max(
                             1,
@@ -649,18 +658,18 @@ function AdminPanel({
                         )}{' '}
                         {Number((item as Review).rating).toFixed(1)}
                       </span>
-                      <p>{(item as Review).comment}</p>
+                      <p data-label="내용">{(item as Review).comment}</p>
                     </>
                   )}
                   {tab === 'users' && (
                     <>
-                      <strong>{(item as User).name}</strong>
-                      <span className="badge">
+                      <strong data-label="이름">{(item as User).name}</strong>
+                      <span className="badge" data-label="권한">
                         {(item as User).role === 'ADMIN'
                           ? '관리자'
                           : '일반 회원'}
                       </span>
-                      <span>{(item as User).stamps}개</span>
+                      <span data-label="스탬프">{(item as User).stamps}개</span>
                     </>
                   )}
                   <div className="button-row table-actions">
