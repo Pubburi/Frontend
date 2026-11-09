@@ -5,11 +5,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function mockResponse(body, ok = true, status = 200) {
+function mockResponse(body, ok = true, status = 200, headers) {
   global.fetch = vi.fn().mockResolvedValue({
     ok,
     status,
     statusText: ok ? 'OK' : 'Bad Request',
+    headers: new Headers(headers),
     text: () => Promise.resolve(JSON.stringify(body)),
   })
 }
@@ -85,6 +86,42 @@ describe('api client', () => {
     expect(query.getAll('aromaTag')).toEqual(['floral']); expect(query.get('minPriceKrw')).toBe('0')
     expect(options.credentials).toBe('include')
     expect(new URLSearchParams(pageQuery({ tasteTag: [''], aromaTag: [] })).getAll('tasteTag')).toEqual([''])
+  })
+
+  const emptyProducts = { items: [], page: 2, size: 12, total: 0, totalPages: 0, hasNext: false }
+  const searchHint = (value) => ({ 'X-Pubburi-Search-Hint': value })
+  it('reads the optional search hint only for the public catalog consumer of the unchanged page response', async () => {
+    const params = { q: '약주', page: 2, minPriceKrw: '0', tasteTag: ['dry,sweet', 'line\nbreak'] }
+    mockResponse({ data: emptyProducts }, true, 200, searchHint(`ALIAS:${encodeURIComponent('약 · 청주')}`))
+    await expect(api.catalogProducts(params)).resolves.toEqual({ page: emptyProducts, hint: { kind: 'ALIAS', q: '약 · 청주' } })
+    await expect(api.products(params)).resolves.toEqual(emptyProducts)
+    const [[catalogUrl, catalogOptions], [otherUrl, otherOptions]] = fetch.mock.calls
+    expect(catalogUrl).toBe(otherUrl)
+    expect(catalogOptions).toEqual(otherOptions)
+    expect(catalogOptions).toMatchObject({ credentials: 'include' })
+    expect(catalogOptions.method).toBeUndefined()
+  })
+
+  it.each([
+    'UNKNOWN:term', 'ALIAS:', 'TYPO:%EC%95', 'TYPO:%ED%A0%80', 'ALIAS:%EC%95%BD+%EC%A3%BC',
+    'ALIAS:one, TYPO:two', 'ALIAS:%20term', 'ALIAS:term%0Aother', 'ALIAS:term%E2%80%AE',
+    'ALIAS:%25term', 'ALIAS:term%5F', 'ALIAS:term%5C', 'ALIAS:e%CC%81', 'ALIAS:term',
+    `ALIAS:${'a'.repeat(101)}`,
+  ])('ignores malformed or unsafe search hint %s without rejecting the original page', async (header) => {
+    mockResponse({ data: emptyProducts }, true, 200, searchHint(header))
+    await expect(api.catalogProducts({ q: 'term' })).resolves.toEqual({ page: emptyProducts, hint: null })
+  })
+
+  it.each([
+    [{}, emptyProducts, 200],
+    [{ q: '과실쥬' }, { ...emptyProducts, total: 1 }, 200],
+    [{ q: '과실쥬' }, { ...emptyProducts, items: [{ id: 1 }] }, 200],
+    [{ q: '과실쥬' }, emptyProducts, 503],
+  ])('does not expose hints for missing applied q, nonempty, or rejected responses %#', async (params, page, status) => {
+    mockResponse({ data: page }, status === 200, status, searchHint(`TYPO:${encodeURIComponent('과실주')}`))
+    const request = api.catalogProducts(params)
+    if (status === 503) await expect(request).rejects.toMatchObject({ status })
+    else await expect(request).resolves.toEqual({ page, hint: null })
   })
 
   it('uses only the session-bound preferences path with cookies and a full body', async () => {

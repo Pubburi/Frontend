@@ -94,7 +94,7 @@ export function App() {
     setMenu(false)
     // Consume navigation ownership once, including same-URL entries. POP never opts out.
     if (previous?.destination === destination) return
-    const intent = location.state?.catalogPagination
+    const intent = location.state?.catalogResultsNavigation
     const focusedResults = navigationType === 'PUSH' && previous &&
       intent?.fromLocationKey === previous.key && intent?.destination === destination &&
       document.activeElement instanceof HTMLElement &&

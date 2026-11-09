@@ -29,7 +29,7 @@ npm run test:browser -- tests/browser/admin-edit-focus.spec.js
 
 | 영역 | 핵심 계약 | 브라우저 소스 |
 |---|---|---|
-| 탐색·검색 | 적용 조건 표시/개별 해제·수정 초안 보존·키보드 연결, URL·페이지·Back·동일 URL 재적용·현재 요청, 범위0·리터럴 태그·Java 권위/400·무제약 fallback 금지 | [적용 조건](../tests/browser/applied-product-filters.spec.js), [검색 문구](../tests/browser/search-phrases.spec.js), [범위](../tests/browser/product-ranges.spec.js), [태그](../tests/browser/product-tags.spec.js), [페이지 포커스](../tests/browser/catalog-pagination-focus.spec.js) |
+| 탐색·검색 | 적용 조건 표시/개별 해제·수정 초안 보존·키보드 연결, 빈 결과의 현재 검색어 제안·명시 적용, URL·페이지·Back·동일 URL 재적용·현재 요청, 범위0·리터럴 태그·Java 권위/400·무제약 fallback 금지 | [적용 조건](../tests/browser/applied-product-filters.spec.js), [검색 문구](../tests/browser/search-phrases.spec.js), [범위](../tests/browser/product-ranges.spec.js), [태그](../tests/browser/product-tags.spec.js), [페이지 포커스](../tests/browser/catalog-pagination-focus.spec.js) |
 | 상세·찜·장바구니 | 현재 Product7/특성·null/[]/0, 별도 오류·출처, 수량/보관 거부·제출 이후 새 입력·찜 계정/페이지·키보드 | [기본 흐름](../tests/browser/smoke.spec.js) |
 | 계정 카트 | 기기 원본·명시 병합·99/100 상한·CAS 충돌·현재 가격/삭제 상품, 미저장 수량 주문 차단·다음 요청 보존, UUID 재생·재로그인 receipt 읽기·계정/HTTP 수명, 명시 DEMO 유사 추천의 현재 version·실제 기준/근거·부족/실패·늦은 응답 차폐 | [계정 카트](../tests/browser/account-cart.spec.js) |
 | 내부 알림 | 헤더 최초 수량·본인 페이지, 자동 읽음 없음·개별/현재페이지 읽음·부분 실패와 멱등 복구, 삭제 대상·계정/HTTP 세대·읽기/쓰기401의 전체 차폐 | [알림](../tests/browser/notifications.spec.js) |
