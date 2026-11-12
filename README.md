@@ -97,8 +97,8 @@ flowchart LR
 ```ts
 if (!owns(scope) || recoveries.get(scope.id) !== op) return null
 publish(scope, cart)
-if (result.status === 'APPLIED' && op.guest)
-  cartStore.getState().consume(op.guest)
+if (result.status === 'APPLIED' && op.guest) cartStore.getState().consume(op.guest)
+// A new login does not restore the old form's ownership or redirect intent.
 recoveries.delete(scope.id)
 ```
 
@@ -127,9 +127,9 @@ recoveries.delete(scope.id)
 #### 코드
 
 ```tsx
-const products = useQuery<Page<Product>>({
+const products = useQuery({
   queryKey: ['catalog', 'products', filters],
-  queryFn: () => api.products(filters),
+  queryFn: () => api.catalogProducts(filters),
   enabled: !invalidUrlFilters,
   refetchOnReconnect: (query) => !(query.state.error instanceof ApiClientError && query.state.error.status === 400),
 })
@@ -222,8 +222,7 @@ if (error instanceof ApiClientError && error.status === 401 && sameActor()) {
 ```
 
 ```tsx
-if (account.auth !== auth || account.id !== session.data?.id ||
-    account.role !== session.data?.role || account.transitioning !== transitioning) {
+if (account.auth !== auth || account.id !== session.data?.id || account.role !== session.data?.role || account.transitioning !== transitioning) {
   const next = { auth, id: session.data?.id, role: session.data?.role, transitioning }
   currentAccount.current = next
   focusIntent.current = null
