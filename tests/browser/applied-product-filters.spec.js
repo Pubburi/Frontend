@@ -359,7 +359,10 @@ for (const width of [1280, 390]) for (const restoration of ['auto', 'manual']) t
   const backUrl = page.url()
   await page.getByLabel('상품 검색', { exact: true }).fill('이탈 전 미제출 초안')
   await page.locator('header').getByRole('link', { name: '장바구니', exact: true }).click()
-  await expect(page).toHaveURL(/\/cart$/); await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await expect(page).toHaveURL(/\/cart$/)
+  // The address can change before React commits the cart route.
+  await expect(page.getByRole('main').getByRole('heading', { name: '장바구니', exact: true })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   await page.evaluate(() => { window.__appliedScrollRequests = [] })
   await page.goBack(); await expect(page).toHaveURL(backUrl)
   await expect(page.locator('.product-card')).toHaveCount(12)
