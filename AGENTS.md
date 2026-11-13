@@ -6,23 +6,24 @@
 - Keep API calls in `src/services/api.js`, `/api`/ApiResponse contracts and `credentials: include`. Backend owns business/API/DB rules; Recommendation owns models/data. Do not duplicate their implementation docs.
 - Keep session/server data in Query with current account/route ownership. Preserve auth/HTTP lifetimes, latest requests, draft/quantity ownership, lazy admin loading, raw `pubburi-cart` storage, keyboard access and the existing CSS/WebP assets.
 - Preserve the current palette and clear primary actions. Reduce unnecessary navigation/repeated input and retain input through recoverable errors. Use generative images for needed theme-matched decorative assets/icons, while keeping interactive controls accessible. Follow the concise UX references in [ROADMAP](docs/ROADMAP.md).
-- Current scope/status and deadlines live in [ROADMAP](docs/ROADMAP.md): all 20 MVP features by 2026-12-31 KST; extra improvements from 2027-01-01 after MVP; final 2027-02-05; no implementation/commits/merges from 2027-02-06. Mandatory permission/error/data/keyboard acceptance is part of each MVP feature.
+- [ROADMAP](docs/ROADMAP.md) tracks scope, progress and deadlines. Verify all 20 MVP features by 2026-12-31 KST, including permissions, error handling, data and keyboard access. Finish handoff by 2027-01-15 KST. Stop implementation, commits and merges at 00:00 KST on 2027-01-16.
 - Prioritize remaining mandatory work and acceptance defects. AWS·mobile implementation·real payment/shipping·chatbots require separate scope/authorization. Do not invent product results, contribution or performance.
+- Start the additional optimization as soon as the current Notion to-do list is complete. Pick one Frontend UX issue, measure the same mobile and desktop flows before and after, and change the design if needed. Verify the improvement and merge its PR before the final deadline.
 
 ## Work and review
 
 - Follow [CONTRIBUTING](CONTRIBUTING.md), [TESTING](docs/TESTING.md) and the coordinator's file/Git ownership. Use one writer per repo; never overwrite user work or take an active lease. Shared runtime and Notion belong to the coordinator. Common ownership rules are in [Backend AGENTS](https://github.com/Pubburi/Backend/blob/main/AGENTS.md).
 - Keep `node_modules`/`dist`/credentials/`.env` and `.pubburi` out of Git. Preserve private context; never print secrets or private planning URLs.
 - `npm run check` is required. Keep required `frontend-ci`, completed latest-head Codex review, no unresolved findings, Korean Conventional squash, main CI and only fully merged branch cleanup. Pending/failed/quota-limited review is not approval. Review correctness/ownership/API issues in Korean; do not weaken protection.
-- Work in this same scheduled chat (four hours, gpt-6.1-sol/ultra); do not create duplicate chats/schedules. Coordinator manages shared integration and merge gates.
+- Work in this same scheduled chat every six hours (gpt-6.1-sol/ultra). Use the existing checkout and a short branch name for the task. New worktrees and the `codex/` prefix for new branches are prohibited. Coordinator manages shared integration and merge gates.
 
 ## Documentation
 
 - Maintain existing current docs only when behavior, contracts, commands or status change. Do not create dated run logs, repeated plans/measurements/audit docs or append a new Notion entry for routine execution. Put change-specific rationale/results in the PR; Git preserves removed history. One ignored handoff is enough when needed.
 - Do not add/edit comments, body, assignees or labels on closed/merged PRs. Keep necessary follow-up work in GitHub Projects/Discussions and Notion to-do/done items; do not create unused records.
-- Review current README cases and new evidence each run; update only for stronger independent evidence and do not write unchanged per-run reports. Keep four real cases/source evidence and exclude tests/CI totals. Historical proof may link to its PR or immutable Git commit.
+- Keep one representative README case with verifiable evidence. Replace it when a better example is supported by a concrete reproduction, implementation and result. Keep evidence in its PR or an immutable Git commit.
 - Keep source provenance. Do not restore unrelated-project/developer sections, responsibility tables, planning-link collections or mobile narration in README. Use verified real screens only.
 
 ## README 대표 사례 검토
 
-대표 사례는 주기적으로 검토하며 **문제 → 원인 → 해결 → 결과 → 대체안/회고 → 코드** 순서를 유지한다. 실제 오류 개선·최적화의 원인/대안·전후 실측과 한계, 현재 핵심 코드로 설명할 수 있는 소재를 우선한다. 기존 사례보다 채용 관점에서 더 설득력 있는 근거를 확보했을 때만 해당 사례를 교체하고 나머지 내용/순서는 보존한다. 최신 작업·코드량·테스트/CI 수만으로 교체하거나 없는 성능/기여를 만들지 않는다. 코드는 문제 해결을 결정한 실제 분기·데이터 경계만 짧게 기본으로 펼치며, README 여섯 단계의 사례에는 하이퍼링크를 넣지 않고 근거 링크는 기존 `docs/case-study-register.md`와 정본 문서에서 관리한다. 비교는 계속하되 변경 없는 매회 유지 보고서는 만들지 않는다.
+**문제 → 원인 → 해결 → 결과 → 대체안/회고 → 코드** 순서를 지킨다. 사용자에게 발생한 문제, 재현 조건, 선택한 해결책, 확인한 결과와 한계를 설명한다. 성능은 동일 조건에서 전후를 측정한 경우에만 수치로 쓴다. 사례에는 하이퍼링크를 넣지 않고, 현재 소스에서 해결의 핵심이 드러나는 짧은 코드를 펼쳐 보여 준다. 근거 링크는 [사례 근거](docs/case-study-register.md)에 둔다.
