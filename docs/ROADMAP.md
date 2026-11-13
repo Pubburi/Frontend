@@ -10,6 +10,8 @@
 
 [NN/g](https://www.nngroup.com/articles/3-click-rule/)의 경로/상호작용 부담, [Baymard](https://baymard.com/research-articles/checkout-flow-average-form-fields)의 checkout 필드 부담, [토스](https://toss.tech/article/21023)의 가치가 명확한 행동, [스타벅스 공식 메뉴](https://www.starbucks.co.kr/menu/drink_list.do)의 분류 탐색을 참고한다. 임의 클릭 수 제한이나 다른 서비스의 성과 수치를 우리 성과로 사용하지 않는다.
 
+[NOL](https://nol.yanolja.com/)의 자주 쓰는 탐색·계정 진입, [Baymard 적용 조건 연구](https://baymard.com/research-articles/how-to-design-applied-filters), [Tuch 외의 첫인상 실험](https://doi.org/10.1016/j.ijhcs.2012.06.003)을 참고해 홈의 검색·주종, 결과 가까이의 조건과 정렬, 주문 직전 금액·복구 행동을 우선한다. 선택은 기본 select를 사용하고 상품 자동완성은 [WAI-ARIA combobox](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/)의 방향키·Enter·Escape·포커스 규칙을 검증한다.
+
 ## 일정
 
 | 기한·기간 (Asia/Seoul) | 완료 목표 |

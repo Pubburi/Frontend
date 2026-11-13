@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Mous
 import {
   Link,
   useLocation,
-  useNavigate,
   useParams,
   useSearchParams,
 } from 'react-router-dom'
@@ -41,10 +40,10 @@ import { ProductNotebook } from '../components/Notebook'
 import { HomeProductSearch } from '../components/HomeProductSearch'
 import { HomeProductThemes } from '../components/HomeProductThemes'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
+import './catalog-ux.css'
 
 export function HomePage() {
   const [active, setActive] = useState(0)
-  const navigate = useNavigate()
   const products = useQuery<Product[]>({
     queryKey: ['catalog', 'popular'],
     queryFn: api.popularProducts,
@@ -54,90 +53,55 @@ export function HomePage() {
     queryFn: () => api.markets(),
   })
   return (
-    <section className="view home-view">
-      <HomeProductSearch />
-      <section
-        className="hero-carousel"
-        aria-roledescription="carousel"
-        aria-label="추천 주류"
-      >
-        {carouselImages.map((src, i) => (
-          <div
-            key={src}
-            className={`hero-slide ${i === active ? 'active' : ''}`}
-            aria-hidden={i !== active}
-          >
-            <Image src={src} loading={i === 0 ? 'eager' : 'lazy'} />
-          </div>
-        ))}
-        <div className="hero-copy">
-          <p>오늘의 주류 셀렉션</p>
-          <h1>취향과 순간에 어울리는 한 잔</h1>
-          <span>
-            가볍게 즐기는 맥주부터 천천히 음미하는 위스키까지 만나보세요.
-          </span>
-          <Link className="btn btn-light hero-cta" to="/products">
+    <section className="view home-view catalog-home">
+      <section className="catalog-home-lead" aria-labelledby="catalog-home-title">
+        <div className="catalog-home-copy">
+          <p className="section-kicker">주점부리 셀렉션</p>
+          <h1 id="catalog-home-title">취향과 순간에 어울리는 한 잔</h1>
+          <p>상품명으로 찾거나 주종과 도수, 가격을 비교해 보세요.</p>
+          <HomeProductSearch />
+          <Link className="text-link catalog-home-all" to="/products">
             전체 주류 둘러보기
           </Link>
         </div>
-        <button
-          className="carousel-control prev"
-          aria-label="이전 배너"
-          onClick={() => setActive((active + 5) % 6)}
-        >
-          ‹
-        </button>
-        <button
-          className="carousel-control next"
-          aria-label="다음 배너"
-          onClick={() => setActive((active + 1) % 6)}
-        >
-          ›
-        </button>
-        <div className="carousel-dots" aria-label="배너 선택">
-          {carouselImages.map((_, i) => (
-            <button
-              key={i}
-              className={i === active ? 'active' : ''}
-              aria-label={`${i + 1}번 배너 보기`}
-              aria-current={i === active ? 'true' : undefined}
-              onClick={() => setActive(i)}
-            />
+        <div className="hero-carousel" role="group" aria-roledescription="carousel" aria-label="추천 주류">
+          {carouselImages.map((src, i) => (
+            <div key={src} className={`hero-slide ${i === active ? 'active' : ''}`} aria-hidden={i !== active}>
+              <Image src={src} loading={i === 0 ? 'eager' : 'lazy'} />
+            </div>
+          ))}
+          <button type="button" className="carousel-control prev" aria-label="이전 배너"
+            onClick={() => setActive((i) => (i + carouselImages.length - 1) % carouselImages.length)}>‹</button>
+          <button type="button" className="carousel-control next" aria-label="다음 배너"
+            onClick={() => setActive((i) => (i + 1) % carouselImages.length)}>›</button>
+          <div className="carousel-dots" aria-label="배너 선택">
+            {carouselImages.map((src, i) => <button key={src} type="button"
+              className={i === active ? 'active' : ''} aria-label={`${i + 1}번 배너 보기`}
+              aria-current={i === active ? 'true' : undefined} onClick={() => setActive(i)} />)}
+          </div>
+        </div>
+      </section>
+      <section className="section-band catalog-home-categories">
+        <div className="section-heading">
+          <div>
+            <h2>주종으로 빠르게 찾기</h2>
+          </div>
+        </div>
+        <div className="category-strip">
+          {categories.map((category) => (
+            <Link
+              key={category.label}
+              to={`/products?${new URLSearchParams({ type: category.label, sort: 'popular', page: '1' })}`}
+            >
+              <Image src={category.image} />
+              <span>{category.label}</span>
+            </Link>
           ))}
         </div>
       </section>
       <HomeProductThemes />
       <ContentRecommendations />
       <ContentRecommendations exploration />
-      <section className="section-band">
-        <div className="section-heading">
-          <div>
-            <p className="section-kicker">Category</p>
-            <h2>주종으로 빠르게 찾기</h2>
-            <p className="muted heading-description">
-              모든 주종을 같은 자리에서 비교해 보세요.
-            </p>
-          </div>
-          <Link className="btn btn-outline-dark btn-sm" to="/products">
-            전체 보기
-          </Link>
-        </div>
-        <div className="category-strip">
-          {categories.map((category) => (
-            <button
-              key={category.label}
-              onClick={() =>
-                navigate(
-                  `/products?${new URLSearchParams({ type: category.label, sort: 'popular', page: '1' })}`,
-                )
-              }
-            >
-              <Image src={category.image} alt={category.label} />
-              <span>{category.label}</span>
-            </button>
-          ))}
-        </div>
-      </section>
       <section className="section-band">
         <div className="section-heading">
           <div>
@@ -174,7 +138,7 @@ export function HomePage() {
         <div className="section-heading">
           <div>
             <p className="section-kicker">Stores</p>
-            <h2>주점부리 매장</h2>
+            <h2 id="stores" tabIndex={-1}>주점부리 매장</h2>
             <p className="muted heading-description">
               가까운 매장의 위치 정보를 확인하세요.
             </p>
@@ -232,6 +196,8 @@ export function ProductsPage() {
   const tagInputs = useRef<Partial<Record<ProductTagKey, (HTMLTextAreaElement | null)[]>>>({})
   const rangeInputs = useRef<Partial<Record<ProductRangeKey, HTMLInputElement | null>>>({})
   const filterRoot = useRef<HTMLElement>(null)
+  const advancedFilters = useRef<HTMLDetailsElement>(null)
+  const initiallyInvalid = useRef(invalidUrlFilters)
   const clearFilters = useRef<HTMLButtonElement>(null)
   const removalNumber = useRef(0)
   type Removal = { token: number; fromLocationKey: string; destination: string }
@@ -254,6 +220,7 @@ export function ProductsPage() {
     setForm(filters)
     setRangeErrors(urlRangeErrors)
     setTagIssues(urlTagIssues)
+    if (invalidUrlFilters && advancedFilters.current) advancedFilters.current.open = true
   }, [search.toString()])
   const products = useQuery({
     queryKey: ['catalog', 'products', filters],
@@ -267,6 +234,8 @@ export function ProductsPage() {
   const repairPage = !invalidUrlFilters && products.isSuccess && resultPage && resultPage.page === filters.page &&
     resultPage.items.length === 0 && resultPage.total > 0 && Number.isSafeInteger(resultPage.totalPages) &&
     resultPage.totalPages > 0 && filters.page > resultPage.totalPages ? resultPage.totalPages : null
+  const confirmedTotal = !invalidUrlFilters && products.isSuccess && products.fetchStatus === 'idle' &&
+    resultPage?.page === filters.page && repairPage === null ? resultPage.total : null
   useEffect(() => {
     if (repairPage === null || products.fetchStatus !== 'idle' || retainedDraft.current?.fromLocationKey === location.key) return
     const destination = new URLSearchParams(search)
@@ -277,8 +246,10 @@ export function ProductsPage() {
   }, [repairPage, products.fetchStatus, search, location.key, location.pathname, setSearch])
   const rejectedTags = products.isError && products.error instanceof ApiClientError && products.error.status === 400 &&
     productTagFields.some(({ key }) => filters[key].length > 0)
+  const hasAdvancedError = Boolean(Object.keys(rangeErrors).length || Object.keys(tagIssues).length || rejectedTags)
   const searchButton = useRef<HTMLButtonElement>(null)
   const results = useRef<HTMLElement>(null)
+  const phraseHeading = useRef<HTMLHeadingElement>(null)
   useLayoutEffect(() => {
     const intent = removalFocus.current
     removalFocus.current = null
@@ -327,11 +298,13 @@ export function ProductsPage() {
     setTagIssues(tags)
     const first = productRangeFields.find(({ key }) => errors[key])
     if (first) {
+      if (advancedFilters.current) advancedFilters.current.open = true
       rangeInputs.current[first.key]?.focus()
       return
     }
     const firstTag = productTagFields.find(({ key }) => tags[key])
     if (firstTag) {
+      if (advancedFilters.current) advancedFilters.current.open = true
       tagInputs.current[firstTag.key]?.[tags[firstTag.key]!.index]?.focus()
       return
     }
@@ -386,16 +359,12 @@ export function ProductsPage() {
     setRangeErrors({}); setTagIssues({})
   }
   return (
-    <section ref={filterRoot} className="view products-view">
+    <section ref={filterRoot} className="view products-view catalog-products">
       <div className="shop-intro">
         <div>
-          <p className="section-kicker">Bottle Shop</p>
           <h1>전체 주류 둘러보기</h1>
-          <p>탁주·청주부터 맥주, 위스키와 사케까지 한 곳에서 비교해 보세요.</p>
+          <p>상품을 검색하거나 원하는 주종과 범위로 좁혀 보세요.</p>
         </div>
-        <span className="result-count">
-          {invalidUrlFilters || rejectedTags ? '조건 확인 필요' : <>총 <strong>{resultPage?.total || 0}</strong>개</>}
-        </span>
       </div>
       <form
         className="filter-panel"
@@ -403,120 +372,133 @@ export function ProductsPage() {
         noValidate
         onSubmit={submitSearch}
       >
-        <label className="field-group">
-          <span>주종</span>
-          <select
-            className="form-select"
-            value={form.type}
-            onChange={(e) => setForm({ ...form, type: e.target.value })}
+        <div className="catalog-search-bar">
+          <label className="field-group field-search">
+            <span>상품 검색</span>
+            <input
+              className="form-control"
+              placeholder="상품명 또는 주종을 입력하세요"
+              maxLength={100}
+              value={form.q}
+              onChange={(e) => setForm({ ...form, q: e.target.value })}
+            />
+          </label>
+          <label className="field-group">
+            <span>주종</span>
+            <select
+              className="form-select"
+              value={form.type}
+              onChange={(e) => setForm({ ...form, type: e.target.value })}
+            >
+              <option value="">전체 주종</option>
+              {categories.map((item) => (
+                <option key={item.label}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field-group">
+            <span>정렬</span>
+            <select
+              className="form-select"
+              value={form.sort}
+              onChange={(e) => setForm({ ...form, sort: e.target.value })}
+            >
+              {[
+                ['popular', '인기순'],
+                ['priceAsc', '낮은 가격순'],
+                ['priceDesc', '높은 가격순'],
+                ['name', '이름순'],
+              ].map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            ref={searchButton}
+            className="btn btn-dark filter-submit"
+            aria-busy={products.isFetching}
           >
-            <option value="">전체 주종</option>
-            {categories.map((item) => (
-              <option key={item.label}>{item.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field-group field-search">
-          <span>상품 검색</span>
-          <input
-            className="form-control"
-            placeholder="상품명 또는 주종을 입력하세요"
-            maxLength={100}
-            value={form.q}
-            onChange={(e) => setForm({ ...form, q: e.target.value })}
-          />
-        </label>
-        <label className="field-group">
-          <span>정렬</span>
-          <select
-            className="form-select"
-            value={form.sort}
-            onChange={(e) => setForm({ ...form, sort: e.target.value })}
-          >
-            {[
-              ['popular', '인기순'],
-              ['priceAsc', '낮은 가격순'],
-              ['priceDesc', '높은 가격순'],
-              ['name', '이름순'],
-            ].map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <fieldset className="range-filter-group">
-          <legend>가격·도수 범위</legend>
-          <p className="muted" id="range-filter-help">빈 값은 제한하지 않으며, 입력한 모든 범위를 함께 적용합니다.</p>
-          <div className="range-filter-fields">
-            {productRangeFields.map(({ key, label, kind }) => (
-              <label className="field-group" key={key}>
-                <span>{label}</span>
-                <input
-                  ref={(element) => { rangeInputs.current[key] = element }}
-                  className="form-control"
-                  type="text"
-                  inputMode={kind === 'price' ? 'numeric' : 'decimal'}
-                  aria-label={label}
-                  aria-invalid={rangeErrors[key] ? true : undefined}
-                  aria-describedby={rangeErrors[key] ? `range-error-${key}` : 'range-filter-help'}
-                  value={form[key]}
-                  onChange={(event) => editRange(key, event.target.value)}
-                />
-                {rangeErrors[key] && <small id={`range-error-${key}`} className="range-field-error">{rangeErrors[key]}</small>}
-              </label>
-            ))}
+            검색하기
+          </button>
+        </div>
+        <details ref={advancedFilters} className="catalog-search-advanced" open={initiallyInvalid.current}>
+          <summary>세부 검색 조건 <span className={hasAdvancedError ? 'range-field-error' : undefined}>{hasAdvancedError ? '조건 확인 필요' : '가격·도수·맛·향'}</span></summary>
+          <div className="catalog-search-advanced-fields">
+            <fieldset className="range-filter-group">
+              <legend>가격·도수 범위</legend>
+              <p className="muted" id="range-filter-help">빈 값은 제한하지 않으며, 입력한 모든 범위를 함께 적용합니다.</p>
+              <div className="range-filter-fields">
+                {productRangeFields.map(({ key, label, kind }) => (
+                  <label className="field-group" key={key}>
+                    <span>{label}</span>
+                    <input
+                      ref={(element) => { rangeInputs.current[key] = element }}
+                      className="form-control"
+                      type="text"
+                      inputMode={kind === 'price' ? 'numeric' : 'decimal'}
+                      aria-label={label}
+                      aria-invalid={rangeErrors[key] ? true : undefined}
+                      aria-describedby={rangeErrors[key] ? `range-error-${key}` : 'range-filter-help'}
+                      value={form[key]}
+                      onChange={(event) => editRange(key, event.target.value)}
+                    />
+                    {rangeErrors[key] && <small id={`range-error-${key}`} className="range-field-error">{rangeErrors[key]}</small>}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <SearchTagFields values={form} issues={tagIssues} onChange={editTags} registerInput={(key, index, element) => {
+              tagInputs.current[key] ??= []
+              tagInputs.current[key]![index] = element
+            }} />
+            <button type="submit" className="btn btn-outline-dark catalog-search-apply" aria-busy={products.isFetching}>세부 조건 적용</button>
           </div>
-        </fieldset>
-        <SearchTagFields values={form} issues={tagIssues} onChange={editTags} registerInput={(key, index, element) => {
-          tagInputs.current[key] ??= []
-          tagInputs.current[key]![index] = element
-        }} />
-        <button
-          ref={searchButton}
-          data-catalog-filter-control="true"
-          className="btn btn-dark filter-submit"
-          aria-busy={products.isFetching}
-        >
-          검색하기
-        </button>
+        </details>
         {!hasAppliedFilters && hasDraftFilters && <button type="button" className="text-link" onClick={reset}>입력 초기화</button>}
       </form>
-      <p className="applied-range-summary" aria-label="현재 적용된 가격·도수 범위">
-        <strong>현재 적용 범위</strong>{' '}
-        {invalidUrlFilters || rejectedTags ? '검색 조건을 확인해 주세요.' :
-          productRangeFields.filter(({ key }) => filters[key] !== '').map(({ key, kind, bound }) =>
-            `${kind === 'price' ? `${money(filters[key])}원` : `${filters[key]}%`} ${bound}`,
-          ).join(' · ') || '가격·도수 제한 없음'}
-      </p>
-      <div className="applied-tag-summary" aria-label="현재 적용된 태그 조건">
-        <strong>현재 적용 태그</strong>
-        {invalidUrlFilters || rejectedTags ? <span>검색 조건을 확인해 주세요.</span> :
-          productTagFields.some(({ key }) => filters[key].length) ? productTagFields.map(({ key, label }) => filters[key].length > 0 &&
-            <span key={key}>{label}: {filters[key].map((tag, index) => <button type="button" className="search-tag-value applied-tag-remove" key={index}
-              data-applied-remove data-catalog-filter-control="true" aria-label={`${label} 태그 ${normalizeProductTag(tag)} 해제`}
-              onClick={(event) => removeCondition(event, key, index)}>{normalizeProductTag(tag)} ×</button>)}</span>
-          ) : <span>태그 제한 없음</span>}
-      </div>
-      {hasAppliedFilters && (
-        <div className="active-filters" aria-label="적용된 필터">
-          {filters.type && <button type="button" className="active-filter-chip" data-applied-remove data-catalog-filter-control="true"
-            aria-label={`주종 ${filters.type} 해제`} onClick={(event) => removeCondition(event, 'type')}>{filters.type} ×</button>}
-          {filters.q && <button type="button" className="active-filter-chip" data-applied-remove data-catalog-filter-control="true"
-            aria-label={`검색 ${filters.q} 해제`} onClick={(event) => removeCondition(event, 'q')}>검색: {filters.q} ×</button>}
-          {productRangeFields.filter(({ key }) => filters[key] !== '').map(({ key, label }) => urlRangeErrors[key] ?
-            <span key={key}>{label}: {filters[key]}</span> : <button type="button" className="active-filter-chip" key={key}
-              data-applied-remove data-catalog-filter-control="true" aria-label={`${label} ${filters[key]} 해제`}
-              onClick={(event) => removeCondition(event, key)}>{label}: {filters[key]} ×</button>)}
-          <button ref={clearFilters} data-catalog-filter-control="true" className="text-link" onClick={reset}>
-            전체 해제
-          </button>
-          <small className="applied-filter-help">개별 해제는 현재 결과에 반영하며, 수정 중인 입력은 유지합니다.</small>
+      {hasAppliedFilters && <div className="catalog-applied">
+        <p className="applied-range-summary" aria-label="현재 적용된 가격·도수 범위">
+          <strong>현재 적용 범위</strong>{' '}
+          {invalidUrlFilters || rejectedTags ? '검색 조건을 확인해 주세요.' :
+            productRangeFields.filter(({ key }) => filters[key] !== '').map(({ key, kind, bound }) =>
+              `${kind === 'price' ? `${money(filters[key])}원` : `${filters[key]}%`} ${bound}`,
+            ).join(' · ') || '가격·도수 제한 없음'}
+        </p>
+        <div className="applied-tag-summary" aria-label="현재 적용된 태그 조건">
+          <strong>현재 적용 태그</strong>
+          {invalidUrlFilters || rejectedTags ? <span>검색 조건을 확인해 주세요.</span> :
+            productTagFields.some(({ key }) => filters[key].length) ? productTagFields.map(({ key, label }) => filters[key].length > 0 &&
+              <span key={key}>{label}: {filters[key].map((tag, index) => <button type="button" className="search-tag-value applied-tag-remove" key={index}
+                data-applied-remove aria-label={`${label} 태그 ${normalizeProductTag(tag)} 해제`}
+                onClick={(event) => removeCondition(event, key, index)}>{normalizeProductTag(tag)} ×</button>)}</span>
+            ) : <span>태그 제한 없음</span>}
         </div>
-      )}
-      <SearchPhrases onApply={applySearchPhrase} />
+        <div className="active-filters" aria-label="적용된 필터">
+            {filters.type && <button type="button" className="active-filter-chip" data-applied-remove
+              aria-label={`주종 ${filters.type} 해제`} onClick={(event) => removeCondition(event, 'type')}>{filters.type} ×</button>}
+            {filters.q && <button type="button" className="active-filter-chip" data-applied-remove
+              aria-label={`검색 ${filters.q} 해제`} onClick={(event) => removeCondition(event, 'q')}>검색: {filters.q} ×</button>}
+            {productRangeFields.filter(({ key }) => filters[key] !== '').map(({ key, label }) => urlRangeErrors[key] ?
+              <span key={key}>{label}: {filters[key]}</span> : <button type="button" className="active-filter-chip" key={key}
+                data-applied-remove aria-label={`${label} ${filters[key]} 해제`}
+                onClick={(event) => removeCondition(event, key)}>{label}: {filters[key]} ×</button>)}
+            <button ref={clearFilters} className="text-link" onClick={reset}>
+              전체 해제
+            </button>
+            <small className="applied-filter-help">개별 해제는 현재 결과에 반영하며, 수정 중인 입력은 유지합니다.</small>
+        </div>
+      </div>}
       <section ref={results} className="product-results" aria-label="상품 검색 결과"
         aria-busy={products.isFetching || repairPage !== null} tabIndex={-1} data-catalog-results="true">
+      <div className="catalog-results-bar">
+        <h2>검색 결과{confirmedTotal !== null && <> <strong>{confirmedTotal.toLocaleString('ko-KR')}개</strong></>}</h2>
+        <button type="button" className="text-button" onClick={() => {
+          phraseHeading.current?.focus({ preventScroll: true })
+          phraseHeading.current?.scrollIntoView({ block: 'start', behavior: 'instant' })
+        }}>저장한 취향으로 찾기</button>
+      </div>
       {invalidUrlFilters ? (
         <Empty title="검색 조건을 확인해 주세요" description="가격·도수 범위와 태그 조건을 고치고 검색하거나 전체 해제해 주세요. 결과를 불러오지 않았습니다." />
       ) : rejectedTags ? (
@@ -524,6 +506,7 @@ export function ProductsPage() {
           <button className="btn btn-dark" onClick={() => {
             const key = productTagFields.find(({ key }) => form[key].length)?.key
             const input = key ? tagInputs.current[key]?.[0] : null
+            if (input && advancedFilters.current) advancedFilters.current.open = true
             const target = input ?? searchButton.current
             target?.focus()
           }}>태그 조건 수정</button>
@@ -567,6 +550,7 @@ export function ProductsPage() {
       </section>
       <Pagination page={invalidUrlFilters || repairPage !== null ? undefined : resultPage}
         onChange={(page) => navigate(page, filters)} onKeyboardNavigate={changeKeyboardPage} />
+      <SearchPhrases onApply={applySearchPhrase} headingRef={phraseHeading} />
     </section>
   )
 }
@@ -749,24 +733,25 @@ function ProductDetail({ id }: { id: string }) {
     item.id <= 2147483647 && String(item.id) === id
   return (
     <>
-      <section className="view detail-layout">
+      <section className="view detail-layout catalog-detail">
+        <header className="catalog-detail-heading detail-copy">
+          <Link className="text-link" to="/products">전체 주류 보기</Link>
+          <p className="product-type">{item.type}</p>
+          <h1>{item.name}</h1>
+        </header>
         <div className="detail-media">
           <Image src={productImage(item)} alt={item.name} loading="eager" product />
         </div>
-        <div className="detail-panel">
-          <div className="detail-copy">
-            <p className="product-type">{item.type}</p>
-            <h1>{item.name}</h1>
-            <p className="detail-description">
-              취향에 맞는 방식으로 천천히 즐겨보세요.
-            </p>
-          </div>
+        <div className="detail-panel catalog-detail-summary">
           <div className="detail-stats" aria-label="상품 정보">
-            <span className="stat-pill">
+            <div className="catalog-detail-price">
+              <span>개당 가격</span>
               <strong>{money(item.price)}원</strong>
-            </span>
-            <span className="stat-pill">도수 {item.abv}%</span>
-            <span className="stat-pill">누적 주문 {item.orderCount}회</span>
+            </div>
+            <div className="catalog-detail-facts">
+              <span className="stat-pill">도수 {item.abv}%</span>
+              <span className="stat-pill">시연 주문 {item.orderCount}개</span>
+            </div>
           </div>
           <div className="purchase-box">
             <div>
@@ -777,7 +762,10 @@ function ProductDetail({ id }: { id: string }) {
                 label={`${item.name} 수량`}
               />
             </div>
-            <strong>{money(item.price * quantity)}원</strong>
+            <div className="catalog-detail-total">
+              <span>상품 합계</span>
+              <strong>{money(item.price * quantity)}원</strong>
+            </div>
           </div>
           <button
             className="btn btn-gold btn-wide detail-cart-button"
@@ -789,11 +777,17 @@ function ProductDetail({ id }: { id: string }) {
             {quantity}개 장바구니에 담기
           </button>
           {cart.mode === 'unknown' && <p className="muted">로그인 확인 전에는 이 기기에만 담습니다.</p>}
-          <ProductFavorite product={item} />
-          <CompareAction product={item} />
-          {currentProduct && <RecommendationFeedback key={location.key} productId={item.id} />}
-          {currentProduct && <ProductNotebook key={`notebook:${location.key}`} productId={item.id} />}
+          <div className="catalog-detail-actions">
+            <ProductFavorite product={item} />
+            <CompareAction product={item} />
+          </div>
+        </div>
+        <div className="catalog-detail-content">
           <ProductFeatureDetails productId={item.id} />
+          {currentProduct && <div className="catalog-detail-personal">
+            <RecommendationFeedback key={location.key} productId={item.id} />
+            <ProductNotebook key={`notebook:${location.key}`} productId={item.id} />
+          </div>}
           <div className="comment-box">
             <div className="comment-title">
               <div>

@@ -245,6 +245,8 @@ test('390px 비교 표의 가로 이동·Tab/Enter 제거는 문서 넘침 없�
   await region.focus(); await page.keyboard.press('ArrowRight')
   await expect.poll(() => region.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0)
   await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: '비교 표본 201', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: '상품 201 비교 해제', exact: true })).toBeFocused()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: '상품 비교', exact: true })).toBeFocused()

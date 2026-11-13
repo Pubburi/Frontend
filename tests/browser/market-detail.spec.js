@@ -105,6 +105,8 @@ for (const width of [1280, 390]) {
     await back.focus(); await back.press('Tab')
     await expect(page.getByRole('button', { name: '매장 정보 새로고침', exact: true })).toBeFocused()
     await page.keyboard.press('Shift+Tab'); await back.press('Enter')
+    await expect(page).toHaveURL('/#stores')
+    await expect(page.getByRole('heading', { name: '주점부리 매장', exact: true })).toBeFocused()
     await expect(link).toBeVisible()
   })
 }

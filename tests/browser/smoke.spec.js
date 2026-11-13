@@ -1,4 +1,5 @@
 import { expect, test as base } from '@playwright/test'
+import { openCatalogFilters } from './catalog-filters'
 
 // Self-authored UI fixtures. They are not real products or recommendation data.
 const products = [
@@ -296,19 +297,24 @@ test.describe('현재 페이지의 모바일 메뉴', () => {
     await page.goto('/products')
     const input = page.getByLabel('상품 검색', { exact: true })
     await input.fill('아직 수정 중인 검색')
+    await openCatalogFilters(page)
     await page.getByLabel('최대 가격(원)', { exact: true }).fill('9000')
-    await page.evaluate(() => window.scrollTo(0, 400))
+    await page.evaluate(() => window.scrollTo({ top: 400, behavior: 'instant' }))
     const original = await page.evaluate(() => history.state.key)
     const toggle = page.getByRole('button', { name: '메뉴 열기', exact: true })
     const current = page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true })
+    const home = page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '홈', exact: true })
+    await expect(current).toBeVisible()
+    await expect(home).toBeHidden()
     if (method === 'touch') await toggle.tap()
-    else { await toggle.focus(); await toggle.press('Enter'); await current.focus() }
+    else { await toggle.evaluate((button) => button.focus({ preventScroll: true })); await toggle.press('Enter'); await current.evaluate((link) => link.focus({ preventScroll: true })) }
     const before = await page.evaluate(() => scrollY)
     if (method === 'touch') await current.tap()
     else await current.press('Enter')
     await expect.poll(() => page.evaluate(() => history.state.key)).not.toBe(original)
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    await expect(current).toBeHidden()
+    await expect(current).toBeVisible()
+    await expect(home).toBeHidden()
     await expect(page).toHaveURL('/products')
     await expect(input).toHaveValue('아직 수정 중인 검색')
     await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('9000')
@@ -328,7 +334,13 @@ test.describe('현재 페이지의 모바일 메뉴', () => {
     await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('9000')
 
     await toggle.tap()
-    await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '홈', exact: true }).tap()
+    await home.focus()
+    await home.press('Escape')
+    await expect(toggle).toBeFocused()
+    await expect(home).toBeHidden()
+
+    await toggle.tap()
+    await home.tap()
     await expect(page).toHaveURL('/')
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   })
@@ -787,7 +799,9 @@ test('세션 조회 장애는 비로그인으로 오인하지 않고 재시도�
   await page.goto('/profile')
   await expect(page.getByRole('heading', { name: '로그인 상태를 확인하지 못했습니다' })).toBeVisible()
   await expect(page).toHaveURL('/profile')
-  await page.getByRole('button', { name: '다시 시도', exact: true }).click()
+  const header = page.getByRole('banner')
+  await expect(header.getByRole('link', { name: '로그인', exact: true })).toHaveCount(0)
+  await header.getByRole('button', { name: '로그인 다시 확인', exact: true }).click()
   await expect(page.getByRole('heading', { name: '시험회원님의 취향 기록' })).toBeVisible()
 })
 
@@ -857,6 +871,7 @@ for (const status of [200, 503]) test(`늦은 로그아웃 ${status} 뒤에도 �
     await expect(page.locator('.product-card')).toHaveCount(1)
     const destination = page.url()
     await input.fill('아직 바꾸는 검색어')
+    await openCatalogFilters(page)
     await page.getByLabel('최대 가격(원)', { exact: true }).fill('9000')
     const response = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/api/auth/logout')
     release()
@@ -1432,9 +1447,18 @@ test('마이페이지에서 명시취향을 저장·재편집하고 건너뛰기
   await form.getByLabel('주종 선호 상태').selectOption('tags')
   await form.getByRole('checkbox', { name: '탁주', exact: true }).check()
   await form.getByRole('checkbox', { name: '약 · 청주', exact: true }).check()
-  await form.getByLabel('맛 태그 확인 상태').selectOption('tags')
-  await form.getByLabel('맛 태그 1', { exact: true }).fill('OWNED\nFIXTURE')
-  await form.getByLabel('향 태그 확인 상태').selectOption('empty')
+  const taste = form.getByRole('group', { name: '선호하는 맛', exact: true })
+  const aroma = form.getByRole('group', { name: '선호하는 향', exact: true })
+  await expect(taste.getByRole('button', { name: '아직 모르겠어요', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(taste.getByRole('textbox')).toHaveCount(0)
+  await expect(aroma.getByRole('textbox')).toHaveCount(0)
+  const dry = taste.getByRole('button', { name: '드라이한 맛', exact: true })
+  await dry.focus()
+  await dry.press('Space')
+  await expect(dry).toHaveAttribute('aria-pressed', 'true')
+  await taste.getByRole('button', { name: '단맛', exact: true }).click()
+  const floral = aroma.getByRole('button', { name: '꽃향', exact: true })
+  await floral.click()
   await form.getByLabel('선호 도수 (%)', { exact: true }).fill('80.25')
   await form.getByLabel('최소 가격 (원)', { exact: true }).fill('0')
   await form.getByLabel('최대 가격 (원)', { exact: true }).fill('0')
@@ -1442,12 +1466,13 @@ test('마이페이지에서 명시취향을 저장·재편집하고 건너뛰기
   await form.getByLabel('최대 도수 (%)', { exact: true }).fill('10.5')
   await form.getByRole('button', { name: '취향 저장', exact: true }).click()
   await expect(page.getByRole('status')).toContainText('취향이 저장되었습니다.')
-  expect(api.preferences.member).toEqual({ surveyStatus: 'COMPLETED', softPreferences: { categories: ['약 · 청주', '탁주'], tasteTags: ['owned\nfixture'], aromaTags: [], targetAbvPercent: 80.25 }, hardConstraints: { minPriceKrw: 0, maxPriceKrw: 0, minAbvPercent: 0, maxAbvPercent: 10.5 } })
+  expect(api.preferences.member).toEqual({ surveyStatus: 'COMPLETED', softPreferences: { categories: ['약 · 청주', '탁주'], tasteTags: ['dry', 'sweet'], aromaTags: ['floral'], targetAbvPercent: 80.25 }, hardConstraints: { minPriceKrw: 0, maxPriceKrw: 0, minAbvPercent: 0, maxAbvPercent: 10.5 } })
   const saved = api.calls.find((call) => call.method === 'PUT' && call.path === '/users/me/preferences')
   expect(Object.keys(saved.body)).toEqual(['surveyStatus', 'softPreferences', 'hardConstraints'])
   await page.reload()
   await expect(form.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('80.25')
-  await expect(form.getByLabel('맛 태그 1', { exact: true })).toHaveValue('owned\nfixture')
+  await expect(dry).toHaveAttribute('aria-pressed', 'true')
+  await expect(floral).toHaveAttribute('aria-pressed', 'true')
   await expect(form.getByLabel('최대 가격 (원)', { exact: true })).toHaveValue('0')
   await form.getByLabel('최소 가격 (원)', { exact: true }).fill('100')
   await form.getByRole('button', { name: '이번에는 건너뛰기', exact: true }).click()
@@ -1463,9 +1488,12 @@ test('마이페이지에서 명시취향을 저장·재편집하고 건너뛰기
   await expect(page.getByText('아직 입력하지 않음', { exact: true })).toBeVisible()
   expect(api.preferences.member).toEqual(emptyPreference())
   await form.getByLabel('주종 선호 상태').selectOption('empty')
+  await aroma.getByRole('button', { name: '특별히 선호하는 향 없음', exact: true }).click()
   await form.getByRole('button', { name: '취향 저장', exact: true }).click()
   await expect(page.getByText('입력 완료', { exact: true })).toBeVisible()
   expect(api.preferences.member.softPreferences.categories).toEqual([])
+  expect(api.preferences.member.softPreferences.tasteTags).toBeNull()
+  expect(api.preferences.member.softPreferences.aromaTags).toEqual([])
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
@@ -2433,11 +2461,25 @@ test('저장 완료한 취향과 필수 조건은 프로필의 기본 목록을 
   await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '마이', exact: true }).click()
   await page.getByRole('link', { name: '내 취향 설정', exact: true }).click()
   await expect(page.getByText('입력 완료', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('맛 태그 1', { exact: true })).toHaveValue('owned\nfixture')
+  const taste = page.getByRole('group', { name: '선호하는 맛', exact: true })
+  const legacy = taste.getByRole('button', { name: /이전에 저장한 맛 owned\s+fixture 삭제/ })
+  await expect(legacy).toBeVisible()
+  await expect(taste.getByRole('textbox')).toHaveCount(0)
   await expect(page.getByLabel('선호 도수 (%)', { exact: true })).toHaveValue('80.25')
   await expect(page.getByLabel('최대 가격 (원)', { exact: true })).toHaveValue('0')
   expect(api.preferences.member).toEqual(stored)
   expect(api.calls.some((call) => call.path === '/users/me/preferences' && call.method === 'PUT')).toBe(false)
+  const save = page.getByRole('button', { name: '취향 저장', exact: true })
+  await taste.getByRole('button', { name: '단맛', exact: true }).click()
+  await save.click()
+  await expect.poll(() => api.preferences.member.softPreferences.tasteTags).toEqual(['owned\nfixture', 'sweet'])
+  await expect(legacy).toBeVisible()
+  await legacy.focus()
+  await legacy.press('Enter')
+  await expect(legacy).toHaveCount(0)
+  await expect(taste.getByRole('button', { name: '아직 모르겠어요', exact: true })).toBeFocused()
+  await save.click()
+  await expect.poll(() => api.preferences.member.softPreferences.tasteTags).toEqual(['sweet'])
 })
 
 test('기본 목록의 조회 실패와 빈 목록을 구분하고 명시적 재조회로 복구', async ({ page, api }) => {
@@ -4909,5 +4951,76 @@ for (const width of [320, 720, 721, 980, 1280]) {
     await expect(image).toHaveAttribute('alt', '상품 이미지 미등록 — 기본 아이콘')
     await expect(page.locator('.detail-media').getByText('상품 이미지 미등록', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+  })
+}
+
+for (const outcome of ['save', 'retry', 'skip', 'owner-change']) {
+  test(`가입 선택 취향 확인 후 원래 화면으로 복귀 또는 계정 차폐 (${outcome})`, async ({ page, api }) => {
+    let failLogin = outcome === 'retry'
+    let failSave = outcome === 'retry'
+    await page.route('**/api/auth/login', async (route) => {
+      if (!failLogin) return route.fallback()
+      failLogin = false
+      await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+    })
+    await page.route('**/api/users/me/preferences', async (route) => {
+      if (route.request().method() !== 'PUT' || !failSave) return route.fallback()
+      failSave = false
+      await route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+    })
+    await page.goto('/account?redirect=%2Fcart')
+    await page.locator('.segmented').getByRole('button', { name: '회원가입', exact: true }).click()
+    await page.getByLabel('아이디', { exact: true }).fill('signup-taste-member')
+    await page.getByRole('button', { name: '중복 확인', exact: true }).click()
+    await expect(page.getByText('사용할 수 있는 아이디입니다.')).toBeVisible()
+    await page.getByLabel('이름', { exact: true }).fill('취향 가입 회원')
+    const password = page.getByLabel('비밀번호', { exact: true })
+    await password.fill('fixture-pass')
+    await page.getByRole('button', { name: '비밀번호 보기', exact: true }).click()
+    await expect(password).toHaveAttribute('type', 'text')
+    await page.getByRole('button', { name: '비밀번호 숨기기', exact: true }).click()
+    await expect(password).toHaveAttribute('type', 'password')
+    await page.getByRole('group', { name: '선호 주종', exact: true }).getByRole('button', { name: '탁주', exact: true }).click()
+    await page.getByRole('group', { name: '선호 도수', exact: true }).getByRole('button', { name: '12%', exact: true }).click()
+    await page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true }).click()
+    if (outcome === 'retry') {
+      await expect(page.getByText(/회원가입은 완료되었지만 로그인하지 못했습니다/)).toBeVisible()
+      await expect(page.getByLabel('아이디', { exact: true })).toHaveValue('signup-taste-member')
+      await expect(password).toHaveValue('')
+      await password.fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+    }
+    await expect(page).toHaveURL('/preferences')
+    expect(await page.evaluate(() => window.history.state?.usr)).toEqual({ signupPreferenceReview: true })
+    const review = page.getByRole('form', { name: '가입 취향 확인', exact: true })
+    await expect(review).toContainText('탁주')
+    await expect(review).toContainText('12%')
+    expect(api.preferences['signup-taste-member']).toBeUndefined()
+    const save = review.getByRole('button', { name: '취향 저장하고 계속', exact: true })
+    if (outcome === 'owner-change') {
+      api.user = api.users.find((user) => user.id === 'other')
+      await save.click()
+      await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/preferences')
+      expect(api.preferences.other).toBeUndefined()
+    } else if (outcome === 'skip') {
+      await review.getByRole('button', { name: '지금은 건너뛰기', exact: true }).click()
+      await expect(page).toHaveURL('/cart')
+    } else {
+      await save.click()
+      if (outcome === 'retry') {
+        await expect(page.getByText('서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.', { exact: true })).toBeVisible()
+        await expect(review).toContainText('12%')
+        expect(api.preferences['signup-taste-member']).toBeUndefined()
+        await save.click()
+      }
+      await expect(page).toHaveURL('/cart')
+      expect(api.preferences['signup-taste-member']).toEqual({
+        ...emptyPreference('COMPLETED'),
+        softPreferences: { ...emptyPreference().softPreferences, categories: ['탁주'], targetAbvPercent: 12 },
+      })
+    }
+    const writes = api.calls.filter((call) => call.method === 'PUT' && call.path === '/users/me/preferences')
+    expect(writes).toHaveLength(outcome === 'save' || outcome === 'retry' ? 1 : 0)
+    expect(api.calls.filter((call) => call.method === 'POST' && call.path === '/users')).toHaveLength(1)
   })
 }

@@ -70,9 +70,11 @@ export function ProductNotebook({ productId }: { productId: number }) {
   const location = useLocation(), [seen, setSeen] = useState(false)
   return <details className="notebook-panel" onToggle={(event) => { if (event.currentTarget.open) setSeen(true) }}>
     <summary className="text-link">나만의 취향 기록</summary>
-    {seen && <><p>나만 보는 기록입니다. 공개 회원 후기·추천 피드백과 별개이며 자동으로 공개하거나 추천에 반영하지 않습니다.</p>
+    {seen && <div className="notebook-panel-body">
+      <p>나만 보는 기록입니다. 공개 회원 후기·추천 피드백과 별개이며 자동으로 공개하거나 추천에 반영하지 않습니다.</p>
       <Link className="text-link" to="/notebook">내 취향 기록 모아보기</Link>
-      <NotebookAccount key={location.key}>{(actor) => <NotebookEditor actor={actor} productId={productId} />}</NotebookAccount></>}
+      <NotebookAccount key={location.key}>{(actor) => <NotebookEditor actor={actor} productId={productId} />}</NotebookAccount>
+    </div>}
   </details>
 }
 
@@ -182,7 +184,7 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
 }
 
 export function NotebookPage() {
-  return <section className="view notebook-view"><div className="shop-intro compact-intro"><div><p className="section-kicker">My Notebook</p><h1>내 취향 기록</h1><p>나만 보는 경험·관심 기록입니다. 공개 후기나 추천 피드백에 자동으로 반영하지 않습니다.</p></div><Link className="btn btn-outline-dark" to="/profile">마이페이지</Link></div>
+  return <section className="view notebook-view"><div className="shop-intro compact-intro"><div><p className="section-kicker">마이 · 기록</p><h1>내 취향 기록</h1><p>마셔 본 주류와 관심 있는 주류를 나만의 메모로 남겨 보세요.</p></div><Link className="text-link" to="/profile">마이페이지</Link></div>
     <NotebookAccount>{(actor) => <NotebookList actor={actor} />}</NotebookAccount></section>
 }
 function NotebookList({ actor }: { actor: Actor }) {
@@ -204,8 +206,11 @@ function NotebookList({ actor }: { actor: Actor }) {
   const lastPage = query.data ? Math.max(1, query.data.totalPages) : page
   const outOfRange = query.isSuccess && page > lastPage
   useEffect(() => { if (query.isSuccess && !query.isFetching && page > lastPage) setSearch({ page: String(lastPage) }, { replace: true }) }, [query.isSuccess, query.isFetching, page, lastPage, setSearch])
-  return <section aria-label="비공개 취향 기록 목록"><h2 ref={heading} tabIndex={-1}>저장한 내 기록</h2>
-    <button className="btn btn-outline-dark" disabled={!actor.ready || query.isFetching} onClick={() => { setEditing(null); void query.refetch() }}>내 기록 목록 새로고침</button>
+  return <section aria-label="비공개 취향 기록 목록">
+    <div className="section-heading notebook-toolbar">
+      <h2 ref={heading} tabIndex={-1}>저장한 내 기록</h2>
+      <button className="btn btn-outline-dark" disabled={!actor.ready || query.isFetching} onClick={() => { setEditing(null); void query.refetch() }}>내 기록 목록 새로고침</button>
+    </div>
     {query.isPending || query.isFetching || outOfRange ? <p role="status">내 기록 목록을 불러오는 중입니다.</p> : query.isError ? <ReadFailure error={query.error} actor={actor} retry={() => void query.refetch()} /> : !query.data.items.length ?
       actor.ready && <Empty title="아직 저장한 취향 기록이 없습니다"><Link className="btn btn-outline-dark" to="/products">상품을 고르고 내 기록 남기기</Link></Empty> : <>
         {actor.ready && <p className="muted">총 {query.data.total}개 · 목록을 새로 불러오면 최근 수정한 순서로 표시합니다.</p>}

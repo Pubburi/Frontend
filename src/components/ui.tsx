@@ -90,7 +90,7 @@ export function Pagination<T>({
       >
         이전
       </button>
-      <span>
+      <span className="pagination-position">
         {page.page} / {page.totalPages}
       </span>
       <button
@@ -181,7 +181,7 @@ export function ProductCard({ product }: { product: Product }) {
           시연 주문 수량{' '}
           {Number(product.orderCount || 0).toLocaleString('ko-KR')}개
         </p>
-        <div className="button-row">
+        <div className="product-card-actions">
           <Link
             className="btn btn-outline-dark btn-sm"
             to={`/products/${product.id}`}
@@ -197,8 +197,8 @@ export function ProductCard({ product }: { product: Product }) {
           >
             빠른 담기
           </button>
-          {cart.mode === 'unknown' && <small>로그인 확인 전에는 이 기기에만 담습니다.</small>}
         </div>
+        {cart.mode === 'unknown' && <small className="muted">로그인 확인 전에는 이 기기에만 담습니다.</small>}
         <CompareAction product={product} />
       </div>
     </article>

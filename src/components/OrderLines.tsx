@@ -1,6 +1,7 @@
 import { date, money, orderType } from '../utils/format'
 import type { Order } from '../types'
 import { Link } from 'react-router-dom'
+import { demoOrderStatus } from '../orders'
 
 export function priceBasisLabel(value?: string | null) {
   if (value === 'ORDER_SNAPSHOT') return '주문 당시 금액'
@@ -18,9 +19,9 @@ export function OrderLines({ order, showUnitPrice = false }: { order: Order; sho
         {order.orderTable && <span>요청: {order.orderTable}</span>}
         <span className="badge">{priceBasisLabel(order.priceBasis)}</span>
       </div>
-      <div className="order-items">
+      <ul className="order-items purchase-order-items" aria-label="주문 상품">
         {order.details.map((detail) => (
-          <div key={detail.id} className="order-item-line">
+          <li key={detail.id} className="order-item-line">
             <span>
               {detail.name}
               {detail.productId === null && <small> · 삭제된 상품</small>}{' '}
@@ -28,9 +29,9 @@ export function OrderLines({ order, showUnitPrice = false }: { order: Order; sho
               {showUnitPrice && <small> · 단가 {orderMoney(detail.unitPrice)}</small>}
             </span>
             <strong>{orderMoney(detail.sumPrice)}</strong>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </>
   )
 }
@@ -42,13 +43,10 @@ export function OrderCard({ order }: { order: Order }) {
           <span className="eyebrow">Order #{order.oId}</span>
           <strong>{orderType(order.orderType)}</strong>
           <p>
-            <span className={`badge ${order.completed !== 'Y' ? 'muted' : ''}`}>
-              {order.completed === 'Y' ? '완료' : '진행 중'}
-            </span>
-            <span className="muted">{date(order.orderTime)}</span>
+            <span className="badge purchase-status">{demoOrderStatus(order.completed)}</span>
           </p>
         </div>
-        <strong className="order-total">{orderMoney(order.totalPrice)}</strong>
+        <div className="purchase-order-total"><span className="muted">주문 합계</span><strong className="order-total">{orderMoney(order.totalPrice)}</strong></div>
       </div>
       <OrderLines order={order} />
       <Link className="text-link" to={`/orders/${order.oId}`} aria-label={`주문 ${order.oId} 상세 보기`}>주문 상세 보기 →</Link>

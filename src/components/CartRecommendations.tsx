@@ -65,10 +65,14 @@ export function CartRecommendations({ account }: { account: Account }) {
   const status = query.error instanceof ApiClientError ? query.error.status : 0
   const response = owned && query.isSuccess && !busy ? query.data : null
   return <section className="section-band cart-recommendations" aria-labelledby={heading}>
-    <p className="eyebrow">{response?.catalogScope === 'REVIEWED_LOCAL_CATALOG' ? '검수 로컬 상품' : response ? '검수 상품 DEMO' : '검수 상품 비교'}</p>
-    <h2 id={heading}>담은 상품과 비슷한 술</h2>
-    <p>저장된 상품의 특성이 비슷한 후보를 살펴보세요.</p>
-    <button className="btn btn-outline-dark" disabled={!readable() || !account.data?.items.length} aria-disabled={busy} aria-busy={busy} onClick={compare}>비슷한 상품 보기</button>
+    <div className="purchase-section-head">
+      <div>
+        <p className="eyebrow">{response?.catalogScope === 'REVIEWED_LOCAL_CATALOG' ? '검수 로컬 상품' : response ? '검수 상품 DEMO' : '검수 상품 비교'}</p>
+        <h2 id={heading}>담은 상품과 비슷한 술</h2>
+        <p>저장한 상품의 특성과 비슷한 후보를 살펴보세요.</p>
+      </div>
+      <button className="btn btn-outline-dark" disabled={!readable() || !account.data?.items.length} aria-disabled={busy} aria-busy={busy} onClick={compare}>비슷한 상품 보기</button>
+    </div>
     <details><summary>{response?.catalogScope === 'REVIEWED_DEMO' ? '추천 기준·DEMO 안내' : '추천 기준 안내'}</summary>
       <p>{response?.catalogScope === 'REVIEWED_LOCAL_CATALOG' ? '공개 출처에서 검수한 특성을 로컬 상품에 연결했습니다. 가격은 시연용이며 현재 상품 표시가 실제 판매·재고를 뜻하지 않습니다. 이미지·맛·향 정보는 미확인입니다.' : '검수용 표본을 비교하며 실제 판매·재고를 보장하지 않습니다.'} 수량과 미저장 입력은 점수에 쓰지 않습니다. 후보마다 표시한 기준 상품 하나와의 특성 비교이며 전체 조합의 궁합·공동구매 통계가 아닙니다. 비교 점수는 만족 확률이 아닙니다.</p>
       {response && <><h3>확인한 기준 {response.references.length}개</h3><ul>{response.references.map((ref) => <li key={ref.productId}>
