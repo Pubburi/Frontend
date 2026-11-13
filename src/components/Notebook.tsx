@@ -70,9 +70,11 @@ export function ProductNotebook({ productId }: { productId: number }) {
   const location = useLocation(), [seen, setSeen] = useState(false)
   return <details className="notebook-panel" onToggle={(event) => { if (event.currentTarget.open) setSeen(true) }}>
     <summary className="text-link">나만의 취향 기록</summary>
-    {seen && <><p>나만 보는 기록입니다. 공개 회원 후기·추천 피드백과 별개이며 자동으로 공개하거나 추천에 반영하지 않습니다.</p>
+    {seen && <div className="notebook-panel-body">
+      <p>나만 보는 기록입니다. 공개 회원 후기·추천 피드백과 별개이며 자동으로 공개하거나 추천에 반영하지 않습니다.</p>
       <Link className="text-link" to="/notebook">내 취향 기록 모아보기</Link>
-      <NotebookAccount key={location.key}>{(actor) => <NotebookEditor actor={actor} productId={productId} />}</NotebookAccount></>}
+      <NotebookAccount key={location.key}>{(actor) => <NotebookEditor actor={actor} productId={productId} />}</NotebookAccount>
+    </div>}
   </details>
 }
 

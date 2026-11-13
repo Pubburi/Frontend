@@ -80,8 +80,25 @@ for (const width of [1280, 390]) {
 }
 test('guest fixed default has no privatePOST;failed bootstrap is not guest and explicit session recovery works', async ({ page, fixture }) => {
   fixture.user = null; fixture.meReplies.push({ status: 503 }); await page.goto('/products')
-  await expect(panel(page).getByText('로그인 상태를 확인하지 못했습니다.', { exact: true })).toBeVisible(); await expect(panel(page).getByRole('link', { name: '전체 상품 보기', exact: true })).toHaveCount(0)
-  await panel(page).getByRole('button', { name: '로그인 상태 다시 확인', exact: true }).click(); await expect(panel(page).getByRole('link', { name: '전체 상품 보기', exact: true })).toHaveAttribute('href', '/products'); expect(fixture.phrases()).toHaveLength(0)
+  const retry = panel(page).getByRole('button', { name: '로그인 상태 다시 확인', exact: true })
+  const guestLink = panel(page).getByRole('link', { name: '전체 상품 보기', exact: true })
+  async function verifySpacing(message, action) {
+    const description = panel(page).getByText(message, { exact: true })
+    await expect(description).toBeVisible()
+    for (const width of [390, 1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 })
+      const [copyBox, actionBox] = await Promise.all([description.boundingBox(), action.boundingBox()])
+      expect(actionBox.y - (copyBox.y + copyBox.height)).toBeGreaterThanOrEqual(12)
+      expect(actionBox.height).toBeGreaterThanOrEqual(44)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    }
+  }
+  await verifySpacing('로그인 상태를 확인하지 못했습니다.', retry)
+  await expect(guestLink).toHaveCount(0)
+  await retry.click()
+  await expect(guestLink).toHaveAttribute('href', '/products')
+  await verifySpacing('로그인하면 저장한 취향을 검색에 쓸 수 있어요.', guestLink)
+  expect(fixture.phrases()).toHaveLength(0)
 })
 for (const [fallback, code] of [['selected_preferences_unknown', 'selected_unknown'], ['selected_preferences_empty', 'selected_empty'], ['selected_target_outside_hard_bounds', null]]) {
   test(`${fallback} is an explicit empty template result,not an unconstrained search`, async ({ page, fixture }) => {

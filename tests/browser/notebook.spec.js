@@ -94,7 +94,19 @@ for (const width of [1280, 390]) test(`비공개 기록 ${width}px 상세에서 
 
 test('비회원과 세션503은 개인 API를 요청하지 않고 공개 상세·담기와 명시 복구를 유지', async ({ page, notebookApi: s }) => {
   s.user = null; await page.goto('/products/7'); await page.locator('.notebook-panel summary').click()
-  await expect(page.getByRole('link', { name: '로그인하고 내 기록 남기기', exact: true })).toHaveAttribute('href', '/account?redirect=%2Fproducts%2F7')
+  const panel = page.locator('.notebook-panel')
+  const description = panel.getByText(/^나만 보는 기록입니다\./)
+  const collection = panel.getByRole('link', { name: '내 취향 기록 모아보기', exact: true })
+  const login = panel.getByRole('link', { name: '로그인하고 내 기록 남기기', exact: true })
+  await expect(login).toHaveAttribute('href', '/account?redirect=%2Fproducts%2F7')
+  for (const width of [390, 1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    const [copyBox, collectionBox, loginBox] = await Promise.all([description.boundingBox(), collection.boundingBox(), login.boundingBox()])
+    expect(collectionBox.y - (copyBox.y + copyBox.height)).toBeGreaterThanOrEqual(12)
+    expect(loginBox.y - (collectionBox.y + collectionBox.height)).toBeGreaterThanOrEqual(12)
+    expect(loginBox.height).toBeGreaterThanOrEqual(44)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  }
   expect(s.calls.filter((c) => c.path.startsWith('/api/users/me/notebook'))).toEqual([])
   await page.getByRole('button', { name: '1개 장바구니에 담기', exact: true }).click()
   s.user = account(); s.meFailure = true; await page.reload(); await page.locator('.notebook-panel summary').click()

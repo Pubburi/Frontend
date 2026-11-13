@@ -164,7 +164,15 @@
 }
 .catalog-products .search-phrases h2 { margin: 0; font-size: 1rem; }
 .catalog-products .search-phrases > p { margin: 4px 0; line-height: 1.45; }
-.catalog-products .search-phrases > a.text-link { display: inline-flex; align-items: center; min-height: 44px; }
+.search-phrases-access,
+.notebook-panel-body {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin-top: 12px;
+}
+.search-phrases-access > p,
+.notebook-panel-body > p { margin: 0; line-height: 1.55; }
 
 .catalog-detail-heading { grid-column: 1 / -1; min-width: 0; }
 .catalog-detail-heading .text-link { display: inline-flex; align-items: center; min-height: 44px; }

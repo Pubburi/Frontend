@@ -28,8 +28,13 @@ export function SearchPhrases({ onApply, headingRef }: { onApply: (url: string) 
     <h2 id="search-phrases-title" ref={headingRef} tabIndex={-1}>취향 조건으로 검색</h2>
     {session.data && <p>저장한 필수 범위를 사용합니다. 이번 검색에 넣을 취향만 골라 주세요. 취향 설정은 그대로예요.</p>}
     {transitioning || session.isPending || session.fetchStatus !== 'idle' ? <p role="status">현재 로그인 상태를 확인하는 중입니다.</p> : session.isError ?
-      <><p role="status">로그인 상태를 확인하지 못했습니다.</p><button className="btn btn-outline-dark" onClick={() => session.refetch()}>로그인 상태 다시 확인</button></> :
-      !session.data ? <><p>로그인하면 저장한 취향을 검색에 쓸 수 있어요.</p><Link className="text-link" to="/products" onClick={(event) => { if (inCurrentTab(event)) onApply('/products') }}>전체 상품 보기</Link></> : auth ?
+      <div className="search-phrases-access">
+        <p role="status">로그인 상태를 확인하지 못했습니다.</p>
+        <button className="btn btn-outline-dark" onClick={() => session.refetch()}>로그인 상태 다시 확인</button>
+      </div> : !session.data ? <div className="search-phrases-access">
+        <p>로그인하면 저장한 취향을 검색에 쓸 수 있어요.</p>
+        <Link className="text-link" to="/products" onClick={(event) => { if (inCurrentTab(event)) onApply('/products') }}>전체 상품 보기</Link>
+      </div> : auth ?
         <OwnedSearchPhrases key={`${owners.get(auth)}:${session.data.id}:${location.key}`} user={session.data} auth={auth} onApply={onApply} /> : null}
   </section>
 }
