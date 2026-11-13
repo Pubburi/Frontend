@@ -6,9 +6,9 @@
 - Keep API calls in `src/services/api.js`, `/api`/ApiResponse contracts and `credentials: include`. Backend owns business/API/DB rules; Recommendation owns models/data. Do not duplicate their implementation docs.
 - Keep session/server data in Query with current account/route ownership. Preserve auth/HTTP lifetimes, latest requests, draft/quantity ownership, lazy admin loading, raw `pubburi-cart` storage, keyboard access and the existing CSS/WebP assets.
 - Preserve the current palette and clear primary actions. Reduce unnecessary navigation/repeated input and retain input through recoverable errors. Use generative images for needed theme-matched decorative assets/icons, while keeping interactive controls accessible. Follow the concise UX references in [ROADMAP](docs/ROADMAP.md).
-- Current scope/status and deadlines live in [ROADMAP](docs/ROADMAP.md): all 20 MVP features by 2026-12-31 KST; extra improvements from 2027-01-01 after MVP; final 2027-02-05; no implementation/commits/merges from 2027-02-06. Mandatory permission/error/data/keyboard acceptance is part of each MVP feature.
+- Current scope/status and deadlines live in [ROADMAP](docs/ROADMAP.md): all 20 MVP features by 2026-12-31 KST and final delivery by 2027-02-05. Mandatory permission/error/data/keyboard acceptance is part of each MVP feature. Stop implementation, commits and merges on 2027-02-06.
 - Prioritize remaining mandatory work and acceptance defects. AWS·mobile implementation·real payment/shipping·chatbots require separate scope/authorization. Do not invent product results, contribution or performance.
-- Start the additional optimization after 2027-01-01 and after the current Notion to-do list is complete. Pick one Frontend UX issue, measure the same mobile and desktop flows before and after, and change the design if needed. Verify the improvement and merge its PR before the final deadline.
+- Start the additional optimization as soon as the current Notion to-do list is complete. Pick one Frontend UX issue, measure the same mobile and desktop flows before and after, and change the design if needed. Verify the improvement and merge its PR before the final deadline.
 
 ## Work and review
 
