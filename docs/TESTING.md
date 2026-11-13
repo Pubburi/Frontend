@@ -10,6 +10,8 @@ npm run check
 
 `check`는 저장소 검사 → locked 설치/audit → 이미지 도구 → strict TypeScript → Vitest → `/api` production 빌드 → guard 계약 → Chromium을 순서대로 실행한다. CI의 required `frontend-ci`도 같은 검증을 수행하며 Linux에서는 Chromium을 `--with-deps`로 설치한다. 실패 보고서·trace는 CI artifact로 보관한다.
 
+의존성 버전을 바꾸면 peer 호환성과 잠금 파일을 확인한다. `npm run audit:deps`는 보통 이상 권고를 실패로 처리한다. 강제 audit 수정, peer 검사 생략, 근거 없는 override로 검사를 우회하지 않는다.
+
 ## 선택 실행과 자원 격리
 
 ```bash

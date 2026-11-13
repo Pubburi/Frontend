@@ -68,7 +68,7 @@ flowchart LR
 
 ## 🧩 문제 해결
 
-### 1. 응답 유실·로그인 변경에도 장바구니 작업을 중복 반영하지 않기
+### 응답 유실·로그인 변경에도 장바구니 작업을 중복 반영하지 않기
 
 #### 문제
 
@@ -100,138 +100,6 @@ publish(scope, cart)
 if (result.status === 'APPLIED' && op.guest) cartStore.getState().consume(op.guest)
 // A new login does not restore the old form's ownership or redirect intent.
 recoveries.delete(scope.id)
-```
-
-### 2. 검색·상세 경로별로 서버 상태를 분리해 늦은 응답 보호하기
-
-#### 문제
-
-검색 응답 전에 필터를 해제하면 새 검색이 실행되지 않았다. 상품 상세가 로딩 중일 때 다른 상품을 열면 새 상세를 표시하지 못했다. Vue에서 해결한 응답 순서 문제를 React 화면에서도 다뤄야 했다.
-
-#### 원인
-
-검색과 상세가 요청 중복을 막는 상태와 응답 저장 위치를 공유했다. 처리 중인 요청이 있으면 새 요청도 중복으로 봤고, 먼저 보낸 요청이 나중에 도착해도 같은 위치에 저장됐다.
-
-#### 해결
-
-검색 조건 전체를 TanStack Query의 `queryKey`에 넣고 화면은 현재 URL의 조건에 해당하는 쿼리를 구독한다. 상품 상세는 상품 ID, 후기는 상품 ID·정렬·페이지로 구분한다. 상세 컴포넌트도 상품 ID에 맞춰 교체해 이전 상품의 수량과 편집 상태를 버린다. 읽기 오류는 해당 요청을 보낸 화면에서 표시하고, 쓰기는 Zustand의 `pending` 상태를 확인해 중복을 막는다.
-
-#### 결과
-
-검색 중 필터를 해제해도 새 URL의 상품 목록이 열렸다. 이미 떠난 상세의 응답이나 오류가 늦게 도착해도 현재 상품과 오류 안내가 그대로 유지됐다. 이전 요청이 끝났을 때 새 요청의 로딩도 유지됐다.
-
-#### 대체안/회고
-
-전역 목록에 응답을 저장하고 별도의 요청 번호를 관리할 수도 있었다. 검색 조건을 키로 쓰면 TanStack Query의 캐시가 요청별 상태를 관리한다. 관리자 화면과 회원 주문도 각각 화면과 계정에 맞는 키를 사용한다. 이미 보낸 GET은 서버에서 완료될 수 있다.
-
-#### 코드
-
-```tsx
-const products = useQuery({
-  queryKey: ['catalog', 'products', filters],
-  queryFn: () => api.catalogProducts(filters),
-  enabled: !invalidUrlFilters,
-  refetchOnReconnect: (query) => !(query.state.error instanceof ApiClientError && query.state.error.status === 400),
-})
-```
-
-상세와 후기의 요청은 각각 현재 상품과 정렬·페이지를 사용한다.
-
-```tsx
-const product = useQuery<Product>({
-  queryKey: ['catalog', 'product', id],
-  queryFn: () => api.product(id),
-})
-const comments = useQuery<ReviewPage>({
-  queryKey: ['reviews', id, sort, page],
-  queryFn: () => api.comments(id, { page, size: 10, sort, includeSummary: true, includeTasteTags: true }),
-  enabled: product.isSuccess,
-})
-```
-
-### 3. 삭제 처리 중 활성 버튼이 없어도 확인창의 키보드 포커스 유지하기
-
-#### 문제
-
-관리자가 삭제를 요청하면 응답이 올 때까지 취소와 삭제 버튼이 모두 비활성화된다. 이때 Tab을 누르면 확인창이 열린 채 포커스가 배경으로 빠졌다.
-
-#### 원인
-
-확인창 내부의 keydown에서 활성 버튼의 처음과 끝만 확인했다. 비활성화로 포커스가 확인창 밖으로 이동하거나 활성 버튼이 하나도 없으면 기존 로직이 포커스를 되돌릴 수 없었다.
-
-#### 해결
-
-확인창이 열려 있는 동안 `document`의 캡처 단계에서 키 입력을 받는다. 활성 버튼이 없으면 확인창에 포커스를 둔다. 버튼이 활성화되면 정방향과 역방향 순환을 복원한다. `ref`에서 최신 처리 상태와 취소 함수를 읽고, 닫을 때 리스너를 제거한 뒤 원래 버튼이 남아 있으면 포커스를 돌려준다.
-
-#### 결과
-
-일반 화면과 좁은 화면에서 삭제 응답을 기다리는 동안 포커스가 확인창에 머물렀다. 실패 응답을 받은 뒤에는 Tab과 Shift+Tab으로 순환하고 Escape로 닫은 뒤 원래 버튼으로 돌아갔다. 처리 중 Escape를 차단하고 삭제 요청을 한 번만 보내는 동작도 확인했다.
-
-#### 대체안/회고
-
-네이티브 `dialog`나 포커스 라이브러리를 쓸 수도 있었다. 기존 공통 확인창의 삭제 정책을 유지하면서 이미 배경으로 빠진 포커스를 되돌릴 수 있는 위치에 처리를 뒀다. 확인 범위는 버튼을 가진 단일 확인창과 키보드 조작이다.
-
-#### 코드
-
-```tsx
-if (!first || !last) {
-  event.preventDefault()
-  root.focus()
-} else if (!root.contains(focused) || focused === root) {
-  event.preventDefault()
-  const target = event.shiftKey ? last : first
-  target.focus()
-} else if (event.shiftKey && focused === first) {
-  event.preventDefault()
-  last.focus()
-} else if (!event.shiftKey && focused === last) {
-  event.preventDefault()
-  first.focus()
-}
-```
-
-### 4. 인증 소유와 조회 상태를 분리해 비공개 기록·후기 초안 보호하기
-
-#### 문제
-
-세션이 만료된 뒤 비공개 기록을 저장하면 편집창만 사라지고 목록에는 개인 메모, 평점과 태그가 남았다. 같은 계정의 로그인 상태를 다시 읽을 때는 작성 중이던 공개 후기가 초기화됐다.
-
-#### 원인
-
-기록 API의 401을 편집 폼 안에서 처리해 목록을 관리하는 상위 화면은 계정이 여전히 유효하다고 판단했다. 후기 초안의 소유자도 일시적인 제출 가능 상태로 판정해, 인증을 다시 확인하는 대기 상태에서 초안을 지웠다.
-
-#### 해결
-
-현재 계정에서 받은 401을 상위 화면에 전달해 목록과 편집을 함께 숨기고, 사용자가 인증을 다시 확인한 뒤 기록을 읽는다. 이전 계정의 늦은 응답은 무시한다. 후기 초안은 인증 쿼리, 계정 ID, 역할과 실제 인증 전환에 묶었다. 같은 계정의 인증을 확인하는 동안에는 입력을 숨긴 채 메모리에 초안을 보관하고, 인증이 바뀌면 폐기한다.
-
-#### 결과
-
-실제 서버의 세션을 브라우저 밖에서 종료한 뒤 저장, 삭제, 편집 조회를 시도했다. 인증을 다시 확인하기 전에는 개인 카드와 입력이 표시되지 않았다. 일반 화면과 좁은 화면에서 기록을 펼쳐 로그인 상태를 읽어도 후기 본문, 평점과 맛 태그를 보존했다. 조회 실패 뒤 같은 계정으로 돌아올 때와 다시 로그인할 때의 초안 처리도 확인했다.
-
-#### 대체안/회고
-
-재조회마다 초안을 지우면 로그인 상태만 확인해도 입력을 잃는다. 편집 폼에서만 오류를 처리하면 비공개 목록이 남는다. 계정 소유와 조회 상태를 분리했다. 브라우저 밖의 세션 변경은 다음 API 응답으로 확인하며, 기록을 쓸 때 서버도 소유자와 수정 버전을 검사한다.
-
-#### 코드
-
-```tsx
-if (error instanceof ApiClientError && error.status === 401 && sameActor()) {
-  active.current = null
-  setVerified(null); setFailed('expired')
-}
-```
-
-```tsx
-if (account.auth !== auth || account.id !== session.data?.id || account.role !== session.data?.role || account.transitioning !== transitioning) {
-  const next = { auth, id: session.data?.id, role: session.data?.role, transitioning }
-  currentAccount.current = next
-  focusIntent.current = null
-  saveFocus.current = null
-  setAccount(next)
-  setDraft({ rating: 5, comment: '', tasteTags: [] })
-  setEditing(null)
-  setDeleting(null)
-}
 ```
 
 <a id="development"></a>
