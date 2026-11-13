@@ -21,9 +21,9 @@ const authPending = () => {
 }
 function OrderShell({ id, children, action }: { id: number | null; children: ReactNode; action?: ReactNode }) {
   return <section className="view order-detail-view" data-order-id={id ?? undefined}>
-    <div className="shop-intro compact-intro">
-      <div><p className="section-kicker">Demo Order</p><h1>데모 주문 상세</h1><p>실제 결제·배송·예약 없이 접수한 시연 주문입니다.</p></div>
-      <div className="order-detail-actions"><Link className="btn btn-outline-dark" to="/profile">내 주문 내역</Link>{action}</div>
+    <div className="shop-intro compact-intro purchase-intro">
+      <div><p className="section-kicker">시연 주문</p><h1>데모 주문 상세</h1><p>실제 결제·배송·예약 없이 접수한 시연 주문입니다.</p></div>
+      <div className="order-detail-actions"><Link className="btn btn-outline-dark" to="/profile#order-history">내 주문 내역</Link>{action}</div>
     </div>
     {children}
   </section>
@@ -91,7 +91,10 @@ function OwnedOrder({ id, user, auth }: { id: number; user: User; auth: Query })
       <Loading label="현재 주문을 확인하는 중입니다." /> : query.isError ?
       <Empty title={query.error instanceof ApiClientError && query.error.status === 403 ? '주문을 볼 권한이 없습니다' : query.error instanceof ApiClientError && query.error.status === 404 ? '주문을 찾을 수 없습니다' : '주문을 불러오지 못했습니다'} description="내 주문 내역으로 돌아가거나 상태를 다시 확인해 주세요." /> : query.data ? <>
         <article className="order-row order-detail-card">
-          <div className="order-summary-head"><div><h2>주문 #{query.data.order.oId}</h2><strong>{orderType(query.data.order.orderType)}</strong><p><span className="badge" data-order-field="status">{demoOrderStatus(query.data.order.completed)}</span></p></div><strong className="order-detail-total">{orderMoney(query.data.order.totalPrice)}</strong></div>
+          <div className="order-summary-head">
+            <div><h2>주문 #{query.data.order.oId}</h2><p><strong>{orderType(query.data.order.orderType)}</strong><span className="badge purchase-status" data-order-field="status">{demoOrderStatus(query.data.order.completed)}</span></p></div>
+            <div className="purchase-order-total"><span className="muted">주문 합계</span><strong className="order-detail-total">{orderMoney(query.data.order.totalPrice)}</strong></div>
+          </div>
           <OrderLines order={query.data.order} showUnitPrice />
         </article>
         <p className="muted">상태는 마지막 조회 기준입니다. 데모 처리 완료는 실제 결제·상품 준비·배송 완료를 뜻하지 않습니다.</p>

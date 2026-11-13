@@ -119,7 +119,7 @@ for (const width of [1280, 390]) {
   test(`명시 요청과 실제 typed 사실만 표시하고 카트/비교를 유지 ${width}px`, async ({ page, fixture }, info) => {
     await page.setViewportSize({ width, height: 900 }); await page.addInitScript((product) => { localStorage.setItem('pubburi-cart', JSON.stringify([{ product, quantity: 2 }])) }, product)
     await open(page); expect(fixture.posts()).toHaveLength(0)
-    await page.locator('.hero-cta').click(); await page.getByRole('button', { name: `${product.name} 비교 선택`, exact: true }).click(); await home(page)
+    await page.getByRole('link', { name: '전체 주류 둘러보기', exact: true }).click(); await page.getByRole('button', { name: `${product.name} 비교 선택`, exact: true }).click(); await home(page)
     const compare = page.getByRole('link', { name: '상품 비교 1', exact: true, includeHidden: true }); await expect(compare).toHaveAttribute('href', '/compare?productId=7')
     await page.getByLabel('상품 검색', { exact: true }).fill('미제출 검색')
     await button(page).focus(); await button(page).press('Enter'); await expect(cards(page)).toHaveCount(1)
@@ -239,7 +239,7 @@ for (const status of [200, 401]) {
   test(`다른 경로의 늦은${status}가 새 홈 결과를 바꾸지 않음`, async ({ page, fixture }) => {
     await open(page); const gate = fixture.hold('/users/me/recommendations/content', { status, data: wire() }); await button(page).click(); await expect.poll(() => gate.started).toBe(true)
     await button(page).press('Enter'); expect(fixture.posts()).toHaveLength(1)
-    await page.locator('.hero-cta').click(); await expect(page).toHaveURL('/products'); await home(page); await load(page)
+    await page.getByRole('link', { name: '전체 주류 둘러보기', exact: true }).click(); await expect(page).toHaveURL('/products'); await home(page); await load(page)
     const old = page.waitForResponse((r) => r.url().endsWith('/api/users/me/recommendations/content') && r.status() === status); gate.release(); await (await old).finished()
     await expect(cards(page)).toHaveCount(1); await expect(panel(page).getByRole('heading', { name: '추천을 보려면 다시 로그인해 주세요' })).toHaveCount(0)
   })
@@ -258,7 +258,7 @@ test('불확실 auth쓰기503 뒤 과거결과 차폐·쓰기이후 me401이면 
 })
 test('me 대기 중 이탈이면 개인POST를 전송하지 않음', async ({ page, fixture }) => {
   await open(page); const gate = fixture.hold('/auth/me', { status: 200, data: users[0] }); await button(page).click(); await expect.poll(() => gate.started).toBe(true)
-  await page.locator('.hero-cta').click(); const old = page.waitForResponse((r) => r.url().endsWith('/api/auth/me')); gate.release(); await (await old).finished(); expect(fixture.posts()).toHaveLength(0); await expect(page).toHaveURL('/products')
+  await page.getByRole('link', { name: '전체 주류 둘러보기', exact: true }).click(); const old = page.waitForResponse((r) => r.url().endsWith('/api/auth/me')); gate.release(); await (await old).finished(); expect(fixture.posts()).toHaveLength(0); await expect(page).toHaveURL('/products')
 })
 
 test('이전 me와 겹친 실패 auth쓰기는 원래 읽기로 추천을 재개하지 않음', async ({ page, fixture }) => {

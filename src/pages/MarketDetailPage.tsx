@@ -35,7 +35,7 @@ function MarketDetails({ rawId }: { rawId: string | undefined }) {
           <p>시연용 매장 위치 정보입니다.</p>
         </div>
         <div className="market-detail-actions">
-          <Link className="btn btn-outline-dark" to="/">홈의 매장 목록</Link>
+          <Link className="btn btn-outline-dark" to="/#stores">홈의 매장 목록</Link>
           {id !== null && <button className="btn btn-outline-dark"
             aria-disabled={waiting}
             onClick={() => { if (!waiting) void market.refetch() }}>

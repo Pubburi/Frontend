@@ -1,27 +1,37 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '../services/api'
-import { useSession } from '../queries'
+import { readSession, safeRedirect, useSession } from '../queries'
 import { useUi } from '../state/ui'
 import { usePreferenceWrites } from '../state/preferenceWrites'
 import { categories } from '../catalog'
 import { Confirm, Empty, Loading } from '../components/ui'
-import { TagEditor } from '../components/TagEditor'
+import { PreferenceTagChoices } from '../components/TagEditor'
+import { aromaTagChoices, tasteTagChoices } from '../tagChoices'
+import './preference-tags.css'
 import {
   buildPreferencePayload,
   emptyPreferences,
   preferenceQueryKey,
   preferencesToDraft,
+  signupPreferenceReviews,
   type PreferenceDraft,
+  type SignupPreferenceReview,
 } from '../preferences'
 import type { ExplicitPreferences, SurveyStatus, User } from '../types'
 import type { TagStatus } from '../tagDraft'
+import './account-admin.css'
 
 const statusLabels: Record<SurveyStatus, string> = {
   NOT_STARTED: '아직 입력하지 않음',
   SKIPPED: '건너뜀',
   COMPLETED: '입력 완료',
+}
+async function verifySignupOwner(user: User) {
+  const current = await readSession()
+  if (current?.id !== user.id)
+    throw new ApiClientError({ code: 'UNAUTHORIZED', message: '가입한 계정으로 다시 로그인해 주세요.' }, 401)
 }
 export function PreferencesPage() {
   const session = useSession()
@@ -31,11 +41,16 @@ export function PreferencesPage() {
 }
 function PreferenceEditor({ user }: { user: User }) {
   const client = useQueryClient()
+  const location = useLocation()
+  const signupReview = location.state?.signupPreferenceReview === true ? signupPreferenceReviews.get(user) ?? null : null
   const pending = usePreferenceWrites((state) => state.owners.has(user.id))
   const [initial, setInitial] = useState<ExplicitPreferences | null>(null)
   const query = useQuery({
     queryKey: preferenceQueryKey(user.id),
-    queryFn: api.ownPreferences,
+    queryFn: async () => {
+      if (signupReview) await verifySignupOwner(user)
+      return api.ownPreferences()
+    },
     enabled: !initial && !pending,
     refetchOnReconnect: false,
   })
@@ -53,23 +68,26 @@ function PreferenceEditor({ user }: { user: User }) {
       client.setQueryData(['session'], null)
     }
   }, [query.error, client, user])
+  const reviewingSignup = initial?.surveyStatus === 'NOT_STARTED' ? signupReview : null
   return (
     <section className="view preferences-view">
       <div className="shop-intro compact-intro">
         <div>
-          <p className="section-kicker">My Preferences</p>
-          <h1>나의 주류 취향</h1>
-          <p>직접 고른 선호와 꼭 지킬 조건을 저장하고 언제든 바꿀 수 있어요.</p>
+          <p className="section-kicker">{signupReview ? '주점부리 가입' : '마이 · 취향'}</p>
+          <h1>{signupReview ? '고른 취향을 확인해 주세요' : '나의 주류 취향'}</h1>
+          <p>{signupReview ? '가입이 완료되었습니다. 저장한 취향은 마이페이지에서 바꿀 수 있어요.' : '직접 고른 선호와 꼭 지킬 조건을 저장하고 언제든 바꿀 수 있어요.'}</p>
         </div>
-        <Link className="btn btn-outline-dark" to="/profile">
+        {!signupReview && <Link className="btn btn-outline-dark" to="/profile">
           마이페이지
-        </Link>
+        </Link>}
       </div>
       {initial ? (
         <PreferenceForm
+          key={reviewingSignup ? location.key : undefined}
           user={user}
           initial={initial}
           savedStatus={query.data?.surveyStatus ?? initial.surveyStatus}
+          signupReview={reviewingSignup}
         />
       ) : query.isError ? (
         <Empty
@@ -89,6 +107,10 @@ function PreferenceEditor({ user }: { user: User }) {
           }
         />
       )}
+      {signupReview && !reviewingSignup && !query.isPending && <Link className="btn btn-outline-dark" to={safeRedirect(signupReview.returnTo)} replace
+        onClick={() => signupPreferenceReviews.delete(user)}>
+        원래 화면으로 계속
+      </Link>}
     </section>
   )
 }
@@ -96,14 +118,23 @@ function PreferenceForm({
   user,
   initial,
   savedStatus,
+  signupReview,
 }: {
   user: User
   initial: ExplicitPreferences
   savedStatus: SurveyStatus
+  signupReview: SignupPreferenceReview | null
 }) {
   const client = useQueryClient()
+  const navigate = useNavigate()
   const ui = useUi()
-  const [draft, setDraft] = useState(() => preferencesToDraft(initial))
+  const [draft, setDraft] = useState(() => {
+    if (!signupReview) return preferencesToDraft(initial)
+    const selected = emptyPreferences('COMPLETED')
+    selected.softPreferences.categories = signupReview.categories.length ? signupReview.categories : null
+    selected.softPreferences.targetAbvPercent = signupReview.targetAbvPercent
+    return preferencesToDraft(selected)
+  })
   const [confirm, setConfirm] = useState<'SKIPPED' | 'NOT_STARTED' | null>(null)
   const mounted = useRef(true)
   useEffect(() => {
@@ -114,6 +145,11 @@ function PreferenceForm({
   }, [])
   const pending = usePreferenceWrites((state) => state.owners.has(user.id))
   const sameSession = () => client.getQueryData(['session']) === user
+  function continueSignup() {
+    if (!signupReview) return
+    signupPreferenceReviews.delete(user)
+    navigate(safeRedirect(signupReview.returnTo), { replace: true })
+  }
   async function save(surveyStatus: SurveyStatus) {
     const submitted = draft
     let payload: ExplicitPreferences
@@ -130,6 +166,10 @@ function PreferenceForm({
     if (!owner) return
     ui.clear()
     try {
+      if (signupReview) {
+        await verifySignupOwner(user)
+        if (!sameSession() || !mounted.current) return
+      }
       const saved = await api.replaceOwnPreferences(payload)
       if (!sameSession()) return
       client.setQueryData(preferenceQueryKey(user.id), saved)
@@ -145,6 +185,7 @@ function PreferenceForm({
             ? '설문을 건너뛰었습니다.'
             : '취향 입력을 초기화했습니다.',
       )
+      continueSignup()
     } catch (error) {
       if (!sameSession()) return
       if (error instanceof ApiClientError && error.status === 401) {
@@ -160,6 +201,18 @@ function PreferenceForm({
     event.preventDefault()
     void save('COMPLETED')
   }
+  if (signupReview) return (
+    <form className="preference-section signup-review" aria-label="가입 취향 확인" onSubmit={submit}>
+      <dl>
+        <div><dt>선호 주종</dt><dd>{signupReview.categories.join(' · ') || '선택 없음'}</dd></div>
+        <div><dt>선호 도수</dt><dd>{signupReview.targetAbvPercent === null ? '선택 없음' : `${signupReview.targetAbvPercent}%`}</dd></div>
+      </dl>
+      <div className="button-row">
+        <button className="btn btn-dark" disabled={pending} aria-busy={pending}>취향 저장하고 계속</button>
+        <button type="button" className="btn btn-outline-dark" disabled={pending} onClick={continueSignup}>지금은 건너뛰기</button>
+      </div>
+    </form>
+  )
   function numberField(
     key: keyof Omit<PreferenceDraft, 'categories' | 'taste' | 'aroma'>,
     label: string,
@@ -186,15 +239,17 @@ function PreferenceForm({
   }
   return (
     <>
-      <p className="muted">
-        저장 상태: <strong>{statusLabels[savedStatus]}</strong> · 이 취향은 내
-        계정에만 저장됩니다.
-      </p>
       <form
         className="preferences-form"
         aria-label="내 취향 설정"
         onSubmit={submit}
       >
+        <div className="preference-toolbar">
+          <p className="muted">저장 상태 <strong>{statusLabels[savedStatus]}</strong> · 내 계정에만 저장</p>
+          <button className="btn btn-outline-dark" type="button" disabled={pending} onClick={() => setConfirm('SKIPPED')}>
+            이번에는 건너뛰기
+          </button>
+        </div>
         <section className="preference-section">
           <h2>선호하는 주류</h2>
           <p className="muted">
@@ -252,21 +307,17 @@ function PreferenceForm({
             )}
           </fieldset>
           <div className="feature-tag-grid">
-            <TagEditor
-              label="맛 태그"
+            <PreferenceTagChoices
+              label="맛"
+              choices={tasteTagChoices}
               value={draft.taste}
               onChange={(taste) => setDraft({ ...draft, taste })}
-              unknownLabel="아직 모르겠어요"
-              emptyLabel="특별히 선호하는 맛 없음"
-              tagsLabel="선호하는 맛 직접 입력"
             />
-            <TagEditor
-              label="향 태그"
+            <PreferenceTagChoices
+              label="향"
+              choices={aromaTagChoices}
               value={draft.aroma}
               onChange={(aroma) => setDraft({ ...draft, aroma })}
-              unknownLabel="아직 모르겠어요"
-              emptyLabel="특별히 선호하는 향 없음"
-              tagsLabel="선호하는 향 직접 입력"
             />
           </div>
           {numberField('targetAbvPercent', '선호 도수 (%)')}
@@ -291,14 +342,6 @@ function PreferenceForm({
             aria-busy={pending}
           >
             취향 저장
-          </button>
-          <button
-            className="btn btn-outline-dark"
-            type="button"
-            disabled={pending}
-            onClick={() => setConfirm('SKIPPED')}
-          >
-            이번에는 건너뛰기
           </button>
           <button
             className="text-button"

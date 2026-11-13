@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { productTagFields, type ProductTags, type ProductTagIssues, type ProductTagKey } from '../productTags'
+import { normalizeProductTag, productTagFields, type ProductTags, type ProductTagIssues, type ProductTagKey } from '../productTags'
+import { aromaTagChoices, tasteTagChoices } from '../tagChoices'
 
 export function SearchTagFields({ values, issues, onChange, registerInput }: {
   values: ProductTags
@@ -20,10 +21,21 @@ export function SearchTagFields({ values, issues, onChange, registerInput }: {
   }, [values.tasteTag, values.aromaTag])
   return <fieldset className="search-tag-group">
     <legend>맛·향 태그 조건</legend>
-    <p className="muted" id="search-tag-help">등록된 태그와 정확히 일치하는 상품을 찾습니다. 한 행이 한 태그이며 쉼표·줄바꿈도 그 태그의 일부입니다. 지정한 모든 조건을 함께 적용합니다.</p>
+    <p className="muted" id="search-tag-help">목록에서 고르거나 원하는 조건을 추가하세요. 고른 맛과 향을 모두 확인할 수 있는 상품만 표시합니다.</p>
     <div className="search-tag-columns">
       {productTagFields.map(({ key, label }) => <fieldset className="search-tag-kind" key={key}>
         <legend>{label} 조건</legend>
+        <div className="button-row tag-choice-row">
+          {(key === 'tasteTag' ? tasteTagChoices : aromaTagChoices).map((choice) => {
+            const selected = values[key].some((tag) => normalizeProductTag(tag) === choice.value)
+            return <button key={choice.value} type="button" aria-pressed={selected}
+              className={`btn btn-sm ${selected ? 'btn-dark' : 'btn-outline-dark'}`}
+              disabled={!selected && values[key].length >= 20}
+              onClick={() => onChange(key, selected
+                ? values[key].filter((tag) => normalizeProductTag(tag) !== choice.value)
+                : [...values[key], choice.value])}>{choice.label}</button>
+          })}
+        </div>
         {values[key].map((tag, index) => {
           const error = issues[key]?.index === index ? issues[key]?.message : undefined
           return <div className="search-tag-row" key={index}>
@@ -46,7 +58,7 @@ export function SearchTagFields({ values, issues, onChange, registerInput }: {
         <button type="button" className="btn btn-sm btn-outline-dark" disabled={values[key].length >= 20}
           ref={(element) => { addButtons.current[key] = element }}
           onClick={() => { focusIntent.current = { key, index: values[key].length }; onChange(key, [...values[key], '']) }}>{label} 조건 추가</button>
-        <small className="muted">최대 20개·태그별 40자. 조건이 없으면 이 항목으로 제한하지 않습니다.</small>
+        <small className="muted">직접 추가할 때는 한 칸에 한 태그만 넣어 주세요. 최대 20개 · 태그별 40자</small>
       </fieldset>)}
     </div>
   </fieldset>

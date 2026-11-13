@@ -8,6 +8,7 @@ import { useAccountWrites } from '../state/accountWrites'
 import { validAccountName, validCurrentPassword, validPassword } from '../settings'
 import { Empty, Loading } from '../components/ui'
 import type { User } from '../types'
+import './account-admin.css'
 
 const owners = new WeakMap<object, number>()
 let nextOwner = 0
@@ -137,29 +138,38 @@ function SettingsEditor({ user, auth }: { user: User; auth: Query }) {
     client.clear(); client.setQueryData(['session'], null)
     navigate(`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`)
   }
-  return <section className="view settings-view">
-    <div className="shop-intro compact-intro"><div><p className="section-kicker">Account Settings</p><h1>내 계정 설정</h1><p>이름·비밀번호를 바꾸고 저장한 취향을 관리하세요.</p></div><Link className="btn btn-outline-dark" to="/profile">마이페이지</Link></div>
+  return <section className="view settings-view settings-redesign">
+    <header className="shop-intro account-settings-intro">
+      <div><p className="section-kicker">마이 주점부리</p><h1>내 계정 설정</h1><p>이름과 비밀번호를 관리하세요.</p></div>
+      <Link className="btn btn-outline-dark" to="/profile">마이페이지</Link>
+    </header>
     {message && <p className="notice success" role="status">{message}</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
     {expired ? <Empty title="다시 로그인해 주세요"><button className="btn btn-dark" onClick={loginAgain}>다시 로그인</button></Empty> : <>
       {checking ? <Loading label="현재 계정을 확인하는 중입니다." /> : pending ? <p role="status">진행 중인 계정 변경을 기다리는 중입니다.</p> : !allowed && <div className="state-panel"><p>현재 로그인 확인 전에는 변경을 전송하지 않습니다.</p><button className="btn btn-dark" onClick={() => void verify()}>현재 상태 다시 확인</button></div>}
       <div className="settings-grid">
         <form className="settings-card" aria-label="본인 이름 수정" onSubmit={(event) => void save('name', event)}>
-          <h2>이름 수정</h2><p className="muted">아이디·권한·스탬프는 여기서 변경하지 않습니다.</p>
+          <div className="settings-card-heading"><p className="section-kicker">프로필</p><h2>이름 수정</h2><p className="muted">마이페이지에 표시할 이름입니다.</p></div>
           <label className="field-group"><span>이름</span><input ref={nameInput} className="form-control" aria-label="이름" autoComplete="name" required maxLength={100} value={name?.value ?? ''} onChange={(event) => setName({ value: event.target.value })} /></label>
           <button className="btn btn-dark" disabled={!allowed} aria-busy={pending}>이름 저장</button>
         </form>
         <form className="settings-card" aria-label="본인 비밀번호 변경" onSubmit={(event) => void save('password', event)}>
-          <h2>비밀번호 변경</h2><p className="muted">새 비밀번호는 4~100자·UTF-8 최대72바이트입니다. 한글·이모지는 여러 바이트를 사용하며 앞뒤 공백도 그대로 사용합니다. 현재 비밀번호는 기존 길이 그대로 입력하세요. 변경 후 다른 로그인은 종료됩니다.</p>
+          <div className="settings-card-heading"><p className="section-kicker">로그인 보안</p><h2>비밀번호 변경</h2><p className="muted">변경 후 현재 로그인은 유지되고 다른 로그인은 종료됩니다.</p></div>
           <label className="field-group"><span>현재 비밀번호</span><input ref={currentInput} className="form-control" aria-label="현재 비밀번호" type="password" autoComplete="current-password" required maxLength={100} value={password.current} onChange={(event) => setPassword({ ...password, current: event.target.value })} /></label>
-          <label className="field-group"><span>새 비밀번호</span><input ref={newInput} className="form-control" aria-label="새 비밀번호" aria-describedby="password-byte-limit" type="password" autoComplete="new-password" required minLength={4} maxLength={100} value={password.next} onChange={(event) => setPassword({ ...password, next: event.target.value })} /></label>
-          <p id="password-byte-limit" className="muted">새 비밀번호 {new TextEncoder().encode(password.next).byteLength}/72 UTF-8바이트</p>
+          <label className="field-group"><span>새 비밀번호</span><input ref={newInput} className="form-control" aria-label="새 비밀번호" aria-describedby="password-byte-limit password-format" type="password" autoComplete="new-password" required minLength={4} maxLength={100} value={password.next} onChange={(event) => setPassword({ ...password, next: event.target.value })} /></label>
+          <div className="settings-field-hint">
+            <p id="password-byte-limit">새 비밀번호 {new TextEncoder().encode(password.next).byteLength}/72 UTF-8바이트</p>
+            <p id="password-format">4~100자이며, 한글·이모지는 여러 바이트를 사용하고 앞뒤 공백도 포함합니다.</p>
+          </div>
           <label className="field-group"><span>새 비밀번호 확인</span><input ref={confirmationInput} className="form-control" aria-label="새 비밀번호 확인" type="password" autoComplete="new-password" required minLength={4} maxLength={100} value={password.confirmation} onChange={(event) => setPassword({ ...password, confirmation: event.target.value })} /></label>
-          <p className="muted">보낸 비밀번호는 입력칸에서 즉시 지웁니다. 실패하면 다시 입력해 주세요. 이 화면의 비밀번호를 브라우저 저장소에 보관하지 않습니다.</p>
+          <p className="settings-field-hint">제출하면 입력칸이 비워집니다. 실패하면 다시 입력해 주세요.</p>
           <button className="btn btn-dark" disabled={!allowed} aria-busy={pending}>비밀번호 변경</button>
         </form>
       </div>
-      <div className="settings-card"><h2>나의 취향</h2><p>직접 고른 선호와 반드시 지킬 가격·도수 조건은 취향 설정에서 수정합니다.</p><Link className="btn btn-outline-dark" to="/preferences">내 취향 설정</Link></div>
+      <section className="settings-card settings-shortcut">
+        <div className="settings-card-heading"><h2>나의 취향</h2><p className="muted">직접 고른 선호와 가격·도수 조건을 관리하세요.</p></div>
+        <Link className="btn btn-outline-dark" to="/preferences">내 취향 설정</Link>
+      </section>
     </>}
   </section>
 }

@@ -12,11 +12,15 @@ import { Empty, Image, Loading, Pagination, Quantity } from '../components/ui'
 import { OrderCard } from '../components/OrderLines'
 import { money, productImage } from '../utils/format'
 import { validPassword } from '../settings'
+import { categories } from '../catalog'
+import { signupAbvPresets, signupPreferenceReviews, type SignupPreferenceChoices } from '../preferences'
 import type { Order, Page, Profile, User } from '../types'
 
 function checkoutAuthPending(pending: Record<string, boolean>) {
   return Boolean(pending.login || pending.join || pending.logout || pending['settings-password'])
 }
+
+import './account-admin.css'
 
 export function CartPage() {
   const account = useAccountCart(true)
@@ -75,15 +79,15 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
   }[cart.orderForm.orderType]
   return (
     <section className="view cart-view">
-      <div className="shop-intro compact-intro">
+      <div className="shop-intro compact-intro purchase-intro">
         <div>
-          <p className="section-kicker">Cart</p>
+          <p className="section-kicker">기기 장바구니</p>
           <h1>장바구니</h1>
           <p>선택한 상품과 수량을 주문 전에 확인하세요.</p>
           {authorityBlocked && <p className="muted">로그인 확인 전에는 이 기기에 담은 상품만 표시합니다. 계정 장바구니와 주문은 확인 후 이용할 수 있습니다.</p>}
         </div>
         {cart.items.length > 0 && (
-          <span className="result-count">
+          <span className="purchase-chip">
             총 <strong>{totals.count}</strong>병
           </span>
         )}
@@ -134,19 +138,15 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
               </article>
             ))}
           </div>
-          <aside className="checkout-card">
+          <aside className="checkout-card" aria-labelledby="device-checkout-heading">
             <div>
-              <p className="section-kicker">Order Summary</p>
-              <h2>주문 요약</h2>
+              <p className="section-kicker">시연 주문</p>
+              <h2 id="device-checkout-heading">주문 요약</h2>
             </div>
             <dl className="summary-list">
               <div>
                 <dt>상품 수</dt>
                 <dd>{totals.count}병</dd>
-              </div>
-              <div>
-                <dt>상품 금액</dt>
-                <dd>{money(totals.total)}원</dd>
               </div>
               <div className="summary-total">
                 <dt>주문 예정 금액</dt>
@@ -171,9 +171,10 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
                 <small>{help}</small>
               </label>
               <label className="field-group">
-                <span>테이블·요청 사항</span>
+                <span>테이블·요청 사항 <small>선택</small></span>
                 <input
                   className="form-control"
+                  aria-label="테이블·요청 사항"
                   maxLength={20}
                   placeholder="테이블 번호 또는 요청 사항"
                   value={cart.orderForm.orderTable}
@@ -186,6 +187,9 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
                 <button className="btn btn-outline-dark" type="button" onClick={() => authorityBlocked ? verify?.() : void session.refetch()}>
                   로그인 상태 다시 확인
                 </button>
+              )}
+              {!checkingSession && !session.isError && !authorityBlocked && session.data === null && (
+                <p className="purchase-feedback">로그인한 뒤 같은 장바구니에서 주문을 이어갈 수 있어요.</p>
               )}
               <button
                 className="btn btn-gold btn-wide"
@@ -206,7 +210,7 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
       ) : (
         <Empty
           title="장바구니가 비어 있습니다"
-          description="마음에 드는 술을 먼저 담아보세요."
+          description="상품을 둘러보고 마음에 드는 술을 담아보세요."
         >
           <Link className="btn btn-dark" to="/products">
             전체 주류 보기
@@ -228,6 +232,7 @@ export function ProfilePage() {
   const queryCache = client.getQueryCache()
   const authOwner = queryCache.find({ queryKey: ['session'], exact: true })
   const [page, setPage] = useState(1)
+  const orderHeading = useRef<HTMLHeadingElement>(null)
   const profileKey = ['account', user?.id, 'profile'] as const
   const ordersKey = ['account', user?.id, 'orders', page] as const
   const profile = useQuery<Profile>({
@@ -248,6 +253,16 @@ export function ProfilePage() {
   ]
   const unauthorizedReads = failures.filter((failure) => failure.auth === authOwner && failure.account === user &&
     currentReads.some(({ query }) => query === failure.query))
+  const orderAnchorReady = Boolean(user && !profile.isPending && !unauthorizedReads.length)
+  useEffect(() => {
+    if (location.hash !== '#order-history' || !orderAnchorReady) return
+    const frame = requestAnimationFrame(() => {
+      const heading = orderHeading.current
+      heading?.focus({ preventScroll: true })
+      heading?.scrollIntoView({ block: 'start' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [location.key, location.hash, orderAnchorReady])
   function loginAgain() {
     const currentAuth = queryCache.find({ queryKey: ['session'], exact: true })
     if (!user || !currentAuth || currentAuth !== authOwner ||
@@ -268,7 +283,7 @@ export function ProfilePage() {
   }
   if (user && unauthorizedReads.length)
     return (
-      <section className="view profile-view">
+      <section className="view profile-view profile-redesign">
         <Empty title="다시 로그인해 주세요" description="로그인 상태가 바뀌어 내 정보를 표시하지 않았습니다.">
           <button className="btn btn-dark" onClick={loginAgain}
             disabled={session.fetchStatus !== 'idle' || currentReads.some(({ query, fetchStatus }) =>
@@ -286,7 +301,7 @@ export function ProfilePage() {
       ? 100
       : 0
   return (
-    <section className="view profile-view">
+    <section className="view profile-view profile-redesign">
       {profile.isPending ? (
         <Loading />
       ) : profile.isError ? (
@@ -295,58 +310,56 @@ export function ProfilePage() {
         </Empty>
       ) : (
         <>
-          <section className="profile-hero">
-            <div>
-              <p className="section-kicker">My Page</p>
-              <h1>{profile.data?.user?.name || user?.name}님의 취향 기록</h1>
-              <p className="muted">{user?.id}</p>
-              <Link className="btn btn-outline-dark" to="/settings">내 계정 설정</Link>
-              <Link className="btn btn-outline-dark" to="/preferences">내 취향 설정</Link>
-              <Link className="btn btn-outline-dark" to="/favorites">내 찜 목록</Link>
-              <Link className="btn btn-outline-dark" to="/notebook">내 취향 기록</Link>
-              <Link className="btn btn-outline-dark" to="/discover">기본 주류 둘러보기</Link>
-            </div>
-            <button
-              className="btn btn-outline-dark"
-              onClick={() => {
+          <div className="profile-overview">
+            <section className="profile-hero">
+              <div>
+                <p className="section-kicker">마이 주점부리</p>
+                <h1>{profile.data?.user?.name || user?.name}님의 취향 기록</h1>
+                <p className="profile-account-id">{user?.id}</p>
+              </div>
+              <button className="btn btn-outline-dark" onClick={() => {
                 void profile.refetch()
                 void orders.refetch()
-              }}
-            >
-              새로고침
-            </button>
-          </section>
-          <section className="grade-card">
-            <div className="grade-copy">
-              <span className="badge gold-badge">{grade.title || '회원'}</span>
-              <h2>스탬프 {stamps}개</h2>
-              <p>
-                {Number(grade.to) > 0
-                  ? `다음 등급까지 ${grade.to}개 남았어요.`
-                  : '현재 최고 등급입니다.'}
-              </p>
-            </div>
-            <div
-              className="grade-progress"
-              aria-label={`등급 진행도 ${progress}%`}
-            >
-              <div>
-                <span style={{ width: `${progress}%` }} />
+              }}>
+                새로고침
+              </button>
+            </section>
+            <section className="grade-card" aria-label="회원 등급">
+              <div className="grade-copy">
+                <span className="badge gold-badge">{grade.title || '회원'}</span>
+                <h2>스탬프 {stamps}개</h2>
+                <p>{Number(grade.to) > 0 ? `다음 등급까지 ${grade.to}개 남았어요.` : '현재 최고 등급입니다.'}</p>
               </div>
-              <small>
-                {grade.step || 0} / {grade.stepMax || 0}
-              </small>
-            </div>
-          </section>
+              <div className="grade-progress" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}
+                aria-label={`등급 진행도 ${progress}%`}>
+                <div><span style={{ width: `${progress}%` }} /></div>
+                <small>{grade.step || 0} / {grade.stepMax || 0}</small>
+              </div>
+            </section>
+          </div>
+          <nav className="profile-shortcuts" aria-label="내 활동 바로가기">
+            {[
+              ['/preferences', '내 취향 설정', '추천에 쓰는 취향과 조건'],
+              ['/favorites', '내 찜 목록', '다시 보고 싶은 상품'],
+              ['/notebook', '내 취향 기록', '나만의 시음과 관심 메모'],
+              ['/discover', '기본 주류 둘러보기', '주류 탐색 다시 시작'],
+              ['/settings', '내 계정 설정', '이름과 비밀번호 관리'],
+            ].map(([to, title, description]) => (
+              <Link key={to} className="profile-shortcut" to={to} aria-label={title}>
+                <strong>{title}</strong>
+                <span>{description}</span>
+                <span className="profile-shortcut-arrow" aria-hidden="true">→</span>
+              </Link>
+            ))}
+          </nav>
         </>
       )}
-      <section className="section-band">
+      <section className="section-band profile-order-history" id="order-history">
         <div className="section-heading">
           <div>
-            <p className="section-kicker">Orders</p>
-            <h2>주문 내역</h2>
+            <h2 ref={orderHeading} tabIndex={-1}>주문 내역</h2>
           </div>
-          <span className="muted">총 {orders.data?.total || 0}건</span>
+          {orders.data && <span className="muted">총 {orders.data.total}건</span>}
         </div>
         {orders.isPending ? (
           <Loading />
@@ -388,6 +401,9 @@ export function AccountPage() {
   const [mode, setMode] = useState<'login' | 'join'>('login')
   const [login, setLogin] = useState({ id: '', pass: '' })
   const [join, setJoin] = useState({ id: '', name: '', pass: '' })
+  const [taste, setTaste] = useState<SignupPreferenceChoices>({ categories: [], targetAbvPercent: null })
+  const [retryTaste, setRetryTaste] = useState<(SignupPreferenceChoices & { owner: string }) | null>(null)
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const passwordInput = useRef<HTMLInputElement>(null)
   const [check, setCheck] = useState({ id: '', available: false, message: '' })
   const latestJoinId = useRef(join.id)
@@ -397,6 +413,12 @@ export function AccountPage() {
   const client = useQueryClient()
   const ui = useUi()
   const authenticating = Boolean(ui.pending.login || ui.pending.join)
+  const redirect = search.get('redirect')
+  const returning = redirect !== null && safeRedirect(redirect) !== '/profile'
+  function switchMode(next: 'login' | 'join') {
+    setMode(next)
+    setPasswordVisible(false)
+  }
   async function authenticate(event: FormEvent) {
     event.preventDefault()
     const submittedLocation = location.key
@@ -414,6 +436,9 @@ export function AccountPage() {
       mode === 'join'
         ? { id: join.id.trim(), pass: join.pass }
         : { id: login.id.trim(), pass: login.pass }
+    const choices = mode === 'join'
+      ? (taste.categories.length || taste.targetAbvPercent !== null ? taste : null)
+      : retryTaste?.owner === credentials.id ? retryTaste : null
     let accountCreated = false
     const result = await ui.run(
       mode,
@@ -426,25 +451,35 @@ export function AccountPage() {
           })
           accountCreated = true
         }
-        const user = await api.login(credentials)
-        client.clear()
-        client.setQueryData(['session'], user)
-        return user
+        return api.login(credentials)
       },
       mode === 'join' ? '가입되었습니다.' : '로그인되었습니다.',
     )
     if (result.ok) {
-      if (mounted.current && currentLocation.current === submittedLocation) {
+      client.clear()
+      const user: User = result.data
+      const isCurrentPage = mounted.current && currentLocation.current === submittedLocation
+      const review = isCurrentPage && choices && user.id === credentials.id
+      if (review) {
+        signupPreferenceReviews.set(user, { categories: choices.categories, targetAbvPercent: choices.targetAbvPercent, returnTo: target })
+      }
+      client.setQueryData(['session'], user)
+      if (isCurrentPage) {
         setLogin({ id: '', pass: '' })
         setJoin({ id: '', name: '', pass: '' })
-        navigate(target, { replace: true })
+        setPasswordVisible(false)
+        setRetryTaste(null)
+        if (!review) navigate(target, { replace: true })
       }
     } else if (accountCreated) {
-      if (mounted.current) {
-        setMode('login')
+      if (mounted.current && currentLocation.current === submittedLocation) {
+        switchMode('login')
         setLogin({ id: credentials.id, pass: '' })
         setJoin({ id: '', name: '', pass: '' })
         setCheck({ id: '', available: false, message: '' })
+        setRetryTaste(choices ? { ...choices, owner: credentials.id } : null)
+        setTaste({ categories: [], targetAbvPercent: null })
+        passwordInput.current?.focus()
       }
       ui.error(
         new Error('회원가입은 완료되었지만 로그인하지 못했습니다. 비밀번호를 입력해 다시 로그인해 주세요.'),
@@ -465,49 +500,39 @@ export function AccountPage() {
       })
   }
   return (
-    <section className="view account-layout">
-      <div className="account-story">
-        <p className="section-kicker">Welcome</p>
-        <h1>
-          한 잔의 취향을
-          <br />더 선명하게
-        </h1>
-        <p>
-          주점부리 회원이 되면 주문 내역과 등급을 한 곳에서 확인할 수 있습니다.
-        </p>
-        <ul>
-          <li>다양한 주종을 한 번에 탐색</li>
-          <li>주문할 때마다 스탬프 적립</li>
-          <li>나의 주문 상태를 간편하게 확인</li>
-        </ul>
-      </div>
+    <section className="view account-layout account-redesign">
       <div className="auth-panel">
-        <div className="segmented" aria-label="계정 메뉴">
+        <p className="section-kicker auth-brand">주점부리 계정</p>
+        <div className="segmented" role="group" aria-label="계정 메뉴">
           <button
+            type="button"
             className={mode === 'login' ? 'active' : ''}
+            aria-pressed={mode === 'login'}
             disabled={authenticating}
-            onClick={() => setMode('login')}
+            onClick={() => switchMode('login')}
           >
             로그인
           </button>
           <button
+            type="button"
             className={mode === 'join' ? 'active' : ''}
+            aria-pressed={mode === 'join'}
             disabled={authenticating}
-            onClick={() => setMode('join')}
+            onClick={() => switchMode('join')}
           >
             회원가입
           </button>
         </div>
-        <form className="auth-form" onSubmit={authenticate}>
-          <div>
-            <p className="section-kicker">
-              {mode === 'login' ? 'Sign In' : 'Join'}
-            </p>
-            <h2>
+        <form className="auth-form" onSubmit={authenticate} aria-busy={authenticating}>
+          <div className="auth-form-heading">
+            <h1>
               {mode === 'login'
                 ? '다시 만나 반가워요'
                 : '취향 기록을 시작해 보세요'}
-            </h2>
+            </h1>
+            <p>{returning ? '로그인하면 하던 작업을 이어갈 수 있습니다.' : mode === 'login'
+              ? '주문 내역과 저장한 취향을 이어서 확인하세요.'
+              : '사용할 아이디를 확인한 뒤 회원가입을 진행하세요.'}</p>
           </div>
           <label className="field-group">
             <span>아이디</span>
@@ -565,11 +590,13 @@ export function AccountPage() {
               />
             </label>
           )}
-          <label className="field-group">
-            <span>비밀번호</span>
+          <div className="field-group">
+            <label htmlFor="account-password">비밀번호</label>
+            <div className="account-password-field">
             <input
+              id="account-password"
               ref={passwordInput}
-              type="password"
+              type={passwordVisible ? 'text' : 'password'}
               aria-label="비밀번호"
               aria-describedby={mode === 'join' ? 'join-password-limit' : undefined}
               className="form-control"
@@ -587,8 +614,34 @@ export function AccountPage() {
                   : setJoin({ ...join, pass: e.target.value })
               }
             />
+            <button type="button" className="btn btn-outline-dark" aria-controls="account-password"
+              onClick={() => setPasswordVisible((visible) => !visible)}>
+              {passwordVisible ? '비밀번호 숨기기' : '비밀번호 보기'}
+            </button>
+            </div>
             {mode === 'join' && <small id="join-password-limit">4~100자·UTF-8 최대72바이트. 한글·이모지는 여러 바이트이며 공백도 그대로 포함됩니다. 현재 {new TextEncoder().encode(join.pass).byteLength}/72바이트</small>}
-          </label>
+          </div>
+          {mode === 'join' && <fieldset className="signup-taste" disabled={authenticating}>
+            <legend>내 주류 취향 <small>선택 사항</small></legend>
+            <p>좋아하는 주종이나 도수를 고르세요. 가입 후 확인하고 저장할 수 있어요.</p>
+            <strong>주종</strong>
+            <div className="signup-taste-group" role="group" aria-label="선호 주종">
+              {categories.map(({ label }) => (
+                <button key={label} type="button" aria-pressed={taste.categories.includes(label)} onClick={() => setTaste((current) => ({
+                  ...current,
+                  categories: current.categories.includes(label) ? current.categories.filter((item) => item !== label) : [...current.categories, label],
+                }))}>{label}</button>
+              ))}
+            </div>
+            <strong>도수</strong>
+            <div className="signup-taste-group" role="group" aria-label="선호 도수">
+              {signupAbvPresets.map((value) => (
+                <button key={value} type="button" aria-pressed={taste.targetAbvPercent === value} onClick={() => setTaste((current) => ({
+                  ...current, targetAbvPercent: current.targetAbvPercent === value ? null : value,
+                }))}>{value}%</button>
+              ))}
+            </div>
+          </fieldset>}
           <button
             className="btn btn-dark w-100"
             disabled={
@@ -607,6 +660,15 @@ export function AccountPage() {
           </button>
         </form>
       </div>
+      <aside className="account-story" aria-labelledby="account-benefits">
+        <p className="section-kicker">주점부리에서 만나는 술</p>
+        <h2 id="account-benefits">발견한 취향을 한곳에 모으세요</h2>
+        <ul>
+          <li><strong>마음에 든 술</strong><span>찜해 두고 다음에 바로 찾아보세요.</span></li>
+          <li><strong>기억하고 싶은 한 잔</strong><span>개인 취향 기록에 감상을 남기세요.</span></li>
+          <li><strong>주문과 스탬프</strong><span>마이페이지에서 함께 확인하세요.</span></li>
+        </ul>
+      </aside>
     </section>
   )
 }

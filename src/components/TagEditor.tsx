@@ -117,3 +117,82 @@ export function TagEditor({
     </fieldset>
   )
 }
+
+export function PreferenceTagChoices({
+  label,
+  choices,
+  value,
+  onChange,
+}: {
+  label: '맛' | '향'
+  choices: readonly { label: string; value: string }[]
+  value: TagDraft
+  onChange: (value: TagDraft) => void
+}) {
+  const unknown = useRef<HTMLButtonElement>(null)
+  const selected = value.status === 'tags' ? value.values : []
+  const token = (tag: string) => tag.trim().toLowerCase()
+  const selectedTokens = new Set(selected.map(token))
+  const legacy = selected.filter((tag) => !choices.some((choice) => choice.value === token(tag)))
+
+  function select(values: string[]) {
+    onChange({ status: values.length ? 'tags' : 'empty', values })
+  }
+
+  return (
+    <fieldset className="feature-tags preference-tag-choices">
+      <legend>선호하는 {label}</legend>
+      <div className="button-row">
+        {choices.map((choice) => {
+          const pressed = selectedTokens.has(choice.value)
+          return (
+            <button
+              key={choice.value}
+              type="button"
+              className={`btn ${pressed ? 'btn-dark' : 'btn-outline-dark'}`}
+              aria-pressed={pressed}
+              disabled={!pressed && selected.length >= 20}
+              onClick={() => select(pressed
+                ? selected.filter((tag) => token(tag) !== choice.value)
+                : [...selected, choice.value])}
+            >
+              {choice.label}
+            </button>
+          )
+        })}
+        <button type="button" ref={unknown}
+          className={`btn ${value.status === 'unknown' ? 'btn-dark' : 'btn-outline-dark'}`}
+          aria-pressed={value.status === 'unknown'}
+          onClick={() => onChange({ status: 'unknown', values: [] })}
+        >
+          아직 모르겠어요
+        </button>
+        <button type="button"
+          className={`btn ${value.status === 'empty' ? 'btn-dark' : 'btn-outline-dark'}`}
+          aria-pressed={value.status === 'empty'}
+          onClick={() => select([])}
+        >
+          특별히 선호하는 {label} 없음
+        </button>
+      </div>
+      {legacy.length > 0 && (
+        <div className="preference-legacy-tags">
+          <p className="muted">이전에 저장한 {label}입니다. 그대로 쓰거나 삭제할 수 있어요.</p>
+          <div className="button-row">
+            {legacy.map((tag) => (
+              <button key={tag} type="button" className="btn btn-outline-dark"
+                aria-label={`이전에 저장한 ${label} ${tag} 삭제`}
+                onClick={() => {
+                  select(selected.filter((current) => current !== tag))
+                  unknown.current?.focus()
+                }}
+              >
+                <span>{tag}</span> <span aria-hidden="true">×</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </fieldset>
+  )
+}

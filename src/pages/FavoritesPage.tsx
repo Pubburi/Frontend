@@ -131,7 +131,7 @@ function AccountFavorites({ user }: { user: User }) {
     <section className="view favorites-view" ref={section}>
       <div className="shop-intro compact-intro">
         <div>
-          <p className="section-kicker">My Favorites</p>
+          <p className="section-kicker">마이 · 찜</p>
           <h1 tabIndex={-1} ref={heading}>
             내 찜 목록
           </h1>
@@ -139,16 +139,16 @@ function AccountFavorites({ user }: { user: User }) {
             다시 보고 싶은 주류를 모아 두세요. 최근 담은 상품부터 보여드려요.
           </p>
         </div>
-        <Link className="btn btn-outline-dark" to="/profile">
-          마이페이지
-        </Link>
-        <button
-          className="btn btn-outline-dark"
-          disabled={pending || query.isFetching}
-          onClick={() => query.refetch()}
-        >
-          찜 목록 새로고침
-        </button>
+        <div className="button-row">
+          <Link className="text-link" to="/profile">마이페이지</Link>
+          <button
+            className="btn btn-outline-dark"
+            disabled={pending || query.isFetching}
+            onClick={() => query.refetch()}
+          >
+            찜 목록 새로고침
+          </button>
+        </div>
       </div>
       {query.isPending ||
       (query.isSuccess && page > Math.max(1, query.data.totalPages)) ? (

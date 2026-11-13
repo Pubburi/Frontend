@@ -127,7 +127,7 @@ export function HomeProductSearch() {
           ))}
         </ul>
       </div>
-      <button className="btn btn-gold" type="submit">검색하기</button>
+      <button className="btn btn-dark" type="submit">검색하기</button>
     </form>
   )
 }

@@ -1,6 +1,6 @@
 import { categories } from './catalog'
 import { buildTags, readTagDraft, type TagDraft } from './tagDraft'
-import type { ExplicitPreferences, SurveyStatus } from './types'
+import type { ExplicitPreferences, SurveyStatus, User } from './types'
 
 export interface PreferenceDraft {
   categories: TagDraft
@@ -12,6 +12,15 @@ export interface PreferenceDraft {
   minAbvPercent: string
   maxAbvPercent: string
 }
+export const signupAbvPresets = [5, 12, 20] as const
+export interface SignupPreferenceChoices {
+  categories: string[]
+  targetAbvPercent: number | null
+}
+export interface SignupPreferenceReview extends SignupPreferenceChoices {
+  returnTo: string
+}
+export const signupPreferenceReviews = new WeakMap<User, SignupPreferenceReview>()
 export const preferenceQueryKey = (userId: string) =>
   ['account', userId, 'preferences'] as const
 export const emptyPreferences = (
