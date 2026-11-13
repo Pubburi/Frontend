@@ -4418,15 +4418,18 @@ test('공개 상품 특성은 원값·mL·단일 태그·출처 텍스트를 보
   expect(api.calls.filter(call => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(call.method))).toHaveLength(0)
 })
 
-test('공개 상품 특성 null은 미확인이고 확인하지 않은 맛이나 향을 추론하지 않음', async ({ page }) => {
-  await page.goto('/products/901')
-  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
-  for (const field of ['volume', 'description', 'taste', 'aroma', 'source', 'note'])
-    await expect(facts.locator(`[data-feature="${field}"] dd`)).toHaveText('미확인')
-  await expect(facts.getByRole('list')).toHaveCount(0)
-  await expect(facts.getByRole('link')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
-})
+for (const width of [390, 1440]) {
+  test(`공개 상품 특성이 모두 미확인이면 안내 한 줄을 표시 ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/products/901')
+    const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+    await expect(facts.getByText('아직 확인된 상품 특성이 없습니다.', { exact: true })).toBeVisible()
+    await expect(facts.getByText('미확인', { exact: true })).toHaveCount(0)
+    await expect(facts.getByRole('list')).toHaveCount(0)
+    await expect(facts.getByRole('link')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
+  })
+}
 
 const similarRegion = (page) => page.getByRole('region', { name: '비슷한 상품', exact: true })
 const similarCards = (page) => similarRegion(page).locator('[data-similar-product]')
@@ -4594,7 +4597,7 @@ test('유사 상품 조회는 정규 기준 상품 주소에서만 시작', asyn
   await page.route('**/api/products/0901/comments?**', (route) => route.fulfill({ json: success({ ...pageOf([], 10), ratingSummary: { count: 0, average: null } }) }))
   await page.goto('/products/0901')
   await expect(page.getByRole('heading', { name: '시험 탁주', level: 1, exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '상품 특성', exact: true }).getByText('미확인').first()).toBeVisible()
+  await expect(page.getByRole('region', { name: '상품 특성', exact: true }).getByText('아직 확인된 상품 특성이 없습니다.', { exact: true })).toBeVisible()
   expect(api.calls.filter(({ path }) => path.endsWith('/similar'))).toEqual([])
   await expect(similarRegion(page)).toHaveCount(0)
 })
@@ -4766,6 +4769,17 @@ test('공개 검수 빈 태그는 미확인이나 맛 없음으로 바꾸지 않
   await expect(facts.getByText('맛 없음', { exact: true })).toHaveCount(0)
 })
 
+test('확인된 빈 태그만 있거나 출처 URL만 있어도 공개 특성에서 확인할 수 있음', async ({ page, api }) => {
+  api.features[901] = { ...unknownFeatures(901), tasteTags: [] }
+  api.features[902] = { ...unknownFeatures(902), sourceUrl: 'https://example.test/facts' }
+  await page.goto('/products/901')
+  const facts = page.getByRole('region', { name: '상품 특성', exact: true })
+  await expect(facts.locator('[data-feature="taste"] dd')).toHaveText('등록된 태그 없음')
+  await expect(facts.locator('[data-feature="aroma"] dd')).toHaveText('미확인')
+  await page.goto('/products/902')
+  await expect(facts.getByRole('link', { name: '출처 보기 (새 창)', exact: true })).toHaveAttribute('href', 'https://example.test/facts')
+})
+
 test('공개 특성 실패와 재시도는 가격·담기·후기 조회를 막지 않음', async ({ page, api }) => {
   api.features[901] = publicFacts(901, { volumeMl: 375 })
   let reads = 0
@@ -4837,7 +4851,7 @@ test('특성 응답 productId가 현재 상품과 다르면 다른SKU 정보를 
   await expect(facts.getByRole('button', { name: '특성 다시 불러오기', exact: true })).toBeVisible()
   await expect(facts.getByText('다른SKU 원문', { exact: true })).toHaveCount(0)
   await facts.getByRole('button', { name: '특성 다시 불러오기', exact: true }).click()
-  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('미확인')
+  await expect(facts.getByText('아직 확인된 상품 특성이 없습니다.', { exact: true })).toBeVisible()
 })
 
 for (const sourceUrl of ['javascript:window.featureSourceExecuted=true', 'https://private-user:private-pass@example.test', '//example.test/source']) {

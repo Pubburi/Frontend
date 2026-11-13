@@ -26,6 +26,10 @@ export function ProductFeatureDetails({ productId }: { productId: number }) {
   })
   const features = query.data
   const source = features ? publicSourceLink(features.sourceUrl) : null
+  const allUnknown = features && [
+    features.volumeMl, features.description, features.tasteTags, features.aromaTags,
+    features.sourceName, features.sourceUrl, features.sourceNote,
+  ].every((value) => value === null)
   return (
     <section className="product-features" aria-labelledby={heading}>
       <h2 id={heading}>상품 특성</h2>
@@ -36,6 +40,8 @@ export function ProductFeatureDetails({ productId }: { productId: number }) {
           <p>상품 특성을 불러오지 못했습니다. 상품 정보와 장바구니는 계속 이용할 수 있습니다.</p>
           <button className="btn btn-outline-dark btn-sm" onClick={() => query.refetch()}>특성 다시 불러오기</button>
         </div>
+      ) : allUnknown ? (
+        <p className="muted">아직 확인된 상품 특성이 없습니다.</p>
       ) : features ? (
         <dl className="product-feature-list">
           <FeatureRow name="용량" field="volume">
