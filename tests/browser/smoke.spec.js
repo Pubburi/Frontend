@@ -360,18 +360,30 @@ test('홈의 전체 둘러보기에서 기존 목록 검색도 그대로 사용�
   await info.attach('existing-search-path.json', { body: JSON.stringify({ path: ['/', '/products', '/products?q=시험 탁주'], keywordEntries: 1, productReads: api.calls.filter((call) => call.path === '/products').map((call) => call.query) }), contentType: 'application/json' })
 })
 
-for (const width of [1280, 390]) {
+for (const width of [1440, 390]) {
   test(`홈 직접 검색 ${width}px는 제출 전 조회 없이 검색어를 결과 URL·입력·요청으로 연결`, async ({ page, api }, info) => {
     const keyword = '시험 & 사케+100% / #?'
     api.catalog[0].name = keyword
     await page.setViewportSize({ width, height: 900 }); await page.goto('/')
     await expect(page.getByRole('heading', { name: '취향과 순간에 어울리는 한 잔', exact: true })).toBeVisible()
-    await expect.poll(() => page.locator('.hero-slide.active img').evaluate((node) => node.naturalWidth)).toBeGreaterThan(0)
+    const lead = page.getByRole('region', { name: '취향과 순간에 어울리는 한 잔', exact: true })
+    await expect(lead.locator('img')).toHaveCount(1)
+    const cover = lead.locator('img')
+    await expect(cover).toHaveAttribute('alt', '')
+    await expect.poll(() => cover.evaluate((node) => node.naturalWidth)).toBeGreaterThan(0)
     const screenshot = info.outputPath(`home-${width}.png`)
     await page.screenshot({ path: screenshot }); await info.attach(`home-${width}`, { path: screenshot, contentType: 'image/png' })
     const search = page.getByRole('search', { name: '홈 상품 검색', exact: true })
     expect(await search.count()).toBe(1)
     const input = search.getByLabel('상품 검색', { exact: true }), submit = search.getByRole('button', { name: '검색하기', exact: true })
+    await submit.focus()
+    await page.keyboard.press('Tab')
+    await expect(lead.getByRole('link', { name: '전체 주류 둘러보기', exact: true })).toBeFocused()
+    await page.keyboard.press('Tab')
+    const category = page.getByRole('link', { name: '탁주', exact: true })
+    await expect(category).toBeFocused()
+    await expect(category).toHaveAttribute('href', '/products?type=%ED%83%81%EC%A3%BC&sort=popular&page=1')
+    await expect(page.getByRole('button', { name: '입문', exact: true })).toBeVisible()
     await expect(input).toHaveAttribute('maxlength', '100')
     await input.fill(`  ${keyword}  `); await input.press('Tab'); await expect(submit).toBeFocused()
     await expect(page).toHaveURL('/')
@@ -384,6 +396,9 @@ for (const width of [1280, 390]) {
     await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue(keyword)
     await expect(page.locator('.product-card')).toHaveCount(1)
     expect(api.calls.filter((call) => call.path === '/products')).toEqual([expect.objectContaining({ method: 'GET', query: { q: keyword, sort: 'popular', page: '1', size: '12' } })])
+    await page.getByRole('heading', { level: 2, name: keyword, exact: true }).getByRole('link').press('Enter')
+    await expect(page).toHaveURL('/products/901')
+    await expect(page.getByRole('heading', { name: keyword, level: 1, exact: true })).toBeVisible()
     await info.attach('direct-search-path.json', { body: JSON.stringify({ path: ['/', '/products?q=' + keyword], keywordEntries: 1, intermediateCatalogPage: false, boxes }), contentType: 'application/json' })
   })
 }

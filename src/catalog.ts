@@ -1,7 +1,3 @@
-export const carouselImages = [
-  '/images/carousel/catalog-cover.webp',
-  ...Array.from({ length: 5 }, (_, i) => `/images/carousel/banner${i + 2}.webp`),
-]
 export const categories = [
   { image: '/images/category/탁주.webp', label: '탁주' },
   { image: '/images/category/청주.webp', label: '약 · 청주' },

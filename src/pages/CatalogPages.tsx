@@ -7,7 +7,7 @@ import {
 } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError, pageQuery } from '../services/api'
-import { categories, carouselImages } from '../catalog'
+import { categories } from '../catalog'
 import { useSession } from '../queries'
 import { useAccountCart } from '../state/accountCart'
 import { useUi } from '../state/ui'
@@ -43,7 +43,6 @@ import { reviewSummary, type ReviewPage } from '../reviewSummary'
 import './catalog-ux.css'
 
 export function HomePage() {
-  const [active, setActive] = useState(0)
   const products = useQuery<Product[]>({
     queryKey: ['catalog', 'popular'],
     queryFn: api.popularProducts,
@@ -64,21 +63,8 @@ export function HomePage() {
             전체 주류 둘러보기
           </Link>
         </div>
-        <div className="hero-carousel" role="group" aria-roledescription="carousel" aria-label="추천 주류">
-          {carouselImages.map((src, i) => (
-            <div key={src} className={`hero-slide ${i === active ? 'active' : ''}`} aria-hidden={i !== active}>
-              <Image src={src} loading={i === 0 ? 'eager' : 'lazy'} />
-            </div>
-          ))}
-          <button type="button" className="carousel-control prev" aria-label="이전 배너"
-            onClick={() => setActive((i) => (i + carouselImages.length - 1) % carouselImages.length)}>‹</button>
-          <button type="button" className="carousel-control next" aria-label="다음 배너"
-            onClick={() => setActive((i) => (i + 1) % carouselImages.length)}>›</button>
-          <div className="carousel-dots" aria-label="배너 선택">
-            {carouselImages.map((src, i) => <button key={src} type="button"
-              className={i === active ? 'active' : ''} aria-label={`${i + 1}번 배너 보기`}
-              aria-current={i === active ? 'true' : undefined} onClick={() => setActive(i)} />)}
-          </div>
+        <div className="catalog-home-cover">
+          <Image src="/images/carousel/catalog-cover.webp" alt="" loading="eager" />
         </div>
       </section>
       <section className="section-band catalog-home-categories">
