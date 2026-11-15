@@ -287,13 +287,6 @@ export function ProfilePage() {
         </Empty>
       </section>
     )
-  const grade = profile.data?.grade || {}
-  const stamps = profile.data?.user?.stamps ?? user?.stamps ?? 0
-  const progress = grade.stepMax
-    ? Math.min(100, Math.round((Number(grade.step || 0) / grade.stepMax) * 100))
-    : grade.to === 0
-      ? 100
-      : 0
   return (
     <section className="view profile-view profile-redesign">
       {profile.isPending ? (
@@ -304,33 +297,19 @@ export function ProfilePage() {
         </Empty>
       ) : (
         <>
-          <div className="profile-overview">
-            <section className="profile-hero">
-              <div>
-                <p className="section-kicker">마이 주점부리</p>
-                <h1>{profile.data?.user?.name || user?.name}님의 취향 기록</h1>
-                <p className="profile-account-id">{user?.id}</p>
-              </div>
-              <button className="btn btn-outline-dark" onClick={() => {
-                void profile.refetch()
-                void orders.refetch()
-              }}>
-                새로고침
-              </button>
-            </section>
-            <section className="grade-card" aria-label="회원 등급">
-              <div className="grade-copy">
-                <span className="badge gold-badge">{grade.title || '회원'}</span>
-                <h2>스탬프 {stamps}개</h2>
-                <p>{Number(grade.to) > 0 ? `다음 등급까지 ${grade.to}개 남았어요.` : '현재 최고 등급입니다.'}</p>
-              </div>
-              <div className="grade-progress" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}
-                aria-label={`등급 진행도 ${progress}%`}>
-                <div><span style={{ width: `${progress}%` }} /></div>
-                <small>{grade.step || 0} / {grade.stepMax || 0}</small>
-              </div>
-            </section>
-          </div>
+          <section className="profile-hero">
+            <div>
+              <p className="section-kicker">마이 주점부리</p>
+              <h1>{profile.data?.user?.name || user?.name}님의 취향 기록</h1>
+              <p className="profile-account-id">{user?.id}</p>
+            </div>
+            <button className="btn btn-outline-dark" onClick={() => {
+              void profile.refetch()
+              void orders.refetch()
+            }}>
+              새로고침
+            </button>
+          </section>
           <nav className="profile-shortcuts" aria-label="내 활동 바로가기">
             {[
               ['/preferences', '내 취향 설정', '추천에 쓰는 취향과 조건'],
@@ -660,7 +639,7 @@ export function AccountPage() {
         <ul>
           <li><strong>마음에 든 술</strong><span>찜해 두고 다음에 바로 찾아보세요.</span></li>
           <li><strong>기억하고 싶은 한 잔</strong><span>개인 취향 기록에 감상을 남기세요.</span></li>
-          <li><strong>주문과 스탬프</strong><span>마이페이지에서 함께 확인하세요.</span></li>
+          <li><strong>주문 내역</strong><span>시연 주문의 접수 상태와 주문 당시 금액을 확인하세요.</span></li>
         </ul>
       </aside>
     </section>
