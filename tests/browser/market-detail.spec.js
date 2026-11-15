@@ -52,17 +52,30 @@ async function facts(page, market) {
   await expect(page.locator('[data-market-field="latitude"]')).toHaveText(String(market.latitude))
   await expect(page.locator('[data-market-field="longitude"]')).toHaveText(String(market.longitude))
 }
-async function homeMarket(page, name) {
-  await page.getByRole('link', { name: '홈의 매장 목록', exact: true }).click()
-  await page.getByRole('link', { name: `${name} 상세 보기`, exact: true }).click()
-}
+const homeLink = (page) => page.getByRole('link', { name: '홈으로 돌아가기', exact: true })
+const homeSearch = (page) => page.getByRole('combobox', { name: '상품 검색', exact: true })
 
 for (const width of [1280, 390]) {
-  test(`public home keyboard/detail/refresh/reload/Back preserves exact coordinate0 at${width}`, async ({ page, fixture }) => {
+  test(`홈과 주요 메뉴는 ${width}px에서 시연 매장을 표시하거나 조회하지 않는다`, async ({ page, fixture }) => {
     await page.setViewportSize({ width, height: 900 })
-    await page.goto('/')
-    const link = page.getByRole('link', { name: `${initialMarkets[0].name} 상세 보기`, exact: true })
-    await link.focus(); await expect(link).toBeFocused(); await link.press('Enter')
+    await page.goto('/#stores')
+    await expect(page.getByRole('heading', { name: '취향과 순간에 어울리는 한 잔', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '추천 상품을 준비하고 있습니다', exact: true })).toBeVisible()
+    const menu = page.getByRole('button', { name: '메뉴 열기', exact: true })
+    if (await menu.isVisible()) {
+      await menu.focus()
+      await menu.press('Enter')
+      await expect(menu).toHaveAttribute('aria-expanded', 'true')
+    }
+    await expect(page.getByRole('link', { name: '전체 주류', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '주점부리 매장', exact: true })).toHaveCount(0)
+    await expect(page.locator('a[href^="/markets/"]')).toHaveCount(0)
+    expect(fixture.calls.filter((call) => /^\/markets(?:\/|$)/.test(call.path))).toEqual([])
+  })
+
+  test(`direct detail refresh/reload/Back preserves exact coordinate0 at ${width}px`, async ({ page, fixture }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/markets/901')
     await facts(page, initialMarkets[0])
     await expect(detail(page)).toContainText('시연용 매장 위치 정보입니다.')
     await expect(detail(page)).toContainText('매장 사진은 현재 제공되지 않습니다.')
@@ -77,21 +90,19 @@ for (const width of [1280, 390]) {
     gate.release()
     await facts(page, { ...initialMarkets[0], name: '현재 바뀐 매장명' })
     await expect(refresh).toBeFocused()
-    await homeMarket(page, initialMarkets[1].name); await facts(page, initialMarkets[1])
-    await page.goBack(); await expect(page.getByRole('heading', { name: '주점부리 매장', exact: true })).toBeVisible()
+    await homeLink(page).press('Enter')
+    await expect(homeSearch(page)).toBeVisible()
     await page.goBack(); await facts(page, initialMarkets[0])
     expect(fixture.reads(901)).toBe(3)
     await page.reload(); await facts(page, initialMarkets[0]); expect(fixture.reads(901)).toBe(4)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
   })
 
-  test(`full100character market name and keyboard actions stay inside${width}`, async ({ page, fixture }, testInfo) => {
+  test(`full100character market name and keyboard actions stay inside ${width}px`, async ({ page, fixture }, testInfo) => {
     const name = 'N'.repeat(100)
     fixture.markets[0].name = name
     await page.setViewportSize({ width, height: 900 })
-    await page.goto('/')
-    const link = page.getByRole('link', { name: `${name} 상세 보기`, exact: true })
-    await link.focus(); await link.press('Enter')
+    await page.goto('/markets/901')
     await facts(page, fixture.markets[0])
     const heading = page.getByRole('heading', { name, exact: true })
     const geometry = await heading.evaluate((node) => {
@@ -101,13 +112,12 @@ for (const width of [1280, 390]) {
     await testInfo.attach('market-name-geometry.json', { body: JSON.stringify(geometry), contentType: 'application/json' })
     expect(geometry.name).toBe(name); expect(geometry.document).toBeLessThanOrEqual(width)
     expect(geometry.rects.every((r) => r.left >= 0 && r.right <= width)).toBe(true)
-    const back = page.getByRole('link', { name: '홈의 매장 목록', exact: true })
+    const back = homeLink(page)
     await back.focus(); await back.press('Tab')
     await expect(page.getByRole('button', { name: '매장 정보 새로고침', exact: true })).toBeFocused()
     await page.keyboard.press('Shift+Tab'); await back.press('Enter')
-    await expect(page).toHaveURL('/#stores')
-    await expect(page.getByRole('heading', { name: '주점부리 매장', exact: true })).toBeFocused()
-    await expect(link).toBeVisible()
+    await expect(page).toHaveURL('/')
+    await expect(page.getByRole('search', { name: '홈 상품 검색', exact: true })).toBeVisible()
   })
 }
 
@@ -143,7 +153,9 @@ test('403 and503 are explicit read failures;retry is single and retains keyboard
 test('cached re-entry404 hides old facts and offers home or an explicit current read', async ({ page, fixture }) => {
   await page.goto('/markets/901'); await facts(page, initialMarkets[0])
   fixture.details.set(901, { status: 404 })
-  await homeMarket(page, initialMarkets[0].name)
+  await homeLink(page).click()
+  await expect(homeSearch(page)).toBeVisible()
+  await page.goBack()
   await expect(page.getByRole('heading', { name: '매장을 찾을 수 없습니다', exact: true })).toBeVisible()
   await expect(detail(page).getByRole('heading', { name: initialMarkets[0].name, exact: true })).toHaveCount(0)
   await expect(page.locator('[data-market-field]')).toHaveCount(0)
@@ -154,17 +166,17 @@ test('cached re-entry404 hides old facts and offers home or an explicit current 
 })
 
 for (const status of [200, 503]) {
-  test(`late previous-ID${status} cannot replace current market or user focus`, async ({ page, fixture }) => {
+  test(`late market detail response ${status} leaves current home and search focus intact`, async ({ page, fixture }) => {
     const gate = fixture.hold('/markets/901', { status, data: initialMarkets[0] })
     await page.goto('/markets/901'); await expect.poll(() => gate.started).toBe(true)
     await expect(page.getByRole('status', { name: '현재 매장 정보를 확인하는 중입니다.', exact: true })).toBeVisible()
-    await homeMarket(page, initialMarkets[1].name); await facts(page, initialMarkets[1])
-    const back = page.getByRole('link', { name: '홈의 매장 목록', exact: true })
-    await back.focus()
+    await homeLink(page).click()
+    const search = homeSearch(page)
+    await search.focus()
     const settled = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/markets/901')
     gate.release(); await (await settled).finished()
-    await facts(page, initialMarkets[1]); await expect(back).toBeFocused()
-    await expect(detail(page)).not.toContainText(initialMarkets[0].name)
+    await expect(search).toBeFocused()
+    await expect(detail(page)).toHaveCount(0)
   })
 }
 
@@ -182,10 +194,10 @@ test('mismatched response ID is an error and missing coordinates never become fa
 
 test('cached offline re-entry does not present old market facts as current', async ({ page, fixture }) => {
   await page.goto('/markets/901'); await facts(page, initialMarkets[0])
-  await page.getByRole('link', { name: '홈의 매장 목록', exact: true }).click()
-  await expect(page.getByRole('link', { name: `${initialMarkets[0].name} 상세 보기`, exact: true })).toBeVisible()
+  await homeLink(page).click()
+  await expect(homeSearch(page)).toBeVisible()
   await page.context().setOffline(true)
-  await page.getByRole('link', { name: `${initialMarkets[0].name} 상세 보기`, exact: true }).click()
+  await page.goBack()
   await expect(page.getByRole('heading', { name: '연결 후 매장 정보를 확인해 주세요', exact: true })).toBeVisible()
   await expect(page.locator('[data-market-field]')).toHaveCount(0)
   expect(fixture.reads(901)).toBe(1)
@@ -200,7 +212,7 @@ test('public detail does not mutate cart,recent history or private account stora
   const cart = JSON.stringify([{ product: { id: 7, name: '원문 상품', price: 0, abv: 0, type: '탁주', orderCount: 0, img: null }, quantity: 2 }])
   const recent = JSON.stringify({ version: 1, entries: [{ id: 7, viewedAt: Date.now() - 300000 }] })
   await page.evaluate(({ cart, recent }) => { localStorage.setItem('pubburi-cart', cart); localStorage.setItem('pubburi-recent-products-v1', recent) }, { cart, recent })
-  await page.getByRole('link', { name: `${initialMarkets[0].name} 상세 보기`, exact: true }).click()
+  await page.goto('/markets/901')
   await facts(page, initialMarkets[0])
   expect(await page.evaluate(() => localStorage.getItem('pubburi-cart'))).toBe(cart)
   expect(await page.evaluate(() => localStorage.getItem('pubburi-recent-products-v1'))).toBe(recent)

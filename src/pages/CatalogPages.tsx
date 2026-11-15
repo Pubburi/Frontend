@@ -32,7 +32,7 @@ import {
 import { buildProductQuery, parseProductQuery, removeProductCondition } from '../utils/productFilters'
 import { productRangeFields, validateProductRanges, type ProductRangeKey, type ProductRangeErrors } from '../productRanges'
 import { money, productImage } from '../utils/format'
-import type { Market, Page, Product, Review } from '../types'
+import type { Page, Product, Review } from '../types'
 import { ContentRecommendations } from '../components/ContentRecommendations'
 import { SimilarProducts } from '../components/SimilarProducts'
 import { RecommendationFeedback } from '../components/RecommendationFeedback'
@@ -46,10 +46,6 @@ export function HomePage() {
   const products = useQuery<Product[]>({
     queryKey: ['catalog', 'popular'],
     queryFn: api.popularProducts,
-  })
-  const markets = useQuery<Page<Market>>({
-    queryKey: ['catalog', 'markets'],
-    queryFn: () => api.markets(),
   })
   return (
     <section className="view home-view catalog-home">
@@ -118,42 +114,6 @@ export function HomePage() {
           </div>
         ) : (
           <Empty title="추천 상품을 준비하고 있습니다" />
-        )}
-      </section>
-      <section className="section-band">
-        <div className="section-heading">
-          <div>
-            <p className="section-kicker">Stores</p>
-            <h2 id="stores" tabIndex={-1}>주점부리 매장</h2>
-            <p className="muted heading-description">
-              가까운 매장의 위치 정보를 확인하세요.
-            </p>
-          </div>
-        </div>
-        {markets.isPending ? (
-          <Loading label="매장 정보를 불러오는 중입니다." />
-        ) : markets.isError ? (
-          <Empty title="매장 정보를 불러오지 못했습니다">
-            <button onClick={() => markets.refetch()}>다시 시도</button>
-          </Empty>
-        ) : markets.data.items.length ? (
-          <div className="market-grid">
-            {markets.data.items.map((market) => (
-              <article key={market.id} className="market-row">
-                <div>
-                  <span className="eyebrow">Store {market.id}</span>
-                  <strong>{market.name}</strong>
-                </div>
-                <span className="muted">
-                  {Number(market.latitude).toFixed(5)},{' '}
-                  {Number(market.longitude).toFixed(5)}
-                </span>
-                <Link className="text-link" to={`/markets/${market.id}`} aria-label={`${market.name} 상세 보기`}>매장 상세 보기 →</Link>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <Empty title="등록된 매장이 없습니다" />
         )}
       </section>
     </section>

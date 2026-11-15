@@ -35,7 +35,7 @@ function MarketDetails({ rawId }: { rawId: string | undefined }) {
           <p>시연용 매장 위치 정보입니다.</p>
         </div>
         <div className="market-detail-actions">
-          <Link className="btn btn-outline-dark" to="/#stores">홈의 매장 목록</Link>
+          <Link className="btn btn-outline-dark" to="/">홈으로 돌아가기</Link>
           {id !== null && <button className="btn btn-outline-dark"
             aria-disabled={waiting}
             onClick={() => { if (!waiting) void market.refetch() }}>
@@ -44,7 +44,7 @@ function MarketDetails({ rawId }: { rawId: string | undefined }) {
         </div>
       </div>
       {id === null ? (
-        <Empty title="매장 번호를 확인해 주세요" description="홈의 매장 목록에서 다시 선택해 주세요." />
+        <Empty title="매장 번호를 확인해 주세요" description="입력한 매장 상세 주소를 확인해 주세요." />
       ) : paused ? (
         <Empty title="연결 후 매장 정보를 확인해 주세요" description="연결이 복구되면 현재 매장 정보를 다시 확인합니다." />
       ) : waiting ? (
@@ -55,7 +55,7 @@ function MarketDetails({ rawId }: { rawId: string | undefined }) {
             ? '매장을 찾을 수 없습니다'
             : '매장 정보를 불러오지 못했습니다'}
           description={market.error instanceof ApiClientError && market.error.status === 404
-            ? '삭제되었거나 제공되지 않는 매장입니다. 홈의 매장 목록에서 다시 선택해 주세요.'
+            ? '삭제되었거나 제공되지 않는 매장입니다.'
             : '현재 정보를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.'}
         />
       ) : market.data ? (
