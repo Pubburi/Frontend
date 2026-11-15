@@ -2,7 +2,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiClientError } from '../services/api'
 import { Empty, Loading } from '../components/ui'
-import { marketCoordinate, parseMarketId } from '../markets'
+import { parseMarketId } from '../markets'
 import type { Market } from '../types'
 
 export default function MarketDetailPage() {
@@ -32,7 +32,7 @@ function MarketDetails({ rawId }: { rawId: string | undefined }) {
         <div>
           <p className="section-kicker">Store</p>
           <h1>매장 상세</h1>
-          <p>시연용 매장 위치 정보입니다.</p>
+          <p>시연용 매장 정보입니다.</p>
         </div>
         <div className="market-detail-actions">
           <Link className="btn btn-outline-dark" to="/">홈으로 돌아가기</Link>
@@ -66,10 +66,6 @@ function MarketDetails({ rawId }: { rawId: string | undefined }) {
               <h2>{market.data.name}</h2>
             </div>
           </div>
-          <dl className="market-coordinates">
-            <div><dt>위도</dt><dd data-market-field="latitude">{marketCoordinate(market.data.latitude, 'latitude')}</dd></div>
-            <div><dt>경도</dt><dd data-market-field="longitude">{marketCoordinate(market.data.longitude, 'longitude')}</dd></div>
-          </dl>
           <p className="muted">매장 사진은 현재 제공되지 않습니다.</p>
           <p className="muted">실제 영업·재고·예약·결제는 제공하지 않습니다.</p>
         </article>

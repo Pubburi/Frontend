@@ -4,10 +4,3 @@ export function parseMarketId(value: string | undefined): number | null {
   const id = Number(value)
   return id <= 2147483647 ? id : null
 }
-
-export function marketCoordinate(value: unknown, axis: 'latitude' | 'longitude'): string {
-  const limit = axis === 'latitude' ? 90 : 180
-  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit
-    ? String(value)
-    : '미확인'
-}

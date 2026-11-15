@@ -94,6 +94,11 @@ test('admin list link and deleted-account order use fresh ADMIN authority', asyn
   fixture.user = users[2]; fixture.orders[0].userId = null
   await page.goto('/admin?tab=orders'); await page.getByRole('link', { name: '주문 901 상세 보기', exact: true }).click(); await facts(page)
   await expect(view(page)).toContainText('탈퇴한 회원'); await expect(page.getByRole('link', { name: '관리자 주문 목록', exact: true })).toHaveAttribute('href', '/admin?tab=orders')
+  await expect(view(page)).toContainText('포장 주문')
+  await page.getByRole('link', { name: '관리자 주문 목록', exact: true }).press('Enter')
+  await expect(page).toHaveURL('/admin?tab=orders')
+  await expect(page.getByRole('link', { name: '주문 901 상세 보기', exact: true })).toBeVisible()
+  await page.goBack(); await facts(page)
   fixture.user = { ...users[2], role: 'USER' }; await refresh(page).click(); await expect(page.getByRole('heading', { name: '주문을 볼 권한이 없습니다', exact: true })).toBeVisible(); await expect(page.locator('.order-item-line')).toHaveCount(0)
 })
 for (const status of [403, 404, 503]) test(`current${status} hides old facts and retries explicitly without auth/logout writes`, async ({ page, fixture }) => {

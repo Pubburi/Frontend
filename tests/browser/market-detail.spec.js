@@ -49,8 +49,6 @@ const detail = (page) => page.locator('.market-detail-view')
 async function facts(page, market) {
   await expect(detail(page)).toHaveAttribute('data-market-id', String(market.id))
   await expect(page.getByRole('heading', { name: market.name, exact: true })).toBeVisible()
-  await expect(page.locator('[data-market-field="latitude"]')).toHaveText(String(market.latitude))
-  await expect(page.locator('[data-market-field="longitude"]')).toHaveText(String(market.longitude))
 }
 const homeLink = (page) => page.getByRole('link', { name: '홈으로 돌아가기', exact: true })
 const homeSearch = (page) => page.getByRole('combobox', { name: '상품 검색', exact: true })
@@ -73,11 +71,12 @@ for (const width of [1280, 390]) {
     expect(fixture.calls.filter((call) => /^\/markets(?:\/|$)/.test(call.path))).toEqual([])
   })
 
-  test(`direct detail refresh/reload/Back preserves exact coordinate0 at ${width}px`, async ({ page, fixture }) => {
+  test(`직접 주소의 새로고침·다시 불러오기·뒤로 가기에서 매장 이름만 표시 ${width}px`, async ({ page, fixture }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/markets/901')
     await facts(page, initialMarkets[0])
-    await expect(detail(page)).toContainText('시연용 매장 위치 정보입니다.')
+    await expect(detail(page)).toContainText('시연용 매장 정보입니다.')
+    await expect(detail(page)).not.toContainText(/위도|경도|127\.7654321/)
     await expect(detail(page)).toContainText('매장 사진은 현재 제공되지 않습니다.')
     await expect(detail(page).locator('img')).toHaveCount(0)
     const refresh = page.getByRole('button', { name: '매장 정보 새로고침', exact: true })
@@ -85,7 +84,7 @@ for (const width of [1280, 390]) {
     await refresh.focus(); await refresh.press('Enter')
     await expect.poll(() => gate.started).toBe(true)
     await expect(refresh).toBeFocused(); await expect(refresh).toHaveAttribute('aria-disabled', 'true')
-    await expect(page.locator('[data-market-field]')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: initialMarkets[0].name, exact: true })).toHaveCount(0)
     await refresh.press('Enter'); expect(fixture.reads(901)).toBe(2)
     gate.release()
     await facts(page, { ...initialMarkets[0], name: '현재 바뀐 매장명' })
@@ -95,6 +94,7 @@ for (const width of [1280, 390]) {
     await page.goBack(); await facts(page, initialMarkets[0])
     expect(fixture.reads(901)).toBe(3)
     await page.reload(); await facts(page, initialMarkets[0]); expect(fixture.reads(901)).toBe(4)
+    await expect(detail(page)).not.toContainText(/위도|경도|127\.7654321/)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
   })
 
@@ -125,7 +125,7 @@ test('malformed IDs and repeated path components do not request any market detai
   for (const id of ['0', '01', '-1', '+1', '1e0', '1.0', '2147483648', '99999999999999999999999999999', '1/2']) {
     await page.goto(`/markets/${id}`)
     await expect(page.getByRole('heading', { name: id === '1/2' ? '페이지를 찾을 수 없습니다' : '매장 번호를 확인해 주세요', exact: true })).toBeVisible()
-    await expect(page.locator('[data-market-field]')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: initialMarkets[0].name, exact: true })).toHaveCount(0)
   }
   expect(fixture.calls.filter((call) => /^\/markets\//.test(call.path))).toEqual([])
 })
@@ -158,7 +158,6 @@ test('cached re-entry404 hides old facts and offers home or an explicit current 
   await page.goBack()
   await expect(page.getByRole('heading', { name: '매장을 찾을 수 없습니다', exact: true })).toBeVisible()
   await expect(detail(page).getByRole('heading', { name: initialMarkets[0].name, exact: true })).toHaveCount(0)
-  await expect(page.locator('[data-market-field]')).toHaveCount(0)
   fixture.details.delete(901)
   await page.getByRole('button', { name: '매장 정보 다시 시도', exact: true }).click()
   await facts(page, initialMarkets[0])
@@ -180,16 +179,15 @@ for (const status of [200, 503]) {
   })
 }
 
-test('mismatched response ID is an error and missing coordinates never become fabricated zero', async ({ page, fixture }) => {
+test('응답의 매장 번호가 다르면 차단하고 올바른 응답에서는 좌표 없이 매장명을 표시한다', async ({ page, fixture }) => {
   fixture.details.set(901, { status: 200, data: initialMarkets[1] })
   await page.goto('/markets/901')
   await expect(page.getByRole('heading', { name: '매장 정보를 불러오지 못했습니다', exact: true })).toBeVisible()
-  await expect(page.locator('[data-market-field]')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: initialMarkets[1].name, exact: true })).toHaveCount(0)
   fixture.details.set(901, { status: 200, data: { ...initialMarkets[0], latitude: null, longitude: 999 } })
   await page.getByRole('button', { name: '매장 정보 다시 시도', exact: true }).click()
-  await expect(page.getByRole('heading', { name: initialMarkets[0].name, exact: true })).toBeVisible()
-  await expect(page.locator('[data-market-field="latitude"]')).toHaveText('미확인')
-  await expect(page.locator('[data-market-field="longitude"]')).toHaveText('미확인')
+  await facts(page, initialMarkets[0])
+  await expect(detail(page)).not.toContainText(/위도|경도|미확인|999/)
 })
 
 test('cached offline re-entry does not present old market facts as current', async ({ page, fixture }) => {
@@ -199,11 +197,12 @@ test('cached offline re-entry does not present old market facts as current', asy
   await page.context().setOffline(true)
   await page.goBack()
   await expect(page.getByRole('heading', { name: '연결 후 매장 정보를 확인해 주세요', exact: true })).toBeVisible()
-  await expect(page.locator('[data-market-field]')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: initialMarkets[0].name, exact: true })).toHaveCount(0)
   expect(fixture.reads(901)).toBe(1)
-  fixture.details.set(901, { status: 200, data: { ...initialMarkets[0], longitude: 127.123456789 } })
+  const currentMarket = { ...initialMarkets[0], name: '연결 후 매장명' }
+  fixture.details.set(901, { status: 200, data: currentMarket })
   await page.context().setOffline(false)
-  await facts(page, { ...initialMarkets[0], longitude: 127.123456789 })
+  await facts(page, currentMarket)
   expect(fixture.reads(901)).toBe(2)
 })
 
