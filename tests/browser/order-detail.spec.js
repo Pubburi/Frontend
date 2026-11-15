@@ -54,7 +54,13 @@ async function signIn(page, id) { await page.locator('.user-pill').getByRole('li
 
 for (const width of [1280, 390]) {
   test(`profile link/current state refresh/reload/Back and persistent keyboard at${width}`, async ({ page, fixture }) => {
+    fixture.user = { ...users[0], stamps: 37 }
     await page.setViewportSize({ width, height: 900 }); await page.goto('/profile')
+    await expect(page.getByRole('heading', { name: '회원A님의 취향 기록', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '내 취향 설정', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '내 찜 목록', exact: true })).toBeVisible()
+    await expect(page.getByRole('progressbar', { name: /등급 진행도/ })).toHaveCount(0)
+    await expect(page.getByRole('main')).not.toContainText(/스탬프|씨앗|다음 등급/)
     const link = page.getByRole('link', { name: '주문 901 상세 보기', exact: true }); await link.focus(); await link.press('Enter'); await facts(page)
     await expect(view(page)).toContainText('실제 결제·배송·예약 없이 접수한 시연 주문입니다.')
     await expect(view(page)).toContainText('단가 7,777원'); await expect(page.locator('.order-detail-total')).toHaveText('15,554원')

@@ -85,11 +85,6 @@
 .account-redesign .account-story li::before { content: none; }
 .account-redesign .account-story li span { color: #e4ebe6; font-size: .9rem; line-height: 1.55; }
 
-.profile-redesign .profile-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(230px, 1fr);
-  gap: 14px;
-}
 .profile-redesign .profile-hero {
   align-items: start;
   flex-wrap: wrap;
@@ -100,14 +95,6 @@
 .profile-redesign .profile-hero h1 { font-size: clamp(26px, 4vw, 42px); }
 .profile-redesign .profile-hero .btn { min-height: 44px; width: auto; }
 .profile-redesign .profile-hero .profile-account-id { margin-top: 8px; overflow-wrap: anywhere; }
-.profile-redesign .grade-card {
-  grid-template-columns: minmax(0, 1fr);
-  align-content: center;
-  gap: 12px;
-  min-width: 0;
-  border-radius: 18px;
-}
-.profile-redesign .grade-copy h2 { font-size: clamp(22px, 3vw, 30px); }
 .profile-redesign .profile-shortcuts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 164px), 1fr));
@@ -231,8 +218,7 @@
 }
 
 @media (max-width: 720px) {
-  .account-redesign.account-layout,
-  .profile-redesign .profile-overview { grid-template-columns: minmax(0, 1fr); }
+  .account-redesign.account-layout { grid-template-columns: minmax(0, 1fr); }
   .account-redesign .account-story h2 { font-size: clamp(23px, 5vw, 30px); }
   .admin-redesign .admin-tabs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 84px), 1fr)); }
   .admin-redesign .admin-tabs button { padding-inline: 8px; }

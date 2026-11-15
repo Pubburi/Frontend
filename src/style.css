@@ -944,12 +944,6 @@ main select:focus {
   border-color: var(--line);
 }
 
-.gold-badge {
-  color: #66470b;
-  background: #f7e7b5;
-  border-color: #e8cc78;
-}
-
 .purchase-box {
   display: flex;
   justify-content: space-between;
@@ -1157,24 +1151,6 @@ main select:focus {
 .profile-hero p { color: #e2eae5; }
 .profile-hero .btn { color: white; border-color: rgba(255,255,255,.65); }
 
-.grade-card {
-  display: grid;
-  grid-template-columns: minmax(220px, .7fr) 1fr;
-  align-items: center;
-  gap: 28px;
-  padding: 24px;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-}
-
-.grade-copy h2 { margin: 10px 0 2px; font-size: 28px; }
-.grade-copy p { margin: 0; color: var(--muted); }
-.grade-progress { display: grid; gap: 7px; }
-.grade-progress > div { overflow: hidden; height: 12px; background: #e6eae5; border-radius: 999px; }
-.grade-progress > div span { display: block; height: 100%; background: linear-gradient(90deg, var(--forest), var(--gold)); border-radius: inherit; }
-.grade-progress small { color: var(--muted); text-align: right; }
-
 .profile-order-row { grid-template-columns: 1fr; gap: 14px; }
 .order-summary-head { display: flex; justify-content: space-between; align-items: start; gap: 18px; }
 .order-summary-head > div { display: grid; gap: 5px; }
@@ -1379,7 +1355,6 @@ main select:focus {
   .comment-form .btn { width: 100%; }
   .account-layout { grid-template-columns: 1fr; }
   .account-story { min-height: 360px; }
-  .grade-card { grid-template-columns: 1fr; }
   .admin-section-heading, .shop-intro, .profile-hero { align-items: flex-start; flex-direction: column; }
 }
 

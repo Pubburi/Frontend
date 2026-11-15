@@ -822,7 +822,11 @@ test('세션 조회 장애는 비로그인으로 오인하지 않고 재시도�
 
 test('가입·중복 확인·로그인 복귀와 계정 전환 시 비공개 캐시 분리', async ({ page, api }) => {
   await page.goto('/account?redirect=/profile')
+  const accountStory = page.getByRole('complementary', { name: '발견한 취향을 한곳에 모으세요', exact: true })
+  await expect(accountStory).toContainText('시연 주문의 접수 상태와 주문 당시 금액을 확인하세요.')
+  await expect(accountStory).not.toContainText(/스탬프|등급/)
   await page.locator('.segmented').getByRole('button', { name: '회원가입', exact: true }).click()
+  await expect(accountStory).not.toContainText(/스탬프|등급/)
   await page.getByLabel(/^아이디/).fill('new-member')
   await page.getByRole('button', { name: '중복 확인', exact: true }).click()
   await expect(page.getByText('사용할 수 있는 아이디입니다.')).toBeVisible()
