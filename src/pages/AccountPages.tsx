@@ -72,11 +72,6 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
         navigate('/profile')
     }
   }
-  const help = {
-    TAKEOUT: '준비가 완료되면 매장에서 바로 찾아갈 수 있어요.',
-    ONLINE: '온라인 주문으로 접수하며 상세 요청은 메모에 남겨주세요.',
-    OFFLINE: '매장 테이블에서 주문할 때 테이블 번호를 입력해 주세요.',
-  }[cart.orderForm.orderType]
   return (
     <section className="view cart-view">
       <div className="shop-intro compact-intro purchase-intro">
@@ -168,7 +163,6 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
                   <option value="ONLINE">온라인 주문</option>
                   <option value="OFFLINE">매장 주문</option>
                 </select>
-                <small>{help}</small>
               </label>
               <label className="field-group">
                 <span>테이블·요청 사항 <small>선택</small></span>
@@ -202,7 +196,7 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
                   ? '로그인 상태를 확인하는 동안 주문을 기다려 주세요.'
                   : session.isError ? '로그인 상태를 확인하지 못했습니다. 장바구니와 요청 사항은 유지됩니다.' : authorityBlocked ? '로그인 상태를 다시 확인한 뒤 주문해 주세요. 기기 입력은 유지됩니다.' : ''}</span>
                 {(checkingSession || session.isError) && <br />}
-                실제 결제 없이 데모 주문으로 접수합니다.
+                시연용 주문입니다. 실제 결제와 매장 수령은 지원하지 않습니다.
               </p>
             </form>
           </aside>

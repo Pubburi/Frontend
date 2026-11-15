@@ -114,7 +114,7 @@ export function AccountCartView({ account }: { account: Account }) {
             {unsaved && <p className="purchase-feedback" role="status">바꾼 수량을 먼저 저장한 뒤 주문해 주세요. 금액은 저장 수량 기준입니다.</p>}
             {requestLength > 20 && <p className="purchase-feedback" role="status">요청 사항을 20자 이내로 줄여 주세요.</p>}
             <button className="btn btn-gold btn-wide" disabled={checkoutBlocked}>{total === null ? '금액 미확인 · 주문할 수 없음' : `${money(total)}원 주문하기`}</button>
-            <p className="muted">실제 결제 없이 데모 주문을 접수합니다. 접수된 수량만 장바구니에서 빠집니다.</p>
+            <p className="muted">시연용 주문입니다. 실제 결제와 매장 수령은 지원하지 않습니다. 접수된 수량만 장바구니에서 빠집니다.</p>
           </form>
         </aside>
       </div> : <Empty title="계정 장바구니가 비어 있습니다"><Link className="btn btn-dark" to="/products">전체 주류 보기</Link></Empty>)}

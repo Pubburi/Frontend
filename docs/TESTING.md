@@ -39,7 +39,7 @@ npm run test:browser -- tests/browser/admin-edit-focus.spec.js
 | 비공개 기록 | 상세 바로 작성·본인 목록/수정/삭제, 경험/관심·평점0/null·태그null/[]·개인 원문·상품 삭제 보존, revision409/불확실 결과 복구·계정/HTTP 수명, 읽기/쓰기401의 목록 전체 차폐·같은 인증 조회의DOM차폐/초안 보존·인증세대 전환 폐기 | [본인 기록](../tests/browser/notebook.spec.js) |
 | 계정·최근 상품 | 같은/다른 계정·ABA, 현재 query/location·cold401/paused·불확실 쓰기 차폐, 비밀 입력/72바이트·저장 거부·메모리 정책 | [계정 설정](../tests/browser/account-settings.spec.js), [최근 상품](../tests/browser/recent-products.spec.js) |
 | 상품 비교 | 반복 URL 최대4개·직접/잘못된 주소·현재 정보/개별 오류·빠른 Back·전체 해제·카트/기록 보존 | [비교](../tests/browser/product-comparison.spec.js) |
-| 매장·데모 주문 | strict Java int·현재 권위/소유·401/403/404·snapshot/삭제 이력·실제0/미확인·사진 미제공 | [매장](../tests/browser/market-detail.spec.js), [주문](../tests/browser/order-detail.spec.js) |
+| 매장·데모 주문 | strict Java int·현재 권위/소유·401/403/404·snapshot/삭제 이력·실제0/미확인·공개 상세 좌표 제외 | [매장](../tests/browser/market-detail.spec.js), [주문](../tests/browser/order-detail.spec.js) |
 | 관리자 | 탭/페이지·삭제/저장 이후 초안 수명·권한/오류·소수 입력·회원 편집 취소/저장 후 현재 행 복귀·확인창 focus·허용100자 전체 이름과 조작 수용 | [편집 진입](../tests/browser/admin-edit-focus.spec.js), [회원 편집 복귀](../tests/browser/admin-member-return.spec.js), [CRUD·경합](../tests/browser/smoke.spec.js) |
 
 ## 핵심 데이터·권한 계약
@@ -57,6 +57,6 @@ npm run test:browser -- tests/browser/admin-edit-focus.spec.js
 - 상세 유사 상품은 [제공자 설명 계약](https://github.com/Pubburi/Backend/blob/main/docs/CONTENT-RECOMMENDATIONS.md#상품-상세의-유사-상품)의 `includeExplanations=true`를 명시한다. 설명 key가 없는 구 응답은 링크만 표시하고, key가 있는 응답은 전체 후보·설명의 ID/순서와 현재 상세의 기준 ID·R04 사실/단위를 함께 검수한다. 잘못된 설명은 링크까지 차폐하며 상위 근거의 합을 점수/확률로 만들지 않는다. 재확인 중·빈 값·오류와 늦은 이전 상세를 구분하고 기존 수량/후기 입력·담기를 보존한다.400에 기본 조건으로 자동 재요청하지 않는다.
 - 홈의 취향 탐색은 별도의 명시 요청에 현재 계정과 경로를 결속한다. 짧은 양수 결과의 서버 선택 순서와 실제 근거, 후보 부족·기준 미달·장애를 구분한다. 로컬 카드는 기존 피드백의 쓰기 수명과 복구를 재사용하며 확인한 관심 없음은 해당 카드에서 바로 반영한다. 진행 중인 같은 계정의 피드백을 확인한 뒤 새 탐색을 읽는다.
 - 홈 테마는 현재 로컬 검수 상품의 도수·용량 기준과 순서를 확인한다. 현재 홈 기록에 선택을 묶고 첫 선택에서 전체 테마를 읽는다. 화면 안 전환에서는 받은 목록을 사용하고 상세에서 뒤로 가면 선택을 복원해 최신 목록을 읽는다. 빈 테마, 권위 미구성, 409를 각각 표시하고 다시 확인 중에도 버튼의 키보드 포커스를 보존한다.
-- 주문 금액은 서버 snapshot/추정/미확인을 구분하며 현재 상품 가격으로 과거 주문을 재계산하지 않는다. 삭제된 상품/회원의 이력과 실제0·null·검수[]를 보존한다. 매장 위치/주문 상태는 DEMO이며 사진·주소·재고·예약·결제를 만들어내지 않는다.
+- 주문 금액은 서버 snapshot/추정/미확인을 구분하며 현재 상품 가격으로 과거 주문을 재계산하지 않는다. 삭제된 상품/회원의 이력과 실제0·null·검수[]를 보존한다. 공개 매장 상세는 좌표 없이 이름을 표시하고 주문 폼은 실제 결제와 매장 수령을 지원하지 않음을 안내한다.
 
 순수 계약·상태 검사는 `src/**/*.test.*`에 둔다. 응답 순서/오프라인/task gate는 결정적 회귀 조건이며 자연 오류율·시간 성능으로 표시하지 않는다. 현재 기능/인수 범위는 [계획](ROADMAP.md), 변경별 실행 결과와 과거 실제 서버 근거는 해당 Git/PR에서 확인한다. 문서에 테스트 총수·run별 완료 로그를 누적하지 않는다.
