@@ -1,7 +1,7 @@
 import { expect, test as base } from '@playwright/test'
 import { openCatalogFilters } from './catalog-filters'
 
-// Authored contract fixtures, not actual product or recommendation evidence.
+// Authored fixtures exercise the catalog filter contract.
 const product = (id, name, price, abv) => ({ id, name, price, abv, type: '탁주', img: null, orderCount: 0 })
 const products = [
   product(1200, '범위 영점', 0, 0),

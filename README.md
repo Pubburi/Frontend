@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/brand/pubburi.webp" alt="주점부리" width="96" />
+  <img src="public/images/icon/mainIcon.webp" alt="주점부리" width="96" />
   <h1>주점부리 · Frontend</h1>
   <a href="https://github.com/Pubburi/Frontend/actions/workflows/ci.yml"><img src="https://github.com/Pubburi/Frontend/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
 </div>
@@ -30,7 +30,7 @@
 ## 🥃 현재 기능과 범위
 
 - 상품을 주종·가격·도수·맛과 향으로 찾습니다. 검색 결과가 없으면 다른 검색어를 제안합니다. 최대 네 상품의 최신 가격과 확인된 특성을 비교할 수 있습니다.
-- 홈에서 입문·선물·음식에 맞는 상품을 봅니다. 저장한 취향이 있으면 추천 이유를 확인하거나 다른 후보를 요청할 수 있습니다.
+- 홈에서 도수와 용량 기준으로 입문·선물·음식에 맞는 상품을 둘러봅니다.
 - 회원은 취향과 계정 정보를 수정하고, 찜한 상품과 최근 본 상품을 다시 엽니다. 비회원 열람 기록은 기기에 최대 20개를 30일간, 회원 기록은 로그인 중에만 보관합니다.
 - 계정 장바구니와 기기 장바구니를 선택해 합칩니다. 데모 주문을 접수한 뒤 주문 당시 금액과 처리 상태를 확인합니다.
 - 공개 후기를 작성하거나 나만 보는 경험과 관심을 기록합니다. 주문 처리와 후기 삭제는 내부 알림에서 확인합니다.
@@ -106,7 +106,7 @@ recoveries.delete(scope.id)
 
 ## 🚀 로컬 실행
 
-Node.js 24와 실행 중인 Backend가 필요합니다. 세 서버와 DB를 함께 실행하는 방법은 [로컬 통합 실행](https://github.com/Pubburi/Backend/blob/main/docs/LOCAL-DEVELOPMENT.md)에 있습니다.
+Node.js 24와 실행 중인 Backend가 필요합니다. Backend와 데이터베이스는 해당 저장소의 실행 안내를 따릅니다. [Backend](https://github.com/Pubburi/Backend)
 
 ```bash
 cp .env.example .env
@@ -129,10 +129,10 @@ npx playwright install chromium
 npm run check
 ```
 
-검증 절차는 [테스트·CI 안내](docs/TESTING.md)에 있습니다. main은 `frontend-ci`를 통과하고 최신 main을 반영한 PR을 Squash merge합니다. 자동화 PR은 최신 커밋의 Codex 리뷰와 대화 해결을 확인합니다. [협업 기준](CONTRIBUTING.md)
+`npm run check`는 의존성·이미지·타입·단위 테스트·프로덕션 빌드와 Chromium 흐름을 검증합니다. main은 `frontend-ci`를 통과하고 최신 main을 반영한 PR을 Squash merge합니다. 자동화 PR은 최신 커밋의 Codex 리뷰와 대화 해결을 확인합니다. [협업 기준](CONTRIBUTING.md)
 
 <a id="roadmap"></a>
 
 ## 🗺️ 개발 계획
 
-필수 MVP 기능 R01–R08과 F01–F12의 검증 기한은 **2026년 12월 31일**, 최종 인계일은 **2027년 1월 15일**입니다. 날짜는 한국 시간 기준입니다. 기능별 상태와 완료 기준은 [프론트 개발 계획](docs/ROADMAP.md)에서 확인할 수 있습니다.
+MVP 검증 기한은 **2026년 12월 31일**, 최종 인계일은 **2027년 1월 15일**입니다. 날짜는 한국 시간 기준입니다.

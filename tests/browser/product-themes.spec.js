@@ -50,7 +50,6 @@ const test = base.extend({
         return route.fulfill({ json: ok({ productId: id, volumeMl, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null }) })
       }
       if (method === 'GET' && /^\/products\/[789]\/comments$/.test(path)) return route.fulfill({ json: ok({ ...pageOf([]), size: 10, ratingSummary: { count: 0, average: null } }) })
-      if (method === 'GET' && /^\/products\/[789]\/similar$/.test(path)) return route.fulfill({ json: ok({ items: [] }) })
       fixture.unexpected.push({ path, method })
       return route.fulfill({ status: 501, json: { data: null, error: { code: 'UNKNOWN_REQUEST' } } })
     })

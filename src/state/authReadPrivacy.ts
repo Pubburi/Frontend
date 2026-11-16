@@ -83,9 +83,5 @@ export const adminPrivacy = authReadPrivacy((key, id, account) =>
 )
 
 export const orderPrivacy = authReadPrivacy((key, id) =>
-  key[0] === 'account' && key[1] === id && key[2] === 'order-detail' && (key.length === 5 || key.length === 7 && key[5] === 'recommendations'),
-)
-
-export const searchPhrasePrivacy = authReadPrivacy((key, id) =>
-  key[0] === 'account' && key[1] === id && key[2] === 'search-phrases' && key.length === 6,
+  key[0] === 'account' && key[1] === id && key[2] === 'order-detail' && key.length === 5,
 )

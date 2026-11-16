@@ -20,11 +20,6 @@ function mockTextResponse(body, ok, status, statusText) {
 }
 
 describe('api client', () => {
-  it('derives search phrases only through credentialed self POST with separate optins/limit and no preferences/owner snapshot', async () => {
-    mockResponse({ data: { source: 'UNAVAILABLE', result: null }, message: 'ok', error: null })
-    await expect(api.ownSearchPhrases(['tasteTags', 'targetAbvPercent'])).resolves.toEqual({ source: 'UNAVAILABLE', result: null })
-    expect(fetch).toHaveBeenLastCalledWith('/api/users/me/search-phrases', expect.objectContaining({ credentials: 'include', method: 'POST', body: JSON.stringify({ searchOptInFields: ['tasteTags', 'targetAbvPercent'], limit: 5 }) }))
-  })
   it('reads one order through the credentialed owner-protected path without a body or actor selector', async () => {
     const order = { oId: 901, userId: 'member', totalPrice: 0, priceBasis: 'ORDER_SNAPSHOT', details: [] }
     mockResponse({ data: order, message: 'ok', error: null })
@@ -141,18 +136,6 @@ describe('api client', () => {
     const { productId, ...payload } = features
     await expect(api.replaceProductFeatures(productId, payload)).resolves.toEqual(features)
     expect(fetch).toHaveBeenLastCalledWith('/api/admin/products/901/features', expect.objectContaining({ credentials: 'include', method: 'PUT', body: JSON.stringify(payload) }))
-  })
-
-  it('기본 상품은 개인 선택자 없이 유한 크기와 Product7·출처 응답을 유지한다', async () => {
-    const product = { id: 901, name: '시연 주류', type: '탁주', price: 6000, abv: 6, img: null, orderCount: 0 }
-    for (const source of ['BASELINE', 'FALLBACK']) {
-      mockResponse({ data: { items: [product], source }, message: 'ok', error: null })
-      await expect(api.defaultProducts()).resolves.toEqual({ items: [product], source })
-      expect(fetch).toHaveBeenLastCalledWith('/api/recommendations/default?size=4', expect.objectContaining({ credentials: 'include' }))
-      expect(fetch.mock.calls.at(-1)[1].body).toBeUndefined()
-    }
-    await api.defaultProducts(12)
-    expect(fetch).toHaveBeenLastCalledWith('/api/recommendations/default?size=12', expect.objectContaining({ credentials: 'include' }))
   })
 
   it('찜은 계정 선택자와 본문 없이 본인 경로·쿠키·유한 페이지 계약을 사용한다', async () => {

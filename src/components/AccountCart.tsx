@@ -5,7 +5,6 @@ import { useCart, cartTotals } from '../state/cart'
 import type { AccountCartItem } from '../types'
 import { money } from '../utils/format'
 import { Confirm, Empty } from './ui'
-import { CartRecommendations } from './CartRecommendations'
 import './purchase-journey.css'
 
 type Account = ReturnType<typeof useAccountCart>
@@ -119,7 +118,6 @@ export function AccountCartView({ account }: { account: Account }) {
         </aside>
       </div> : <Empty title="계정 장바구니가 비어 있습니다"><Link className="btn btn-dark" to="/products">전체 주류 보기</Link></Empty>)}
     </section>}
-    {!!data?.items.length && <CartRecommendations account={account} />}
     {clearing && clearing === account.scope && account.ready && <Confirm title="계정 장바구니를 비울까요?" description="기기에 따로 담은 상품과 접수한 주문은 지우지 않습니다." pending={account.pending}
       onCancel={() => setClearing(null)} onConfirm={() => void account.remove(null).then(() => setClearing(null))} />}
   </section>

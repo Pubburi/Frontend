@@ -1,6 +1,6 @@
 import { expect, test as base } from '@playwright/test'
 
-// Authored Product7/feature contracts, not real product facts or recommendation evidence.
+// Authored Product7 and product feature fixtures exercise the comparison contract.
 const product = (id) => ({ id, name: `비교 표본 ${id}`, price: id === 201 ? 0 : id * 100, abv: id === 201 ? 0 : id === 203 ? 6.23456 : 6.25, type: '탁주', img: null, orderCount: 0 })
 const feature = (id, values = {}) => ({ productId: id, volumeMl: null, tasteTags: null, aromaTags: null, description: null, sourceName: null, sourceUrl: null, sourceNote: null, ...values })
 const success = (data) => ({ data, message: 'ok', error: null })
@@ -25,11 +25,10 @@ const test = base.extend({
         const items = [...state.products.values()]
         return route.fulfill({ json: success({ items, page: 1, size: 12, total: items.length, totalPages: 1, hasNext: false }) })
       }
-      const match = path.match(/^\/api\/products\/(\d+)(\/features|\/comments|\/similar)?$/)
+      const match = path.match(/^\/api\/products\/(\d+)(\/features|\/comments)?$/)
       if (request.method() === 'GET' && match) {
         const id = Number(match[1])
         if (match[2] === '/comments') return route.fulfill({ json: success({ items: [], page: 1, size: 10, total: 0, totalPages: 0, hasNext: false }) })
-        if (match[2] === '/similar') return route.fulfill({ json: success({ items: [] }) })
         const status = (match[2] ? state.featureErrors : state.productErrors).get(id)
         if (status) return route.fulfill({ status, json: failure(status === 404 ? 'NOT_FOUND' : 'SERVICE_UNAVAILABLE') })
         const value = (match[2] ? state.features : state.products).get(id)
