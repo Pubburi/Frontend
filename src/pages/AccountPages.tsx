@@ -311,10 +311,10 @@ export function ProfilePage() {
           </section>
           <nav className="profile-shortcuts" aria-label="내 활동 바로가기">
             {[
-              ['/preferences', '내 취향 설정', '추천에 쓰는 취향과 조건'],
+              ['/preferences', '내 취향 설정', '나의 선호와 조건 관리'],
               ['/favorites', '내 찜 목록', '다시 보고 싶은 상품'],
               ['/notebook', '내 취향 기록', '나만의 시음과 관심 메모'],
-              ['/discover', '기본 주류 둘러보기', '주류 탐색 다시 시작'],
+              ['/products', '전체 주류 둘러보기', '상품 검색과 비교'],
               ['/settings', '내 계정 설정', '이름과 비밀번호 관리'],
             ].map(([to, title, description]) => (
               <Link key={to} className="profile-shortcut" to={to} aria-label={title}>

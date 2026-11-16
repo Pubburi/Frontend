@@ -128,7 +128,7 @@ for (const destination of ['latest query', 'route']) test(`F02 검색 보조의 
   } finally { release() }
 })
 
-test('F02 검색 보조는 장애 또는 정상 결과를 현재 추천 문구로 바꾸지 않음', async ({ page, filtersApi }) => {
+test('F02 검색 보조는 장애나 정상 결과에 대체 검색어를 표시하지 않음', async ({ page, filtersApi }) => {
   filtersApi.hints.set('초기', `ALIAS:${encodeURIComponent('약 · 청주')}`)
   filtersApi.failures = 1
   await page.goto('/products?q=초기')

@@ -22,7 +22,6 @@ import { HomePage, ProductsPage, ProductDetailPage } from './pages/CatalogPages'
 import { AccountPage, CartPage, ProfilePage } from './pages/AccountPages'
 import { PreferencesPage } from './pages/PreferencesPage'
 import { FavoritesPage } from './pages/FavoritesPage'
-import { DiscoverPage } from './pages/DiscoverPage'
 import { ComparePage } from './pages/ComparePage'
 import { useComparison } from './state/comparison'
 import { comparisonUrl } from './comparison'
@@ -248,7 +247,7 @@ export function App() {
             <Route path="/orders/:id" element={<OrderDetailPage />} />
             <Route path="/compare" element={<ComparePage />} />
             <Route path="/recent" element={<RecentPage />} />
-            <Route path="/discover" element={<DiscoverPage />} />
+            <Route path="/discover" element={<Navigate replace to="/products" />} />
             <Route path="/notebook" element={<NotebookPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/cart" element={<CartPage />} />

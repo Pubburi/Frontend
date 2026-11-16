@@ -2,7 +2,7 @@
 
 - 기존 체크아웃의 최신 `main`을 기준으로 작업 브랜치를 만들고 PR로 변경한다. 새 워크트리와 새 브랜치의 `codex/` 접두사는 사용하지 않는다. 직접 main push·강제 push·병합 이력 재작성은 하지 않는다.
 - 커밋/PR/최종 Squash 제목은 `type(scope): 한국어 설명` 형식이다. 영어 Conventional type과 선택 scope, 고유 식별자는 원문을 유지한다. 한 목적의 코드·필요한 회귀·현재 설명을 함께 묶고 무관한 변경은 분리한다.
-- [TESTING](docs/TESTING.md)의 전체 검사와 필수 CI, 최신 head 완료 Codex 리뷰·미해결 지적 없음·main 반영을 확인한 뒤 Squash한다. main CI 후 완전히 병합된 작업 브랜치만 정리한다. 보호를 완화하지 않는다.
-- 사용법/동작이 달라진 경우에만 기존 문서를 갱신한다. 실행일지·새 계획/감사 문서를 요구하지 않으며 검증·판단·한계는 PR에 간결히 남긴다. 현재 일정은 [ROADMAP](docs/ROADMAP.md)이 정본이다.
+- Node 24에서 `npm run check`를 실행한다. 필수 CI, 최신 head 완료 Codex 리뷰·미해결 지적 없음·main 반영을 확인한 뒤 Squash한다. main CI 후 완전히 병합된 작업 브랜치만 정리한다. 보호를 완화하지 않는다.
+- 사용법/동작이 달라진 경우에만 기존 문서를 갱신한다. 검증·판단·한계는 PR에 간결히 남긴다.
 - closed/merged PR에는 댓글·본문·담당·labels를 추가/수정하지 않는다. 필요한 후속 논의/작업은 GitHub Project/Discussion에, Notion은 해야 할 것/한 것만 정리하며 불필요한 새 기록을 만들지 않는다.
-- 비밀값·환경변수·빌드 산출물을 커밋하지 않는다. README의 현재 기능/실제 근거를 보존하고 확인하지 않은 성과·이미지를 추가하지 않는다.
+- 커밋 전에 `python3 scripts/check_repository.py --staged`로 Git index를 확인한다. 비밀값·환경변수·빌드 산출물을 커밋하지 않는다. README의 현재 기능/실제 근거를 보존하고 확인하지 않은 성과·이미지를 추가하지 않는다.

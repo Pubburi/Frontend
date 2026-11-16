@@ -12,17 +12,29 @@ const user = (id = 'member') => ({ id, name: id, role: 'USER' })
 function ready() { const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); client.setQueryData(['session'], user()); return { client, store: createAccountCart(client) } }
 beforeEach(() => { vi.clearAllMocks(); useUi.setState({ pending: {}, notice: null }); for (const item of cartStore.getState().items) cartStore.getState().remove(item.product.id); cartStore.getState().setOrderForm({ orderType: 'TAKEOUT', orderTable: '' }) })
 describe('account cart ownership and exact operations', () => {
-  it('a dependent read401 fences authority without losing a pending merge HTTP or recovery nonce', async () => {
+  it('a merge response401 fences authority and preserves its nonce and guest lines', async () => {
     const { store } = ready(); cartStore.getState().add(product, 2); vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 0, items: [] }); await store.getState().load()
-    let finish!: (value: any) => void; vi.mocked(api.cartOperation).mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
-    const pending = store.getState().merge(), scope = store.getState().scope!, op = store.getState().operation!
-    store.getState().rejectAuth(scope); expect(store.getState().ready).toBe(false); expect(store.getState().operation).toBe(op); expect(store.getState().pending).toBe(true); expect(store.getState().recoveryOnly).toBe(true)
-    finish({ operationId: op.payload.operationId, replayed: false, status: 'APPLIED', cart: { version: 1, items: [row(2)] }, orderId: null }); await pending
-    expect(store.getState().operation).toBe(op); expect(cartStore.getState().items[0].quantity).toBe(2); expect(api.cartOperation).toHaveBeenCalledTimes(1)
+    vi.mocked(api.cartOperation).mockRejectedValueOnce(new ApiClientError({}, 401))
+    await store.getState().merge()
+    expect(store.getState().ready).toBe(false)
+    expect(store.getState().recoveryOnly).toBe(true)
+    expect(store.getState().operation?.payload.operationId).toBe(vi.mocked(api.cartOperation).mock.calls[0][2].operationId)
+    expect(cartStore.getState().items[0].quantity).toBe(2)
   })
-  it('a dependent old-scope401 never fences another current account', () => {
-    const { client, store } = ready(), scope = store.getState().scope!
-    client.clear(); client.setQueryData(['session'], user('other')); store.getState().rejectAuth(scope)
+  it('an old cart read401 never fences another current account', async () => {
+    const { client, store } = ready()
+    let rejectRead!: (error: ApiClientError) => void
+    const started = new Promise<void>((resolve) => {
+      vi.mocked(api.accountCart).mockImplementationOnce(() => {
+        resolve()
+        return new Promise((_, reject) => { rejectRead = reject })
+      })
+    })
+    const pending = store.getState().load()
+    await started
+    client.clear(); client.setQueryData(['session'], user('other'))
+    rejectRead(new ApiClientError({}, 401))
+    await pending
     expect(store.getState().scope?.id).toBe('other'); expect(store.getState().ready).toBe(true)
   })
   it('rejects malformed/duplicate/deleted-as-zero responses and accepts real zero price', () => {

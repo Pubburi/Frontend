@@ -41,7 +41,6 @@ async function holdSecondPage(page, status = 200) {
 }
 const nextButton = (page) => page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true })
 const results = (page) => page.getByRole('region', { name: '상품 검색 결과', exact: true })
-const tasteShortcut = (page) => results(page).getByRole('button', { name: '저장한 취향으로 찾기', exact: true })
 
 for (const width of [1280, 390]) {
   test(`${width}px 키보드 페이지 이동은 로딩 중 포커스를 잃지 않고 새 상품으로 Tab 연결`, async ({ page, focusApi }) => {
@@ -61,8 +60,6 @@ for (const width of [1280, 390]) {
       expect(box.y).toBeGreaterThanOrEqual(headerBottom)
       expect(box.y).toBeLessThan(900)
       expect(await results(page).evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('solid')
-      await page.keyboard.press('Tab')
-      await expect(tasteShortcut(page)).toBeFocused()
       await page.keyboard.press('Tab')
       await expect(page.locator('.product-card .product-image').first()).toBeFocused()
       await expect(page.locator('.product-card .product-image').first()).toHaveAttribute('href', '/products/1712')
@@ -91,21 +88,6 @@ test('로딩 중 Shift+Tab으로 이동한 키보드 포커스를 응답이 되�
     gate.release(); await expect(page.locator('.product-card')).toHaveCount(2)
     await expect(previous).toBeFocused()
   } finally { gate.release() }
-})
-
-test('390px 검색 결과의 취향 바로가기는 입력과 URL을 유지하고 안내로 키보드 포커스를 옮긴다', async ({ page, focusApi }) => {
-  await page.setViewportSize({ width: 390, height: 900 })
-  await page.goto(initialUrl); await expect(page.locator('.product-card')).toHaveCount(12)
-  const query = page.getByLabel('상품 검색', { exact: true })
-  await query.fill('아직 제출하지 않은 검색')
-  const before = focusApi.calls.filter(({ path }) => path === '/api/products').length
-  await tasteShortcut(page).press('Enter')
-  await expect(page.getByRole('heading', { name: '취향 조건으로 검색', exact: true })).toBeFocused()
-  await expect(page).toHaveURL(initialUrl)
-  await expect(query).toHaveValue('아직 제출하지 않은 검색')
-  expect(focusApi.calls.filter(({ path }) => path === '/api/products')).toHaveLength(before)
-  await page.keyboard.press('Tab')
-  await expect(page.getByRole('region', { name: '취향 조건으로 검색', exact: true }).getByRole('link', { name: '전체 상품 보기', exact: true })).toBeFocused()
 })
 
 test('포인터 페이지 이동과 진행 중 새 검색 입력은 결과 포커스를 강제하지 않음', async ({ page }) => {
@@ -137,8 +119,6 @@ for (const status of [400, 503]) {
       gate.release()
       await expect(page.getByRole('heading', { name: status === 400 ? '검색 조건을 확인해 주세요' : '상품을 불러오지 못했습니다', exact: true })).toBeVisible()
       await expect(results(page)).toBeFocused()
-      await page.keyboard.press('Tab')
-      await expect(tasteShortcut(page)).toBeFocused()
       await page.keyboard.press('Tab')
       const action = page.getByRole('button', { name: status === 400 ? '태그 조건 수정' : '다시 시도', exact: true })
       await expect(action).toBeFocused()

@@ -71,7 +71,7 @@ export function ProductNotebook({ productId }: { productId: number }) {
   return <details className="notebook-panel" onToggle={(event) => { if (event.currentTarget.open) setSeen(true) }}>
     <summary className="text-link">나만의 취향 기록</summary>
     {seen && <div className="notebook-panel-body">
-      <p>나만 보는 기록입니다. 공개 회원 후기·추천 피드백과 별개이며 자동으로 공개하거나 추천에 반영하지 않습니다.</p>
+      <p>나만 보는 기록입니다. 공개 회원 후기와 별도로 보관합니다.</p>
       <Link className="text-link" to="/notebook">내 취향 기록 모아보기</Link>
       <NotebookAccount key={location.key}>{(actor) => <NotebookEditor actor={actor} productId={productId} />}</NotebookAccount>
     </div>}
@@ -178,7 +178,7 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
         {note && <button className="btn btn-outline-danger" type="button" disabled={pending || blocked} onClick={() => setDeleting(true)}>내 기록 삭제</button>}</div>
       <p role="status">{pending ? '내 기록을 저장하는 중입니다. 새로 입력한 내용은 다음 수정으로 남습니다.' : ''}</p>
     </form>
-    {deleting && <Confirm title="나만의 기록을 삭제할까요?" description="비공개 메모와 평가를 삭제합니다. 공개 회원 후기와 추천 피드백은 바뀌지 않습니다."
+    {deleting && <Confirm title="나만의 기록을 삭제할까요?" description="비공개 메모와 평가를 삭제합니다. 공개 회원 후기는 그대로 남습니다."
       pending={pending} onCancel={() => setDeleting(false)} onConfirm={() => void write(true)} fallbackFocus={() => actor.owns() ? fallbackFocus?.() ?? null : null} />}
   </>
 }

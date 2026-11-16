@@ -15,7 +15,6 @@ import { ProductFavorite } from '../components/FavoriteAction'
 import { SearchTagFields } from '../components/SearchTagFields'
 import { TagEditor } from '../components/TagEditor'
 import { buildReviewTasteTags, readReviewTasteTags } from '../reviewTasteTags'
-import { SearchPhrases } from '../components/SearchPhrases'
 import { productTagFields, buildProductTags, normalizeProductTag, validateProductTags, type ProductTagKey, type ProductTagIssues } from '../productTags'
 import { ProductFeatureDetails } from '../components/ProductFeatureDetails'
 import { CompareAction } from '../components/CompareAction'
@@ -33,9 +32,6 @@ import { buildProductQuery, defaultProductSort, parseProductQuery, productSortOp
 import { productRangeFields, validateProductRanges, type ProductRangeKey, type ProductRangeErrors } from '../productRanges'
 import { money, productImage } from '../utils/format'
 import type { Page, Product, Review } from '../types'
-import { ContentRecommendations } from '../components/ContentRecommendations'
-import { SimilarProducts } from '../components/SimilarProducts'
-import { RecommendationFeedback } from '../components/RecommendationFeedback'
 import { ProductNotebook } from '../components/Notebook'
 import { HomeProductSearch } from '../components/HomeProductSearch'
 import { HomeProductThemes } from '../components/HomeProductThemes'
@@ -78,8 +74,6 @@ export function HomePage() {
         </div>
       </section>
       <HomeProductThemes />
-      <ContentRecommendations />
-      <ContentRecommendations exploration />
     </section>
   )
 }
@@ -160,7 +154,6 @@ export function ProductsPage() {
   const hasAdvancedError = Boolean(Object.keys(rangeErrors).length || Object.keys(tagIssues).length || rejectedTags)
   const searchButton = useRef<HTMLButtonElement>(null)
   const results = useRef<HTMLElement>(null)
-  const phraseHeading = useRef<HTMLHeadingElement>(null)
   useLayoutEffect(() => {
     const intent = removalFocus.current
     removalFocus.current = null
@@ -262,13 +255,6 @@ export function ProductsPage() {
       ),
     )
     setSearch({ sort: defaultProductSort, page: '1' })
-  }
-  function applySearchPhrase(url: string) {
-    // Same-URL navigation does not run the URL-change effect. This explicit
-    // current-tab action also replaces unsent drafts without changing the wire.
-    const query = new URLSearchParams(url.split('?')[1] ?? '')
-    setForm(parseProductQuery({ ...Object.fromEntries(query), tasteTag: query.getAll('tasteTag'), aromaTag: query.getAll('aromaTag') }, categories.map((category) => category.label)))
-    setRangeErrors({}); setTagIssues({})
   }
   return (
     <section ref={filterRoot} className="view products-view catalog-products">
@@ -401,10 +387,6 @@ export function ProductsPage() {
         aria-busy={products.isFetching || repairPage !== null} tabIndex={-1} data-catalog-results="true">
       <div className="catalog-results-bar">
         <h2>검색 결과{confirmedTotal !== null && <> <strong>{confirmedTotal.toLocaleString('ko-KR')}개</strong></>}</h2>
-        <button type="button" className="text-button" onClick={() => {
-          phraseHeading.current?.focus({ preventScroll: true })
-          phraseHeading.current?.scrollIntoView({ block: 'start', behavior: 'instant' })
-        }}>저장한 취향으로 찾기</button>
       </div>
       {invalidUrlFilters ? (
         <Empty title="검색 조건을 확인해 주세요" description="가격·도수 범위와 태그 조건을 고치고 검색하거나 전체 해제해 주세요. 결과를 불러오지 않았습니다." />
@@ -457,7 +439,6 @@ export function ProductsPage() {
       </section>
       <Pagination page={invalidUrlFilters || repairPage !== null ? undefined : resultPage}
         onChange={(page) => navigate(page, filters)} onKeyboardNavigate={changeKeyboardPage} />
-      <SearchPhrases onApply={applySearchPhrase} headingRef={phraseHeading} />
     </section>
   )
 }
@@ -691,7 +672,6 @@ function ProductDetail({ id }: { id: string }) {
         <div className="catalog-detail-content">
           <ProductFeatureDetails productId={item.id} />
           {currentProduct && <div className="catalog-detail-personal">
-            <RecommendationFeedback key={location.key} productId={item.id} />
             <ProductNotebook key={`notebook:${location.key}`} productId={item.id} />
           </div>}
           <div className="comment-box">
@@ -920,7 +900,6 @@ function ProductDetail({ id }: { id: string }) {
           </div>
         </div>
       </section>
-      {currentProduct && <SimilarProducts productId={item.id} />}
       {writable && deleting && (
         <Confirm
           title="후기를 삭제할까요?"

@@ -114,8 +114,6 @@ export const api = {
   readNotification: (owner, id) => request(`/users/me/notifications/${encodeURIComponent(id)}/read`, { method: 'PUT', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
   /** @param {string} owner @param {string[]} ids @returns {Promise<unknown>} */
   readNotifications: (owner, ids) => request('/users/me/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ ids }) }),
-  /** @param {string} owner @param {number} expectedVersion @param {AbortSignal} signal @returns {Promise<unknown>} */
-  cartRecommendations: (owner, expectedVersion, signal) => request('/users/me/cart/recommendations', { method: 'POST', cache: 'no-store', signal, headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ expectedVersion, limit: 4 }) }),
   /** @param {string} owner @returns {Promise<import('../types').AccountCart>} */
   accountCart: (owner) => request('/users/me/cart', { cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
   /** @param {string} owner @param {string} operationId @returns {Promise<import('../types').CartOperation>} */
@@ -147,30 +145,6 @@ export const api = {
   updateOwnPassword: (payload) => request('/users/me/password', { method: 'PUT', body: JSON.stringify({ currentPassword: payload.currentPassword, newPassword: payload.newPassword }) }),
   /** @returns {Promise<import('../types').ExplicitPreferences>} */
   ownPreferences: () => request('/users/me/preferences'),
-  /** @param {import('../searchPhrases').SearchOptIn[]} searchOptInFields @returns {Promise<unknown>} */
-  ownSearchPhrases: (searchOptInFields) => request('/users/me/search-phrases', { method: 'POST', body: JSON.stringify({ searchOptInFields, limit: 5 }) }),
-  /** @param {string} accountId @returns {Promise<unknown>} */
-  ownContentRecommendations: (accountId) => request('/users/me/recommendations/content', {
-    method: 'POST',
-    cache: 'no-store',
-    headers: { 'Content-Type': 'application/json', 'X-Pubburi-Feedback-Owner': encodeURIComponent(accountId) },
-    body: JSON.stringify({ limit: 4, includeActivity: true }),
-  }),
-  /** @param {string} accountId @returns {Promise<unknown>} */
-  ownExplorationRecommendations: (accountId) => request('/users/me/recommendations/exploration', {
-    method: 'POST',
-    cache: 'no-store',
-    headers: { 'Content-Type': 'application/json', 'X-Pubburi-Feedback-Owner': encodeURIComponent(accountId) },
-    body: JSON.stringify({ limit: 4 }),
-  }),
-  /** @param {number} productId @param {string} accountId @param {'MATCHED'|'NOT_INTERESTED'|null} [feedback] @param {AbortSignal} [signal] @returns {Promise<unknown>} */
-  ownRecommendationFeedback: (productId, accountId, feedback, signal) => request(`/users/me/recommendations/feedback/${productId}`, {
-    method: feedback === undefined ? 'GET' : feedback === null ? 'DELETE' : 'PUT',
-    cache: 'no-store',
-    headers: { 'Content-Type': 'application/json', 'X-Pubburi-Feedback-Owner': encodeURIComponent(accountId) },
-    signal,
-    ...(feedback == null ? {} : { body: JSON.stringify({ feedback }) }),
-  }),
   /** @param {import('../types').ExplicitPreferences} payload @returns {Promise<import('../types').ExplicitPreferences>} */
   replaceOwnPreferences: (payload) => request('/users/me/preferences', { method: 'PUT', body: JSON.stringify(payload) }),
   /** @param {{ page?: number, size?: number }} params @returns {Promise<import('../types').Page<import('../types').Product>>} */
@@ -193,11 +167,7 @@ export const api = {
   productSuggestions: (q, signal) => request(`/products/suggestions?${new URLSearchParams({ q })}`, { signal, cache: 'no-store' }),
   /** @param {AbortSignal} signal @returns {Promise<unknown>} */
   productThemes: (signal) => request('/products/themes', { signal, cache: 'no-store' }),
-  /** @param {number} size @returns {Promise<import('../types').DefaultProducts>} */
-  defaultProducts: (size = 4) => request(`/recommendations/default?${new URLSearchParams({ size: String(size) })}`),
   product: (id) => request(`/products/${id}`),
-  /** @param {number} id @param {AbortSignal} signal @returns {Promise<unknown>} */
-  similarProducts: (id, signal) => request(`/products/${id}/similar?includeExplanations=true`, { signal, cache: 'no-store' }),
   /** @param {number} id @returns {Promise<import('../types').ProductFeatures>} */
   productFeatures: (id) => request(`/products/${id}/features`),
   /** @param {number} id @param {import('../types').ProductFeatureValues} payload @returns {Promise<import('../types').ProductFeatures>} */
@@ -223,8 +193,6 @@ export const api = {
   createOrder: (payload) => request('/orders', { method: 'POST', body: JSON.stringify(payload) }),
   /** @param {number} id @returns {Promise<import('../types').Order>} */
   order: (id) => request(`/orders/${id}`),
-  /** @param {string} owner @param {number} id @param {AbortSignal} signal @returns {Promise<unknown>} */
-  orderRecommendations: (owner, id, signal) => request(`/users/me/orders/${id}/recommendations`, { method: 'POST', cache: 'no-store', signal, headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': encodeURIComponent(owner) }, body: JSON.stringify({ limit: 4 }) }),
   userOrders: (userId, params = {}) =>
     request(`/users/${encodeURIComponent(userId)}/orders?${pageQuery(params, { page: 1, size: 10 })}`),
   adminOrders: (params = {}) => request(`/admin/orders?${pageQuery(params, { page: 1, size: 20 })}`),

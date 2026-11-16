@@ -1416,35 +1416,13 @@ main select:focus {
 .settings-card .field-group { align-self: stretch; min-width: 0; }
 .settings-card p { overflow-wrap: anywhere; margin: 0; }
 @media (max-width: 720px) { .settings-grid { grid-template-columns: minmax(0, 1fr); } }
-.search-phrases { margin: 24px 0; padding: clamp(16px, 3vw, 28px); border: 1px solid var(--line); border-radius: 12px; background: var(--cream); min-width: 0; overflow-wrap: anywhere; }
-.search-phrases > p { line-height: 1.7; }
-.phrase-optins { display: grid; gap: 12px; margin: 20px 0; padding: 16px; min-width: 0; border: 1px solid var(--line); }
-.phrase-optins label { display: flex; align-items: start; gap: 10px; line-height: 1.6; }
-.phrase-optins input { flex: none; margin-top: 6px; }
-.phrase-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.phrase-items { list-style: none; padding: 0; display: grid; gap: 16px; }
-.phrase-items > li { border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
-.phrase-items .btn { max-width: 100%; white-space: normal; text-align: center; }
-.phrase-conditions { display: grid; gap: 8px; }
-.phrase-conditions > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px; }
-.phrase-conditions dt { font-weight: 700; }
-.phrase-conditions dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.phrase-diagnostics { line-height: 1.7; padding-left: 20px; }
-.content-recommendations { min-width: 0; overflow-wrap: anywhere; }
-.content-recommendations > .btn { max-width: 100%; white-space: normal; }
-.content-recommendations .phrase-actions { margin-top: 16px; }
+.catalog-home-themes { min-width: 0; overflow-wrap: anywhere; }
 .content-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; padding: 0; list-style: none; }
 .content-card { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
-.content-card ul { padding-left: 20px; line-height: 1.7; }
-.content-card h3, .content-fact { white-space: pre-wrap; overflow-wrap: anywhere; }
 .theme-options { flex-wrap: wrap; }
 .theme-criterion, .theme-cards, .theme-cards h4, .theme-cards p { margin: 0; }
 .theme-cards h4 { overflow-wrap: anywhere; }
 .theme-cards p { margin-top: 8px; }
-.similar-products { margin-top: 32px; }
-.recommendation-feedback summary { display: list-item; cursor: pointer; width: fit-content; }
-.recommendation-feedback .button-row { flex-wrap: wrap; }
-.recommendation-feedback [aria-pressed="true"] { color: var(--paper); background: var(--ink); }
 .notebook-panel { margin-block: 1rem; padding-block: 1rem; border-block: 1px solid var(--line); }
 .notebook-panel summary { display: list-item; cursor: pointer; }
 .notebook-form { width: 100%; margin-top: 1rem; }
@@ -1455,8 +1433,6 @@ main select:focus {
 .notebook-card h3 { margin: 0; }
 .notebook-memo { white-space: pre-wrap; }
 .notebook-tags li { white-space: pre-wrap; }
-.similar-products h2, .similar-products p, .similar-products ul { margin: 0; }
-.similar-product-link { display: block; overflow-wrap: anywhere; font-weight: 700; }
 /* Internal account notifications share the existing cards and theme. */
 .notification-list { list-style: none; padding: 0; display: grid; gap: 1rem; margin: 1.5rem 0; }
 .notification-card { overflow-wrap: anywhere; }

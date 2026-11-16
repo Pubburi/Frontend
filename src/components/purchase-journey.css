@@ -72,7 +72,6 @@
 .cart-view .cart-row,
 .cart-view .purchase-recovery,
 .cart-view .purchase-merge,
-.cart-view .cart-recommendations,
 .order-detail-view .order-detail-card,
 .notifications-view .notification-card {
   border-radius: 18px;
@@ -115,8 +114,7 @@
 }
 
 .cart-view .purchase-merge,
-.cart-view .purchase-recovery,
-.cart-view .cart-recommendations {
+.cart-view .purchase-recovery {
   padding: clamp(1.1rem, 3vw, 1.5rem);
   border: 1px solid var(--line);
 }
@@ -152,8 +150,7 @@
   border-top: 1px solid var(--line);
 }
 
-.cart-view .purchase-merge summary,
-.cart-view .cart-recommendations summary {
+.cart-view .purchase-merge summary {
   width: fit-content;
   min-height: 44px;
   padding-block: 0.7rem;
@@ -190,10 +187,6 @@
 
 .cart-view .purchase-item-total strong {
   font-size: 1.15rem;
-}
-
-.cart-view .cart-recommendations {
-  background: var(--paper);
 }
 
 .order-row .purchase-order-items {
@@ -265,8 +258,7 @@
     text-align: start;
   }
 
-  .cart-view .purchase-merge .btn,
-  .cart-view .cart-recommendations .btn {
+  .cart-view .purchase-merge .btn {
     width: 100%;
   }
 }

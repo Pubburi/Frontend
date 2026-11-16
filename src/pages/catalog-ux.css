@@ -2,8 +2,7 @@
 .catalog-products,
 .catalog-detail,
 .catalog-compare,
-.catalog-recent,
-.catalog-discover {
+.catalog-recent {
   min-width: 0;
   gap: clamp(16px, 2.7vw, 32px);
 }
@@ -139,7 +138,6 @@
 }
 .catalog-results-bar h2 { margin: 0; font-size: clamp(16px, 2vw, 21px); }
 .catalog-results-bar h2 strong { color: var(--forest-dark); font-variant-numeric: tabular-nums; }
-.catalog-results-bar .text-button { font-size: 14px; }
 
 .catalog-products .search-phrases {
   margin: 0;
@@ -178,8 +176,7 @@
 .catalog-detail .purchase-box { align-items: center; border-radius: 16px; }
 .catalog-detail-total { text-align: right; }
 .catalog-detail-total strong { font-size: clamp(18px, 2vw, 25px); }
-.catalog-detail-actions,
-.catalog-detail-personal { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.catalog-detail-actions { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .catalog-detail-content { grid-column: 1 / -1; min-width: 0; display: grid; gap: 18px; }
 .catalog-detail-content > :is(.product-features, .comment-box) {
   margin: 0;
@@ -192,7 +189,6 @@
 .catalog-detail-content .product-feature-row:last-child { border-bottom: 0; }
 .catalog-detail-personal > details { min-width: 0; margin: 0; border-radius: 16px; }
 .catalog-detail-personal summary { min-height: 44px; }
-.catalog-similar .content-card,
 .catalog-home-themes .content-card { min-width: 0; border-radius: 16px; }
 
 .catalog-compare .comparison-scroll { border-radius: 18px; background: var(--paper); scroll-padding-inline-start: 84px; }
@@ -215,8 +211,7 @@
 .catalog-recent .recent-policy[open] { padding-bottom: 16px; }
 .catalog-recent .catalog-recent-item-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .catalog-recent .catalog-recent-item-meta button { flex-shrink: 0; min-height: 44px; }
-.catalog-discover-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
-:is(.catalog-discover-actions, .catalog-recent-actions, .comparison-actions) > * { min-height: 44px; }
+:is(.catalog-recent-actions, .comparison-actions) > * { min-height: 44px; }
 .catalog-home-themes .theme-options button { min-height: 44px; }
 
 @media (max-width: 880px) {
@@ -239,7 +234,6 @@
   .catalog-search-bar .field-search { grid-column: 1 / -1; }
   .catalog-products .catalog-search-bar .filter-submit { grid-column: 1 / -1; }
   .catalog-detail .purchase-box { flex-direction: row; flex-wrap: wrap; }
-  .catalog-detail-personal { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 360px) {

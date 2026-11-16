@@ -42,7 +42,6 @@ const test = base.extend({ notebookApi: [async ({ page }, use) => {
     if (path === '/api/products/7') return reply(product)
     if (path === '/api/products/7/features') return reply({ productId: 7, volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null })
     if (path === '/api/products/7/comments') return reply(pageOf([]))
-    if (path === '/api/products/7/similar') return reply({ items: [] })
     if (path === '/api/users/me/favorites/7') return reply({ productId: 7, favorited: false })
     if (path === '/api/products/popular') return reply([product])
     if (path === '/api/products') return reply(pageOf([product]))
@@ -185,52 +184,6 @@ test('같은 계정 재로그인도 이전 HTTP 쓰기의 응답이 끝난 뒤 �
     await expect(page.getByRole('alert')).toHaveCount(0)
     await page.getByRole('button', { name: '내 기록 편집', exact: true }).click(); await expect(memo(page)).toHaveValue('이전 인증에서 승인된 기록')
   } finally { g.release() }
-})
-
-for (const status of [200, 503]) test(`동일 계정의 신선도 GET${status} 동안 비공개 DOM을 차폐하고 재확인 후 미제출 초안을 보존`, async ({ page, notebookApi: s }) => {
-  await open(page); await memo(page).fill('같은 인증에서만 보존할 초안')
-  await page.route('**/api/users/me/recommendations/feedback/7', (route) => route.fulfill({ status: 401, json: bad(401) }))
-  await page.locator('.recommendation-feedback summary').click()
-  const g = gate(); let started = false
-  await page.route('**/api/auth/me', async (route) => {
-    if (started) return route.fallback()
-    started = true; await g.promise
-    if (status === 503) return route.fulfill({ status, json: bad(status) })
-    return route.fallback()
-  })
-  try {
-    await page.getByRole('button', { name: '피드백 로그인 상태 다시 확인', exact: true }).click(); await expect.poll(() => started).toBe(true)
-    await expect(form(page)).toHaveCount(0)
-    expect(await page.locator('.notebook-panel').textContent()).not.toContain('같은 인증에서만 보존할 초안')
-    if (status === 200) s.user = { ...s.user, name: '동일 계정의 새 이름' }
-    g.release()
-    if (status === 503) {
-      await expect(page.getByRole('button', { name: '기록 로그인 상태 다시 확인', exact: true })).toBeVisible()
-      await expect(form(page)).toHaveCount(0)
-      await page.getByRole('button', { name: '기록 로그인 상태 다시 확인', exact: true }).click()
-    }
-    await expect(memo(page)).toHaveValue('같은 인증에서만 보존할 초안')
-    expect(writes(s)).toEqual([])
-  } finally { g.release() }
-})
-
-test('같은 계정의 로그인 재확인 중 저장이 끝나도 새 초안과 저장 revision을 함께 보존', async ({ page, notebookApi: s }) => {
-  const writeGate = gate(), readGate = gate(); let writing = false, reading = false
-  await page.route('**/api/users/me/notebook', async (route) => { if (route.request().method() !== 'POST') return route.fallback(); writing = true; await writeGate.promise; await route.fallback() })
-  try {
-    await open(page); await memo(page).fill('서버로 보낸 값'); await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).click(); await expect.poll(() => writing).toBe(true)
-    await memo(page).fill('보내지 않은 다음 초안')
-    await page.route('**/api/users/me/recommendations/feedback/7', (route) => route.fulfill({ status: 401, json: bad(401) }))
-    await page.locator('.recommendation-feedback summary').click()
-    await page.route('**/api/auth/me', async (route) => { reading = true; await readGate.promise; await route.fallback() })
-    await page.getByRole('button', { name: '피드백 로그인 상태 다시 확인', exact: true }).click(); await expect.poll(() => reading).toBe(true); await expect(form(page)).toHaveCount(0)
-    const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/users/me/notebook' && r.request().method() === 'POST')
-    writeGate.release(); await (await response).finished(); await expect.poll(() => s.notes.member.length).toBe(1)
-    readGate.release(); await expect(memo(page)).toHaveValue('보내지 않은 다음 초안')
-    await expect(form(page).getByRole('button', { name: '내 기록 저장', exact: true })).toHaveAttribute('aria-busy', 'false')
-    await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).click(); await expect.poll(() => s.notes.member[0].memo).toBe('보내지 않은 다음 초안')
-    expect(writes(s).at(-1).body.expectedVersion).toBe(0)
-  } finally { writeGate.release(); readGate.release() }
 })
 
 test('상품 삭제 뒤 원문 기록은 UUID로 편집하고 마지막 페이지 삭제는 본인 앞 페이지로 보정', async ({ page, notebookApi: s }) => {
