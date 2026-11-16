@@ -29,7 +29,7 @@ import {
   ProductCard,
   Quantity,
 } from '../components/ui'
-import { buildProductQuery, parseProductQuery, removeProductCondition } from '../utils/productFilters'
+import { buildProductQuery, defaultProductSort, parseProductQuery, productSortOptions, removeProductCondition } from '../utils/productFilters'
 import { productRangeFields, validateProductRanges, type ProductRangeKey, type ProductRangeErrors } from '../productRanges'
 import { money, productImage } from '../utils/format'
 import type { Page, Product, Review } from '../types'
@@ -43,10 +43,6 @@ import { reviewSummary, type ReviewPage } from '../reviewSummary'
 import './catalog-ux.css'
 
 export function HomePage() {
-  const products = useQuery<Product[]>({
-    queryKey: ['catalog', 'popular'],
-    queryFn: api.popularProducts,
-  })
   return (
     <section className="view home-view catalog-home">
       <section className="catalog-home-lead" aria-labelledby="catalog-home-title">
@@ -73,7 +69,7 @@ export function HomePage() {
           {categories.map((category) => (
             <Link
               key={category.label}
-              to={`/products?${new URLSearchParams({ type: category.label, sort: 'popular', page: '1' })}`}
+              to={`/products?${pageQuery(buildProductQuery({ type: category.label }))}`}
             >
               <Image src={category.image} />
               <span>{category.label}</span>
@@ -84,38 +80,6 @@ export function HomePage() {
       <HomeProductThemes />
       <ContentRecommendations />
       <ContentRecommendations exploration />
-      <section className="section-band">
-        <div className="section-heading">
-          <div>
-            <p className="section-kicker">Popular</p>
-            <h2>주문 수량으로 둘러보기</h2>
-            <p className="muted">시연용 누적 주문 수량 기준입니다.</p>
-          </div>
-          <Link className="text-link" to="/products?sort=popular">
-            더 보기 →
-          </Link>
-        </div>
-        {products.isPending ? (
-          <Loading />
-        ) : products.isError ? (
-          <Empty title="추천 상품을 불러오지 못했습니다">
-            <button
-              className="btn btn-outline-dark"
-              onClick={() => products.refetch()}
-            >
-              다시 시도
-            </button>
-          </Empty>
-        ) : products.data.length ? (
-          <div className="product-grid">
-            {products.data.map((item) => (
-              <ProductCard key={item.id} product={item} />
-            ))}
-          </div>
-        ) : (
-          <Empty title="추천 상품을 준비하고 있습니다" />
-        )}
-      </section>
     </section>
   )
 }
@@ -185,6 +149,7 @@ export function ProductsPage() {
   useEffect(() => {
     if (repairPage === null || products.fetchStatus !== 'idle' || retainedDraft.current?.fromLocationKey === location.key) return
     const destination = new URLSearchParams(search)
+    if (destination.has('sort')) destination.set('sort', filters.sort)
     destination.set('page', String(repairPage))
     const repair = { fromLocationKey: location.key, destination: location.pathname + '?' + destination.toString() }
     retainedDraft.current = repair
@@ -278,6 +243,7 @@ export function ProductsPage() {
   function applySearchHint() {
     if (!searchHint) return
     const destination = new URLSearchParams(search)
+    if (destination.has('sort')) destination.set('sort', filters.sort)
     destination.set('q', searchHint.q)
     destination.set('page', '1')
     const intent = { fromLocationKey: location.key, destination: location.pathname + '?' + destination.toString() }
@@ -295,7 +261,7 @@ export function ProductsPage() {
         categories.map((category) => category.label),
       ),
     )
-    setSearch({ sort: 'popular', page: '1' })
+    setSearch({ sort: defaultProductSort, page: '1' })
   }
   function applySearchPhrase(url: string) {
     // Same-URL navigation does not run the URL-change effect. This explicit
@@ -349,12 +315,7 @@ export function ProductsPage() {
               value={form.sort}
               onChange={(e) => setForm({ ...form, sort: e.target.value })}
             >
-              {[
-                ['popular', '인기순'],
-                ['priceAsc', '낮은 가격순'],
-                ['priceDesc', '높은 가격순'],
-                ['name', '이름순'],
-              ].map(([value, label]) => (
+              {productSortOptions.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -696,7 +657,6 @@ function ProductDetail({ id }: { id: string }) {
             </div>
             <div className="catalog-detail-facts">
               <span className="stat-pill">도수 {item.abv}%</span>
-              <span className="stat-pill">시연 주문 {item.orderCount}개</span>
             </div>
           </div>
           <div className="purchase-box">

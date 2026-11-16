@@ -193,7 +193,6 @@ export const api = {
   productSuggestions: (q, signal) => request(`/products/suggestions?${new URLSearchParams({ q })}`, { signal, cache: 'no-store' }),
   /** @param {AbortSignal} signal @returns {Promise<unknown>} */
   productThemes: (signal) => request('/products/themes', { signal, cache: 'no-store' }),
-  popularProducts: () => request('/products/popular'),
   /** @param {number} size @returns {Promise<import('../types').DefaultProducts>} */
   defaultProducts: (size = 4) => request(`/recommendations/default?${new URLSearchParams({ size: String(size) })}`),
   product: (id) => request(`/products/${id}`),

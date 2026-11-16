@@ -112,7 +112,7 @@ for (const invalid of [
     await expect(page.locator('.product-card')).toHaveCount(0)
     expect(rangeApi.calls.filter((call) => call.path === '/api/products')).toEqual([])
     await page.getByRole('button', { name: '전체 해제', exact: true }).click()
-    await expect(page).toHaveURL('/products?sort=popular&page=1')
+    await expect(page).toHaveURL('/products?sort=name&page=1')
     await expect(page.locator('.product-card')).toHaveCount(7)
   })
 }
@@ -136,7 +136,7 @@ test('범위의 페이지 이동은 적용 조건을 쓰고 Enter·뒤로·전�
   await expect(page).toHaveURL((url) => url.searchParams.get('maxPriceKrw') === '12000' && url.searchParams.get('page') === '2')
   await expect(page.getByLabel(labels.maxPriceKrw, { exact: true })).toHaveValue('12000')
   await page.getByRole('button', { name: '전체 해제', exact: true }).click()
-  await expect(page).toHaveURL('/products?sort=popular&page=1')
+  await expect(page).toHaveURL('/products?sort=name&page=1')
   for (const key of Object.keys(ranges)) await expect(page.getByLabel(labels[key], { exact: true })).toHaveValue('')
 })
 

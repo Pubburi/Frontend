@@ -9,13 +9,13 @@ describe('product route filters', () => {
       type: '위스키', q: '블랙', sort: 'priceDesc', page: 3, size: 12, minPriceKrw: '', maxPriceKrw: '', minAbvPercent: '', maxAbvPercent: '', tasteTag: [], aromaTag: [],
     })
     expect(parseProductQuery({ type: 'unknown', sort: 'random', page: '-2' }, categories)).toMatchObject({
-      type: '', sort: 'popular', page: 1,
+      type: '', sort: 'name', page: 1,
     })
   })
 
   it('restores range spellings and carries them through an applied page change', () => {
     const filters = parseProductQuery({ minPriceKrw: '0', maxPriceKrw: '12000', minAbvPercent: '6.25', maxAbvPercent: '15.00' }, categories)
-    expect(buildProductQuery(filters, 2)).toEqual({ minPriceKrw: '0', maxPriceKrw: '12000', minAbvPercent: '6.25', maxAbvPercent: '15.00', sort: 'popular', page: 2 })
+    expect(buildProductQuery(filters, 2)).toEqual({ minPriceKrw: '0', maxPriceKrw: '12000', minAbvPercent: '6.25', maxAbvPercent: '15.00', sort: 'name', page: 2 })
   })
 
   it('preserves every raw tag and builds canonical arrays for applied pagination', () => {
@@ -28,6 +28,19 @@ describe('product route filters', () => {
     expect(buildProductQuery({ type: '맥주', q: ' lager ', sort: 'name' }, 2)).toEqual({
       type: '맥주', q: 'lager', sort: 'name', page: 2,
     })
+  })
+
+  it('supports old popularity URLs by applying name order without changing their filters', () => {
+    const search = new URLSearchParams('type=탁주&q=표본&sort=popular&page=2&minPriceKrw=0&aromaTag=floral')
+    const applied = parseProductQuery({ ...Object.fromEntries(search), aromaTag: search.getAll('aromaTag') }, categories)
+    expect(applied).toMatchObject({ type: '탁주', q: '표본', sort: 'name', page: 2, minPriceKrw: '0', aromaTag: ['floral'] })
+    expect(buildProductQuery({ ...applied, sort: 'popular' }, 3)).toMatchObject({ sort: 'name', page: 3, q: '표본' })
+    const removed = removeProductCondition(search, applied, applied, 'q')
+    expect(removed.search.get('sort')).toBe('name')
+    expect(removed.search.get('minPriceKrw')).toBe('0')
+    expect(removed.search.getAll('aromaTag')).toEqual(['floral'])
+    expect(removed.search.has('q')).toBe(false)
+    expect(search.get('sort')).toBe('popular')
   })
 
   it('removes only a selected applied scalar while preserving modified drafts and raw hard conditions', () => {

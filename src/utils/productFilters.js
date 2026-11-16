@@ -1,11 +1,21 @@
 import { buildProductTags, parseProductTags } from '../productTags'
 import { buildProductRanges, parseProductRanges } from '../productRanges'
 
-export const productSorts = ['popular', 'priceAsc', 'priceDesc', 'name']
+export const defaultProductSort = 'name'
+export const productSortOptions = [
+  [defaultProductSort, '이름순'],
+  ['priceAsc', '낮은 가격순'],
+  ['priceDesc', '높은 가격순'],
+]
+
+/** @param {unknown} value */
+function productSort(value) {
+  return productSortOptions.find(([sort]) => sort === value)?.[0] ?? defaultProductSort
+}
 
 export function parseProductQuery(query = {}, categoryNames = []) {
   const type = categoryNames.includes(query.type) ? query.type : ''
-  const sort = productSorts.includes(query.sort) ? query.sort : 'popular'
+  const sort = productSort(query.sort)
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1)
   return { ...parseProductRanges(query), ...parseProductTags(query), type, q: String(query.q || '').trim(), sort, page, size: 12 }
 }
@@ -16,7 +26,7 @@ export function buildProductQuery(filters = {}, page = 1) {
     ...buildProductTags(filters),
     ...(filters.type ? { type: filters.type } : {}),
     ...(String(filters.q || '').trim() ? { q: String(filters.q).trim() } : {}),
-    sort: productSorts.includes(filters.sort) ? filters.sort : 'popular',
+    sort: productSort(filters.sort),
     page: Math.max(1, Number.parseInt(page, 10) || 1),
   }
 }
@@ -35,6 +45,7 @@ export function removeProductCondition(search, applied, draft, key, index = -1) 
     next.delete(key)
     if (draft[key] === applied[key]) form[key] = ''
   }
+  if (next.has('sort')) next.set('sort', applied.sort)
   next.set('page', '1')
   return { search: next, form }
 }

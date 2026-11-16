@@ -143,10 +143,6 @@ const test = base.extend({
         await route.fulfill({ json: success({ items: state.catalog.toSorted((a, b) => a.id - b.id).slice(0, Number(url.searchParams.get('size') || 4)), source: state.defaultSource }) })
         return
       }
-      if (request.method() === 'GET' && path === '/products/popular') {
-        await route.fulfill({ json: success(state.catalog) })
-        return
-      }
       if (method === 'GET' && /^\/products\/\d+\/similar$/.test(path)) {
         const id = Number(path.split('/').at(-2))
         await route.fulfill({ json: success({ items: state.similar[id] ?? [] }) })
@@ -363,9 +359,10 @@ test('홈의 전체 둘러보기에서 기존 목록 검색도 그대로 사용�
 for (const width of [1440, 390]) {
   test(`홈 직접 검색 ${width}px는 제출 전 조회 없이 검색어를 결과 URL·입력·요청으로 연결`, async ({ page, api }, info) => {
     const keyword = '시험 & 사케+100% / #?'
-    api.catalog[0].name = keyword
+    Object.assign(api.catalog[0], { name: keyword, orderCount: 314159 })
     await page.setViewportSize({ width, height: 900 }); await page.goto('/')
     await expect(page.getByRole('heading', { name: '취향과 순간에 어울리는 한 잔', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '주문 수량으로 둘러보기', exact: true })).toHaveCount(0)
     const lead = page.getByRole('region', { name: '취향과 순간에 어울리는 한 잔', exact: true })
     await expect(lead.locator('img')).toHaveCount(1)
     const cover = lead.locator('img')
@@ -382,23 +379,29 @@ for (const width of [1440, 390]) {
     await page.keyboard.press('Tab')
     const category = page.getByRole('link', { name: '탁주', exact: true })
     await expect(category).toBeFocused()
-    await expect(category).toHaveAttribute('href', '/products?type=%ED%83%81%EC%A3%BC&sort=popular&page=1')
+    await expect(category).toHaveAttribute('href', '/products?type=%ED%83%81%EC%A3%BC&sort=name&page=1')
     await expect(page.getByRole('button', { name: '입문', exact: true })).toBeVisible()
     await expect(input).toHaveAttribute('maxlength', '100')
     await input.fill(`  ${keyword}  `); await input.press('Tab'); await expect(submit).toBeFocused()
     await expect(page).toHaveURL('/')
-    expect(api.calls.filter((call) => call.path === '/products')).toEqual([])
+    expect(api.calls.filter((call) => ['/products', '/products/popular'].includes(call.path))).toEqual([])
     const boxes = await search.evaluate((node) => ({ width: document.documentElement.scrollWidth, header: document.querySelector('.topbar').getBoundingClientRect().bottom, controls: [...node.querySelectorAll('input,button')].map((control) => { const r = control.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height } }) }))
     expect(boxes.width).toBeLessThanOrEqual(width)
     for (const box of boxes.controls) { expect(box.left).toBeGreaterThanOrEqual(0); expect(box.right).toBeLessThanOrEqual(width); expect(box.top).toBeGreaterThanOrEqual(boxes.header); expect(box.bottom).toBeLessThanOrEqual(900); expect(box.height).toBeGreaterThanOrEqual(44) }
     if (width === 390) { await page.keyboard.press('Shift+Tab'); await expect(input).toBeFocused(); await input.press('Enter') } else await submit.click()
-    await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('q') === keyword && url.searchParams.get('sort') === 'popular' && url.searchParams.get('page') === '1')
+    await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('q') === keyword && url.searchParams.get('sort') === 'name' && url.searchParams.get('page') === '1')
     await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue(keyword)
     await expect(page.locator('.product-card')).toHaveCount(1)
-    expect(api.calls.filter((call) => call.path === '/products')).toEqual([expect.objectContaining({ method: 'GET', query: { q: keyword, sort: 'popular', page: '1', size: '12' } })])
+    await expect(page.locator('.product-card')).not.toContainText(/시연 주문|314,?159/)
+    const sort = page.getByRole('combobox', { name: '정렬', exact: true })
+    await expect(sort).toHaveValue('name')
+    await expect(sort.locator('option')).toHaveText(['이름순', '낮은 가격순', '높은 가격순'])
+    expect(api.calls.filter((call) => call.path === '/products')).toEqual([expect.objectContaining({ method: 'GET', query: { q: keyword, sort: 'name', page: '1', size: '12' } })])
     await page.getByRole('heading', { level: 2, name: keyword, exact: true }).getByRole('link').press('Enter')
     await expect(page).toHaveURL('/products/901')
     await expect(page.getByRole('heading', { name: keyword, level: 1, exact: true })).toBeVisible()
+    await expect(page.getByLabel('상품 정보', { exact: true })).not.toContainText(/시연 주문|314,?159/)
+    expect(api.calls.filter((call) => call.path === '/products/popular')).toEqual([])
     await info.attach('direct-search-path.json', { body: JSON.stringify({ path: ['/', '/products?q=' + keyword], keywordEntries: 1, intermediateCatalogPage: false, boxes }), contentType: 'application/json' })
   })
 }
@@ -582,7 +585,7 @@ test('홈 검색 실패 뒤 같은 검색어를 다시 입력하지 않고 명�
   await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('시험 탁주')
   const url = page.url(); await page.getByRole('button', { name: '다시 시도', exact: true }).click()
   await expect(page.locator('.product-card')).toHaveCount(1); await expect(page).toHaveURL(url)
-  expect(api.calls.filter((call) => call.path === '/products').map((call) => call.query)).toEqual(Array(2).fill({ q: '시험 탁주', sort: 'popular', page: '1', size: '12' }))
+  expect(api.calls.filter((call) => call.path === '/products').map((call) => call.query)).toEqual(Array(2).fill({ q: '시험 탁주', sort: 'name', page: '1', size: '12' }))
 })
 
 test('상품 검색·상세·장바구니 저장과 비회원 주문 안내', async ({ page, api }) => {
@@ -714,7 +717,7 @@ test('다음 페이지의 검색 초안은 Enter 제출 때 첫 페이지에 적
   await expect(page.locator('.product-card')).toHaveCount(2)
   await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('시연')
   await page.getByRole('button', { name: '전체 해제', exact: true }).click()
-  await expect(page).toHaveURL('/products?sort=popular&page=1')
+  await expect(page).toHaveURL('/products?sort=name&page=1')
   await expect(page.locator('.product-card')).toHaveCount(12)
 })
 
@@ -754,28 +757,30 @@ test('범위를 벗어난 이전 페이지의 늦은 응답은 명시적으로 �
   }
 })
 
-test('390px 키보드 페이지 이동도 미제출 검색 대신 적용 조건을 유지', async ({ page, api }) => {
+test('390px 기존 인기순 링크와 키보드 페이지 이동은 이름순과 적용 조건을 사용', async ({ page, api }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   api.catalog = Array.from({ length: 14 }, (_, index) => ({ ...products[0], id: 1100 + index, name: `시연 탁주 ${index + 1}` }))
-  await page.goto('/products?type=탁주&q=시연&sort=name&page=1')
+  await page.goto('/products?type=탁주&q=시연&sort=popular&page=1')
   await expect(page.locator('.product-card')).toHaveCount(12)
+  await expect(page.getByRole('combobox', { name: '정렬', exact: true })).toHaveValue('name')
+  expect(api.calls.filter((call) => call.path === '/products').map((call) => call.query)).toEqual([{ type: '탁주', q: '시연', sort: 'name', page: '1', size: '12' }])
   await page.getByLabel('상품 검색', { exact: true }).fill('미제출')
   const next = page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true })
   await next.focus()
   await next.press('Enter')
-  await expect(page).toHaveURL((url) => url.searchParams.get('q') === '시연' && url.searchParams.get('page') === '2')
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === '시연' && url.searchParams.get('type') === '탁주' && url.searchParams.get('sort') === 'name' && url.searchParams.get('page') === '2')
   await expect(page.locator('.product-card')).toHaveCount(2)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   await expect(page.getByRole('button', { name: '이전', exact: true })).toBeEnabled()
 })
 
 test('기본 검색 URL의 미제출 입력은 적용 칩 없이 명시적으로 초기화', async ({ page }) => {
-  await page.goto('/products?sort=popular&page=1')
+  await page.goto('/products?sort=name&page=1')
   await expect(page.locator('.product-card')).toHaveCount(2)
   await page.getByLabel('상품 검색', { exact: true }).fill('아직 제출하지 않은 검색어')
   await expect(page.getByLabel('적용된 필터', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '입력 초기화', exact: true }).click()
-  await expect(page).toHaveURL('/products?sort=popular&page=1')
+  await expect(page).toHaveURL('/products?sort=name&page=1')
   await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('')
   await expect(page.getByLabel('적용된 필터', { exact: true })).toHaveCount(0)
   await expect(page.locator('.product-card')).toHaveCount(2)
