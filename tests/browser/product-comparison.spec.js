@@ -46,6 +46,42 @@ const test = base.extend({
 const cell = (page, id, field) => page.locator(`td[data-product-id="${id}"][data-field="${field}"]`)
 const itemReads = (calls) => calls.filter((call) => /^\/api\/products\/\d+(\/features)?$/.test(call.path))
 
+test.describe('작은 화면에서 목록의 선택 상품 비교', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+  test('메뉴를 열지 않고 비교한 뒤 선택을 바꾸고 기존 검색 조건으로 돌아온다', async ({ page, comparisonApi }) => {
+    const listing = '/products?q=%EB%B9%84%EA%B5%90&minPriceKrw=0&tasteTag=dry%2Csweet&sort=priceAsc&page=1'
+    const choose = (id, action = '선택') => page.getByRole('button', { name: `비교 표본 ${id} 비교 ${action}`, exact: true })
+    const compare = (count) => page.getByRole('link', { name: `선택한 상품 ${count}개 비교하기`, exact: true })
+    await page.goto(listing)
+    await expect(choose(201)).toBeVisible()
+    await expect(compare(1)).toHaveCount(0)
+    await choose(201).tap()
+    await choose(204).tap()
+    await expect(page).toHaveURL(listing)
+    await expect(page.getByRole('button', { name: '메뉴 열기' })).toHaveAttribute('aria-expanded', 'false')
+    expect(itemReads(comparisonApi.calls)).toEqual([])
+    await expect(compare(2)).toBeInViewport({ ratio: 1 })
+    const tapTarget = await compare(2).boundingBox()
+    expect(tapTarget.height).toBeGreaterThanOrEqual(44)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+    await compare(2).tap()
+    await expect(page).toHaveURL('/compare?productId=201&productId=204')
+    await expect(cell(page, 204, 'price')).toHaveText('20,400원')
+    await page.getByRole('button', { name: '상품 201 비교 해제', exact: true }).press('Enter')
+    await expect(page).toHaveURL('/compare?productId=204')
+    const browse = page.getByRole('link', { name: '상품 더 고르기', exact: true })
+    await expect(browse).toHaveAttribute('href', listing)
+    await browse.press('Enter')
+    await expect(page).toHaveURL(listing)
+    await expect(choose(204, '해제')).toHaveAttribute('aria-pressed', 'true')
+    await expect(choose(201)).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('비교')
+    await choose(204, '해제').tap()
+    await expect(compare(1)).toHaveCount(0)
+  })
+})
+
 test('목록·상세의 비교 선택은 필터 URL·Product7 장바구니를 보존하고 현재 값을 따로 조회', async ({ page, comparisonApi }) => {
   const url = '/products?minPriceKrw=0&tasteTag=dry%2Csweet&sort=name&page=1'
   await page.goto(url)
