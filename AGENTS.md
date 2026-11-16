@@ -19,7 +19,7 @@
 
 ## Documentation
 
-- Maintain existing current docs only when behavior, contracts, commands or status change. Keep the repository free of new Markdown files. Put change-specific rationale/results in the PR; Git preserves removed history. One ignored handoff is enough when needed.
+- Keep `docs/` empty. Create repository documentation only for lasting development conventions such as code style, design patterns and project direction. Update `AGENTS.md` first. Put validation in the open PR or CI and use GitHub Discussions or Projects when a task needs a longer record.
 - Do not add/edit comments, body, assignees or labels on closed/merged PRs. Keep necessary follow-up work in GitHub Projects/Discussions and Notion to-do/done items; do not create unused records.
 - Keep one representative README case with verifiable evidence. Replace it when a better example is supported by a concrete reproduction, implementation and result. Keep evidence in its PR or an immutable Git commit.
 - 초기 웹 소스는 SSAFY 13기 주점부리(오인성·박상윤)에서 가져왔다. [원본 Pubburi-Refactor b993b4c](https://github.com/ois0886/Pubburi-Refactor/tree/b993b4c8f3ba8e5d11e98a3cc76c98b3e661bfdf)
