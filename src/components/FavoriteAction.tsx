@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '../services/api'
 import { useFavoriteWrites } from '../state/favoriteWrites'
@@ -10,6 +10,7 @@ import type { Product, User } from '../types'
 
 export function ProductFavorite({ product }: { product: Product }) {
   const session = useSession()
+  const location = useLocation()
   if (session.isPending)
     return <p role="status">로그인 상태를 확인하는 중입니다.</p>
   if (session.isError)
@@ -28,7 +29,7 @@ export function ProductFavorite({ product }: { product: Product }) {
     return (
       <Link
         className="btn btn-outline-dark"
-        to={`/account?${new URLSearchParams({ redirect: `/products/${product.id}` })}`}
+        to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search + location.hash })}`}
       >
         로그인하고 찜하기
       </Link>
