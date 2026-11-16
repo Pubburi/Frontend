@@ -2187,6 +2187,37 @@ test('비회원 상세는 찜 API를 호출하지 않고 상세 목적지를 가
   await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/products/901')
 })
 
+test('390px 상세 찜 세션 만료 후 같은 상세 주소로 돌아오고 쓰기를 자동 재전송하지 않는다', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'member')
+  const target = '/products/901?from=search&tag=dry%2Csweet#main-content'
+  let writes = 0
+  await page.route('**/api/users/me/favorites/901', (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes += 1
+    api.user = null
+    return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(target)
+  const favorite = page.getByRole('button', { name: '시험 탁주 찜하기', exact: true })
+  await expect(favorite).toHaveAttribute('aria-pressed', 'false')
+  await favorite.press('Enter')
+  const login = page.getByRole('link', { name: '로그인하고 찜하기', exact: true })
+  await expect(login).toBeVisible()
+  await expect(favorite).toHaveCount(0)
+  await login.press('Enter')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === target)
+
+  await page.getByLabel('아이디', { exact: true }).fill('member')
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+  await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
+  await expect(page).toHaveURL(target)
+  await expect(favorite).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('main')).toBeFocused()
+  expect(writes).toBe(1)
+  expect(api.favorites.member ?? []).toEqual([])
+})
+
 for (const status of [200, 401]) {
   test(`이전 계정의 늦은 찜 상태 GET ${status}가 새 계정 상세에 섞이지 않음`, async ({ page, api }) => {
     api.user = api.users.find((user) => user.id === 'member')
