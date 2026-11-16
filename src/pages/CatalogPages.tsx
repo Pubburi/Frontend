@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Mous
 import {
   Link,
   useLocation,
+  useNavigate,
   useParams,
   useSearchParams,
 } from 'react-router-dom'
@@ -27,6 +28,7 @@ import {
   Pagination,
   ProductCard,
   Quantity,
+  type ProductCardLink,
 } from '../components/ui'
 import { buildProductQuery, defaultProductSort, parseProductQuery, productSortOptions, removeProductCondition } from '../utils/productFilters'
 import { productRangeFields, validateProductRanges, type ProductRangeKey, type ProductRangeErrors } from '../productRanges'
@@ -78,9 +80,23 @@ export function HomePage() {
   )
 }
 
-export function ProductsPage() {
+export type CatalogProductOrigin = {
+  key: string
+  url: string
+  productId: number
+  link: ProductCardLink
+  top: number
+  keyboard: boolean
+}
+
+function opensInSameTab(event: MouseEvent<HTMLAnchorElement>) {
+  return event.button === 0 && !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+}
+
+export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductOrigin | null }) {
   const [search, setSearch] = useSearchParams()
   const location = useLocation()
+  const navigateTo = useNavigate()
   const filters = parseProductQuery(
     { ...Object.fromEntries(search), tasteTag: search.getAll('tasteTag'), aromaTag: search.getAll('aromaTag') },
     categories.map((category) => category.label),
@@ -154,6 +170,35 @@ export function ProductsPage() {
   const hasAdvancedError = Boolean(Object.keys(rangeErrors).length || Object.keys(tagIssues).length || rejectedTags)
   const searchButton = useRef<HTMLButtonElement>(null)
   const results = useRef<HTMLElement>(null)
+  const restored = useRef<CatalogProductOrigin | null>(null)
+  useLayoutEffect(() => {
+    const region = results.current
+    if (!catalogReturn || restored.current === catalogReturn || !region) return
+    const discard = () => { restored.current = catalogReturn }
+    const restore = () => {
+      if (restored.current === catalogReturn) return
+      restored.current = catalogReturn
+      if (document.activeElement !== document.body) return
+      const product = CSS.escape(String(catalogReturn.productId))
+      const link = CSS.escape(catalogReturn.link)
+      const target = region.querySelector<HTMLAnchorElement>(`[data-product-card="${product}"] [data-product-link="${link}"]`)
+      if (!target) {
+        if (catalogReturn.keyboard) region.focus({ preventScroll: true })
+        region.scrollIntoView({ block: 'start', behavior: 'instant' })
+        return
+      }
+      if (catalogReturn.keyboard) target.focus({ preventScroll: true })
+      window.scrollBy({ top: target.getBoundingClientRect().top - catalogReturn.top, behavior: 'instant' })
+    }
+    window.addEventListener('pointerdown', discard, { once: true })
+    window.addEventListener('wheel', discard, { once: true, passive: true })
+    const frame = repairPage === null && !products.isPending && products.fetchStatus !== 'fetching' ? requestAnimationFrame(restore) : null
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+      window.removeEventListener('pointerdown', discard)
+      window.removeEventListener('wheel', discard)
+    }
+  }, [catalogReturn, products.isPending, products.fetchStatus, repairPage])
   useLayoutEffect(() => {
     const intent = removalFocus.current
     removalFocus.current = null
@@ -218,6 +263,15 @@ export function ProductsPage() {
   }
   function navigate(page = 1, criteria = form) {
     setSearch(new URLSearchParams(pageQuery(buildProductQuery(criteria, page))))
+  }
+  function openProduct(event: MouseEvent<HTMLAnchorElement>, productId: number, link: ProductCardLink) {
+    if (!opensInSameTab(event)) return
+    event.preventDefault()
+    navigateTo(`/products/${productId}`, { state: { catalogProductOrigin: {
+      key: location.key, url: location.pathname + location.search + location.hash, productId, link,
+      top: event.currentTarget.getBoundingClientRect().top,
+      keyboard: event.detail === 0 && document.activeElement === event.currentTarget,
+    } satisfies CatalogProductOrigin } })
   }
   function changeKeyboardPage(page: number, trigger: HTMLButtonElement) {
     if (document.activeElement !== trigger || !results.current) {
@@ -417,7 +471,7 @@ export function ProductsPage() {
       ) : resultPage?.items.length ? (
         <div className="product-grid">
           {resultPage.items.map((product) => (
-            <ProductCard key={product.id} product={product} />
+            <ProductCard key={product.id} product={product} onOpen={(event, link) => openProduct(event, product.id, link)} />
           ))}
         </div>
       ) : (
@@ -457,6 +511,16 @@ function ProductDetail({ id }: { id: string }) {
   const cart = useAccountCart()
   const client = useQueryClient()
   const location = useLocation()
+  const navigate = useNavigate()
+  const origin = location.state?.catalogProductOrigin as CatalogProductOrigin | undefined
+  const catalogOrigin = origin && String(origin.productId) === id && /^\/products(?:[?#]|$)/.test(origin.url) ? origin : null
+  function catalogLink(className: string) {
+    return <Link className={className} to={catalogOrigin?.url ?? '/products'} onClick={(event) => {
+      if (!catalogOrigin || !opensInSameTab(event)) return
+      event.preventDefault()
+      navigate(-1)
+    }}>{catalogOrigin ? '검색 결과로 돌아가기' : '전체 주류 보기'}</Link>
+  }
   const [quantity, setQuantity] = useState(1)
   const [reviewView, setReviewView] = useState({ page: 1, sort: 'latest' })
   const { page, sort } = reviewView
@@ -605,9 +669,7 @@ function ProductDetail({ id }: { id: string }) {
         title="상품을 찾을 수 없습니다"
         description="판매가 종료되었거나 존재하지 않는 상품입니다."
       >
-        <Link className="btn btn-dark" to="/products">
-          전체 주류 보기
-        </Link>
+        {catalogLink('btn btn-dark')}
       </Empty>
     ) : (
       <Empty icon="!" title="상품을 불러오지 못했습니다">
@@ -623,7 +685,7 @@ function ProductDetail({ id }: { id: string }) {
     <>
       <section className="view detail-layout catalog-detail">
         <header className="catalog-detail-heading detail-copy">
-          <Link className="text-link" to="/products">전체 주류 보기</Link>
+          {catalogLink('text-link')}
           <p className="product-type">{item.type}</p>
           <h1>{item.name}</h1>
         </header>

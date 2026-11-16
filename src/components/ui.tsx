@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAccountCart } from '../state/accountCart'
 import { useUi } from '../state/ui'
@@ -160,18 +160,22 @@ export function Quantity({
     </div>
   )
 }
-export function ProductCard({ product }: { product: Product }) {
+export type ProductCardLink = 'image' | 'name' | 'details'
+export function ProductCard({ product, onOpen }: {
+  product: Product
+  onOpen?: (event: MouseEvent<HTMLAnchorElement>, link: ProductCardLink) => void
+}) {
   const cart = useAccountCart()
   const status = useUi((state) => state.status)
   return (
-    <article className="product-card">
-      <Link className="product-image" to={`/products/${product.id}`}>
+    <article className="product-card" data-product-card={product.id}>
+      <Link className="product-image" to={`/products/${product.id}`} data-product-link="image" onClick={(event) => onOpen?.(event, 'image')}>
         <Image src={productImage(product)} alt={product.name} product />
       </Link>
       <div className="product-body">
         <p className="product-type">{product.type}</p>
         <h2>
-          <Link to={`/products/${product.id}`}>{product.name}</Link>
+          <Link to={`/products/${product.id}`} data-product-link="name" onClick={(event) => onOpen?.(event, 'name')}>{product.name}</Link>
         </h2>
         <p className="product-meta">
           <strong>{money(product.price)}원</strong>
@@ -181,6 +185,8 @@ export function ProductCard({ product }: { product: Product }) {
           <Link
             className="btn btn-outline-dark btn-sm"
             to={`/products/${product.id}`}
+            data-product-link="details"
+            onClick={(event) => onOpen?.(event, 'details')}
           >
             상세 보기
           </Link>
