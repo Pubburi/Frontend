@@ -11,6 +11,8 @@ import { api, ApiClientError, pageQuery } from '../services/api'
 import { categories } from '../catalog'
 import { useSession } from '../queries'
 import { useAccountCart } from '../state/accountCart'
+import { useComparison } from '../state/comparison'
+import { comparisonUrl } from '../comparison'
 import { useUi } from '../state/ui'
 import { ProductFavorite } from '../components/FavoriteAction'
 import { SearchTagFields } from '../components/SearchTagFields'
@@ -91,6 +93,16 @@ export type CatalogProductOrigin = {
 
 function opensInSameTab(event: MouseEvent<HTMLAnchorElement>) {
   return event.button === 0 && !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+}
+
+function CatalogCompareShortcut() {
+  const ids = useComparison((state) => state.ids)
+  const { pathname, search, hash } = useLocation()
+  if (ids.length === 0) return null
+  return <Link className="btn btn-dark catalog-compare-shortcut" to={comparisonUrl(ids)}
+    state={{ catalogCompareFrom: pathname + search + hash }}>
+    선택한 상품 {ids.length}개 비교하기
+  </Link>
 }
 
 export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductOrigin | null }) {
@@ -493,6 +505,7 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
       </section>
       <Pagination page={invalidUrlFilters || repairPage !== null ? undefined : resultPage}
         onChange={(page) => navigate(page, filters)} onKeyboardNavigate={changeKeyboardPage} />
+      <CatalogCompareShortcut />
     </section>
   )
 }
