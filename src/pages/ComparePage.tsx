@@ -47,6 +47,13 @@ export function ComparePage() {
     // The committed URL alone owns the shared selection, including a cancelled transition.
     setSearch(new URLSearchParams(comparisonUrl(next).split('?')[1] ?? ''), { state: location.state })
   }
+  function syncSelectionBeforeBrowse(event: MouseEvent<HTMLAnchorElement>) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ||
+        !/^\/compare\/?$/.test(window.location.pathname)) return
+    // History can already contain the edit while React is still displaying the previous comparison.
+    const current = parseComparison(new URLSearchParams(window.location.search))
+    if (!current.error) replace(current.ids)
+  }
   function productValue(index: number, render: (product: Product) => ReactNode) {
     const query = products[index]
     if (query.isPaused) return <span className="muted">연결을 기다리는 중</span>
@@ -87,7 +94,7 @@ export function ComparePage() {
       <div><h1 tabIndex={-1} ref={heading}>상품 비교</h1><p>선택한 상품의 가격과 확인된 특성을 나란히 살펴보세요.</p></div>
     </div>
     <div className="button-row comparison-actions">
-      <Link className="btn btn-dark" to={browseUrl}>상품 더 고르기</Link>
+      <Link className="btn btn-dark" to={browseUrl} onClick={syncSelectionBeforeBrowse}>상품 더 고르기</Link>
       {(ids.length > 0 || error) && <button className="text-button" onClick={(event) => select([], event)}>비교 전체 해제</button>}
     </div>
     {error ? <div className="state-panel" role="alert"><h2>비교 상품 주소를 확인해 주세요</h2><p>{error} 선택을 해제한 뒤 상품을 다시 골라 주세요.</p></div> : !ids.length ?

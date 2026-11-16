@@ -46,6 +46,30 @@ const test = base.extend({
 const cell = (page, id, field) => page.locator(`td[data-product-id="${id}"][data-field="${field}"]`)
 const itemReads = (calls) => calls.filter((call) => /^\/api\/products\/\d+(\/features)?$/.test(call.path))
 
+// Hold scheduling only. Browser history and fixture HTTP remain active.
+async function interceptComparisonRender(page) {
+  await page.addInitScript(() => {
+    const Original = window.MessageChannel
+    window.__holdComparisonRender = false; window.__heldComparisonTasks = []; window.__deliveredComparisonTasks = 0
+    window.MessageChannel = function () {
+      const channel = new Original(), post = channel.port2.postMessage.bind(channel.port2)
+      channel.port1.addEventListener('message', () => window.__deliveredComparisonTasks++)
+      channel.port2.postMessage = (...args) => {
+        if (window.__holdComparisonRender) window.__heldComparisonTasks.push(() => post(...args))
+        else post(...args)
+      }
+      return channel
+    }
+    window.MessageChannel.prototype = Original.prototype
+  })
+}
+async function resumeComparisonRender(page) {
+  await page.evaluate(() => {
+    window.__holdComparisonRender = false
+    for (const deliver of window.__heldComparisonTasks.splice(0)) deliver()
+  })
+}
+
 test.describe('작은 화면에서 목록의 선택 상품 비교', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
@@ -53,6 +77,7 @@ test.describe('작은 화면에서 목록의 선택 상품 비교', () => {
     const listing = '/products?q=%EB%B9%84%EA%B5%90&minPriceKrw=0&tasteTag=dry%2Csweet&sort=priceAsc&page=1'
     const choose = (id, action = '선택') => page.getByRole('button', { name: `비교 표본 ${id} 비교 ${action}`, exact: true })
     const compare = (count) => page.getByRole('link', { name: `선택한 상품 ${count}개 비교하기`, exact: true })
+    await interceptComparisonRender(page)
     await page.goto(listing)
     await expect(choose(201)).toBeVisible()
     await expect(compare(1)).toHaveCount(0)
@@ -68,12 +93,16 @@ test.describe('작은 화면에서 목록의 선택 상품 비교', () => {
     await compare(2).tap()
     await expect(page).toHaveURL('/compare?productId=201&productId=204')
     await expect(cell(page, 204, 'price')).toHaveText('20,400원')
-    await page.getByRole('button', { name: '상품 201 비교 해제', exact: true }).press('Enter')
-    await expect(page).toHaveURL('/compare?productId=204')
     const browse = page.getByRole('link', { name: '상품 더 고르기', exact: true })
     await expect(browse).toHaveAttribute('href', listing)
-    await browse.press('Enter')
-    await expect(page).toHaveURL(listing)
+    await page.evaluate(() => { window.__holdComparisonRender = true })
+    try {
+      await page.getByRole('button', { name: '상품 201 비교 해제', exact: true }).press('Enter')
+      await expect(page).toHaveURL('/compare?productId=204')
+      expect(await page.evaluate(() => window.__heldComparisonTasks.length)).toBeGreaterThan(0)
+      await browse.press('Enter')
+      await expect(page).toHaveURL(listing)
+    } finally { await resumeComparisonRender(page) }
     await expect(choose(204, '해제')).toHaveAttribute('aria-pressed', 'true')
     await expect(choose(201)).toHaveAttribute('aria-pressed', 'false')
     await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('비교')
@@ -289,22 +318,10 @@ test('390px 비교 표의 가로 이동·Tab/Enter 제거는 문서 넘침 없�
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
 
-// Hold only scheduler task delivery, keeping URL changes/native history and HTTP real within this fixture.
 // This deterministically models Back before the removal's concurrent React commit.
 test('제거의 React commit 전 빠른 nativeBack도 URL·표·전역선택과 보관 상태를 일치시킴', async ({ page }) => {
+  await interceptComparisonRender(page)
   await page.addInitScript(() => {
-    const Original = window.MessageChannel
-    window.__holdComparisonRender = false; window.__heldComparisonTasks = []; window.__deliveredComparisonTasks = 0
-    window.MessageChannel = function () {
-      const channel = new Original(), post = channel.port2.postMessage.bind(channel.port2)
-      channel.port1.addEventListener('message', () => window.__deliveredComparisonTasks++)
-      channel.port2.postMessage = (...args) => {
-        if (window.__holdComparisonRender) window.__heldComparisonTasks.push(() => post(...args))
-        else post(...args)
-      }
-      return channel
-    }
-    window.MessageChannel.prototype = Original.prototype
     localStorage.setItem('pubburi-cart', JSON.stringify([{product:{id:201,name:'비교 표본 201',price:0,abv:0,type:'탁주',img:null,orderCount:0},quantity:2}]))
     localStorage.setItem('pubburi-recent-products-v1',JSON.stringify({version:1,entries:[{id:201,viewedAt:Date.now()}]}))
   })
@@ -320,9 +337,7 @@ test('제거의 React commit 전 빠른 nativeBack도 URL·표·전역선택과 
     expect(await page.evaluate(()=>window.__heldComparisonTasks.length)).toBeGreaterThan(0)
     await page.goBack()
     await expect(page).toHaveURL('/compare?productId=203&productId=201')
-  } finally {
-    await page.evaluate(()=>{window.__holdComparisonRender=false;for(const deliver of window.__heldComparisonTasks.splice(0))deliver()})
-  }
+  } finally { await resumeComparisonRender(page) }
   await expect.poll(()=>page.evaluate(()=>window.__deliveredComparisonTasks)).toBeGreaterThan(0)
   await expect(page.locator('thead th[data-product-id]')).toHaveCount(2)
   await expect(page.getByRole('link',{name:'상품 비교 2',exact:true})).toHaveAttribute('href','/compare?productId=203&productId=201')
