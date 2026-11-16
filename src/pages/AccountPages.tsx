@@ -67,7 +67,6 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
     if (result.ok) {
       // The order succeeded. A later profile/list refresh must not turn it into a failed order.
       void client.invalidateQueries({ queryKey: ['account', userId] })
-      void client.invalidateQueries({ queryKey: ['catalog', 'popular'] })
       if (mounted.current && currentLocation.current === submittedLocation)
         navigate('/profile')
     }

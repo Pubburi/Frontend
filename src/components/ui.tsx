@@ -177,10 +177,6 @@ export function ProductCard({ product }: { product: Product }) {
           <strong>{money(product.price)}원</strong>
           <span>도수 {product.abv}%</span>
         </p>
-        <p className="product-orders">
-          시연 주문 수량{' '}
-          {Number(product.orderCount || 0).toLocaleString('ko-KR')}개
-        </p>
         <div className="product-card-actions">
           <Link
             className="btn btn-outline-dark btn-sm"

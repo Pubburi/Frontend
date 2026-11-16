@@ -700,7 +700,6 @@ main select:focus {
 }
 
 .product-meta strong { color: var(--ink); font-size: 17px; }
-.product-orders { margin: 0; color: var(--muted); font-size: 12px; }
 .product-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
 .product-card-actions .btn { padding-inline: 6px; text-align: center; }
 .product-body > .compare-action { align-self: end; }

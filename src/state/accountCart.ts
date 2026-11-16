@@ -123,7 +123,6 @@ export function createAccountCart(client: QueryClient) {
           useUi.getState().status(op.kind === 'merge' ? '기기 장바구니를 계정에 합쳤습니다.' : '주문이 접수되었습니다.')
           if (op.kind === 'checkout') {
             void client.invalidateQueries({ queryKey: ['account', scope.id] })
-            void client.invalidateQueries({ queryKey: ['catalog', 'popular'] })
           }
           return result.orderId
         } catch (error) {

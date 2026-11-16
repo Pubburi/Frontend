@@ -24,7 +24,6 @@ const test = base.extend({
       const url = new URL(route.request().url()), path = url.pathname.slice(4), method = route.request().method()
       state.calls.push({ path, method, search: url.search })
       if (method === 'GET' && path === '/auth/me') return route.fulfill({ status: 401, json: failure(401) })
-      if (method === 'GET' && path === '/products/popular') return route.fulfill({ json: envelope([]) })
       if (method === 'GET' && path === '/markets') return route.fulfill({ json: envelope({ items: state.markets, page: 1, size: 12, total: state.markets.length, totalPages: 1, hasNext: false }) })
       if (method === 'GET' && /^\/markets\/\d+$/.test(path)) {
         const id = Number(path.split('/').at(-1))
@@ -58,7 +57,7 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/#stores')
     await expect(page.getByRole('heading', { name: '취향과 순간에 어울리는 한 잔', exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '추천 상품을 준비하고 있습니다', exact: true })).toBeVisible()
+    await expect(homeSearch(page)).toBeVisible()
     const menu = page.getByRole('button', { name: '메뉴 열기', exact: true })
     if (await menu.isVisible()) {
       await menu.focus()
