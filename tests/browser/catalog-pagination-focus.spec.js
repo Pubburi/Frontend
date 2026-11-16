@@ -11,15 +11,23 @@ initialQuery.append('tasteTag', 'dry,sweet'); initialQuery.append('tasteTag', 'l
 const initialUrl = `/products?${initialQuery}`
 const test = base.extend({
   focusApi: [async ({ page }, use) => {
-    const state = { calls: [], unexpected: [], errors: [] }
+    const state = { products, calls: [], unexpected: [], errors: [] }
     page.on('pageerror', (error) => state.errors.push(error.message))
     await page.route('**/api/**', async (route) => {
       const req = route.request(); const url = new URL(req.url()); const q = url.searchParams
       state.calls.push({ method: req.method(), path: url.pathname, query: [...q] })
       if (req.method() === 'GET' && url.pathname === '/api/auth/me') return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
       if (req.method() === 'GET' && url.pathname === '/api/products') {
-        const items = products.filter((p) => !q.get('q') || p.name.includes(q.get('q')))
+        const items = state.products.filter((p) => !q.get('q') || p.name.includes(q.get('q')))
         return route.fulfill({ json: success(pageOf(items, Number(q.get('page') || 1))) })
+      }
+      const detail = url.pathname.match(/^\/api\/products\/(\d+)(\/features|\/comments)?$/)
+      if (req.method() === 'GET' && detail) {
+        const product = state.products.find((item) => item.id === Number(detail[1]))
+        if (!product) return route.fulfill({ status: 404, json: failure('NOT_FOUND') })
+        if (detail[2] === '/features') return route.fulfill({ json: success({ productId: product.id, volumeMl: null, tasteTags: null, aromaTags: null, description: null, sourceName: null, sourceUrl: null, sourceNote: null }) })
+        if (detail[2] === '/comments') return route.fulfill({ json: success({ ...pageOf([]), ratingSummary: { count: 0, average: null } }) })
+        return route.fulfill({ json: success(product) })
       }
       state.unexpected.push(`${req.method()} ${url.pathname}`)
       return route.fulfill({ status: 501, json: failure('UNEXPECTED_TEST_REQUEST') })
@@ -41,6 +49,70 @@ async function holdSecondPage(page, status = 200) {
 }
 const nextButton = (page) => page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true })
 const results = (page) => page.getByRole('region', { name: '상품 검색 결과', exact: true })
+
+for (const { width, browserBack } of [{ width: 390, browserBack: false }, { width: 1280, browserBack: true }]) {
+  test(`${width}px 상세에서 ${browserBack ? '브라우저 뒤로' : '목록 링크'}로 돌아오면 조건·상품 링크·위치를 복원`, async ({ page, focusApi }) => {
+    focusApi.products = Array.from({ length: 24 }, (_, index) => ({ ...products[0], id: 1700 + index, name: `포커스 상품 ${index + 1}` }))
+    await page.setViewportSize({ width, height: 880 })
+    const listUrl = initialUrl.replace('page=1', 'page=2')
+    await page.goto(listUrl)
+    const product = page.getByRole('link', { name: '포커스 상품 23', exact: true }).filter({ hasNot: page.getByRole('img') })
+    await expect(product).toBeVisible()
+    await product.scrollIntoViewIfNeeded()
+    await product.focus()
+    const before = await product.evaluate((el) => ({ top: el.getBoundingClientRect().top, scroll: scrollY, entry: history.state?.key }))
+    expect(before.scroll).toBeGreaterThan(0)
+    await page.evaluate(() => { history.scrollRestoration = 'manual' })
+    await product.press('Enter')
+    await expect(page.getByRole('heading', { name: '포커스 상품 23', level: 1, exact: true })).toBeVisible()
+    if (browserBack) await page.goBack()
+    else await page.getByRole('link', { name: /^(전체 주류 보기|검색 결과로 돌아가기)$/ }).press('Enter')
+    await expect(page).toHaveURL(listUrl)
+    await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('포커스')
+    await expect(product).toBeFocused()
+    await expect.poll(() => product.evaluate((el, originalTop) => Math.abs(el.getBoundingClientRect().top - originalTop), before.top)).toBeLessThan(4)
+    expect(await page.evaluate(() => history.state?.key)).toBe(before.entry)
+  })
+}
+
+test('직접 연 상품 상세에서는 일반 상품 목록 링크로 이동한다', async ({ page }) => {
+  await page.goto('/products/1700')
+  await expect(page.getByRole('heading', { name: '포커스 상품 0', level: 1, exact: true })).toBeVisible()
+  const browse = page.getByRole('link', { name: '전체 주류 보기', exact: true })
+  await expect(browse).toHaveAttribute('href', '/products')
+  await browse.press('Enter')
+  await expect(page).toHaveURL('/products')
+})
+
+test('상세에서 돌아온 뒤 목록을 다시 읽는 동안 사용자가 스크롤하면 그 위치를 유지한다', async ({ page }) => {
+  await page.goto(initialUrl)
+  const product = page.getByRole('link', { name: '포커스 상품 11', exact: true }).filter({ hasNot: page.getByRole('img') })
+  await product.scrollIntoViewIfNeeded()
+  expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0)
+  await page.evaluate(() => { history.scrollRestoration = 'manual' })
+  await product.press('Enter')
+  await expect(page.getByRole('heading', { name: '포커스 상품 11', exact: true, level: 1 })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0)
+  let release
+  const waiting = new Promise((resolve) => { release = resolve })
+  let started = false
+  await page.route('**/api/products?**', async (route) => {
+    started = true
+    await waiting
+    return route.fallback()
+  })
+  try {
+    await page.goBack()
+    await expect.poll(() => started).toBe(true)
+    await page.mouse.move(500, 300)
+    await page.mouse.wheel(0, 160)
+    await expect.poll(() => page.evaluate(() => scrollY)).toBe(160)
+    release()
+    await expect(results(page)).toHaveAttribute('aria-busy', 'false')
+    await expect(product).not.toBeFocused()
+    expect(await page.evaluate(() => scrollY)).toBe(160)
+  } finally { release() }
+})
 
 for (const width of [1280, 390]) {
   test(`${width}px 키보드 페이지 이동은 로딩 중 포커스를 잃지 않고 새 상품으로 Tab 연결`, async ({ page, focusApi }) => {

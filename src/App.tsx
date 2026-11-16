@@ -18,7 +18,7 @@ import { cartTotals, useCart } from './state/cart'
 import { useAccountCart } from './state/accountCart'
 import { useUi } from './state/ui'
 import { Empty, Image, Loading } from './components/ui'
-import { HomePage, ProductsPage, ProductDetailPage } from './pages/CatalogPages'
+import { HomePage, ProductsPage, ProductDetailPage, type CatalogProductOrigin } from './pages/CatalogPages'
 import { AccountPage, CartPage, ProfilePage } from './pages/AccountPages'
 import { PreferencesPage } from './pages/PreferencesPage'
 import { FavoritesPage } from './pages/FavoritesPage'
@@ -111,14 +111,19 @@ export function App() {
     }
   }, [menu])
   const navigationType = useNavigationType()
-  const previousLocation = useRef<{ key: string; destination: string } | null>(null)
+  const previousLocation = useRef<{ key: string; destination: string; productOrigin?: CatalogProductOrigin } | null>(null)
+  const [catalogReturn, setCatalogReturn] = useState<CatalogProductOrigin | null>(null)
   useEffect(() => {
     const previous = previousLocation.current
     const destination = location.pathname + location.search + location.hash
-    previousLocation.current = { key: location.key, destination }
+    previousLocation.current = { key: location.key, destination, productOrigin: location.state?.catalogProductOrigin }
     setMenu(false)
-    // Consume navigation ownership once, including same-URL entries. POP never opts out.
-    if (previous?.destination === destination) return
+    const origin = previous?.productOrigin
+    const returned = navigationType === 'POP' && origin && origin.key === location.key && origin.url === destination &&
+      previous?.destination === `/products/${origin.productId}` ? origin : null
+    setCatalogReturn(returned)
+    // Preserve the catalog viewport only on a return to the entry that opened the product.
+    if (returned || previous?.destination === destination) return
     if (location.hash) {
       const target = document.getElementById(location.hash.slice(1))
       if (target) {
@@ -241,7 +246,7 @@ export function App() {
         <Suspense fallback={<Loading label="화면을 불러오는 중입니다." />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products" element={<ProductsPage catalogReturn={catalogReturn?.key === location.key ? catalogReturn : null} />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/markets/:id" element={<MarketDetailPage />} />
             <Route path="/orders/:id" element={<OrderDetailPage />} />
