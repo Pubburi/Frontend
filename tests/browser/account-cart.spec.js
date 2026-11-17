@@ -345,3 +345,32 @@ for (const kind of ['merge', 'checkout']) for (const recovery of ['relogin', 'sa
   else await expect(page.getByRole('link', { name: '확인한 주문 보기', exact: true })).toHaveAttribute('href', '/orders/90')
   await expect(page).toHaveURL('/cart')
 })
+
+test('390px 계정 주문 세션 만료 후 본문에서 다시 로그인해 같은 장바구니에서 접수 결과를 확인', async ({ page, cartApi: s }) => {
+  const target = '/cart?from=checkout#main-content'
+  s.carts.member = { version: 1, items: [row(8, 2)] }
+  s.afterApply401 = 'checkout'
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(target)
+  await page.getByLabel('주문 방식', { exact: true }).selectOption('OFFLINE')
+  await page.getByLabel('테이블·요청 사항', { exact: true }).fill('창가 테이블')
+  await page.getByRole('button', { name: '10,000원 주문하기', exact: true }).press('Enter')
+  await expect(own(page)).toHaveCount(0)
+  await page.getByRole('button', { name: '장바구니 로그인 상태 다시 확인', exact: true }).press('Enter')
+  await expect(page.getByRole('heading', { name: '장바구니가 비어 있습니다', exact: true })).toBeVisible()
+  const login = page.getByRole('main').getByRole('link', { name: '로그인하고 장바구니 확인', exact: true })
+  await expect(login).toBeVisible()
+  await login.press('Enter')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === target)
+  await page.getByLabel('아이디', { exact: true }).fill('member')
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture')
+  await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
+  await expect(page).toHaveURL(target)
+  await expect(page.getByRole('main')).toBeFocused()
+  await page.getByRole('button', { name: '이전 작업 결과 조회', exact: true }).press('Enter')
+  await expect(page.getByRole('link', { name: '확인한 주문 보기', exact: true })).toHaveAttribute('href', '/orders/90')
+  expect(s.orders.map(({ orderType, orderTable, totalPrice }) => ({ orderType, orderTable, totalPrice }))).toEqual([
+    { orderType: 'OFFLINE', orderTable: '창가 테이블', totalPrice: 10000 },
+  ])
+  expect(s.calls.filter((call) => call.path.endsWith('/checkout') && call.method === 'POST')).toHaveLength(1)
+})

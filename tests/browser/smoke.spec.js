@@ -584,11 +584,19 @@ test('상품 검색·상세·장바구니 저장과 비회원 주문 안내', as
   await expect(page.getByRole('button', { name: '18,000원 주문하기' })).toBeVisible()
   await page.getByRole('spinbutton', { name: '시험 탁주 수량' }).fill('2')
   await page.getByRole('spinbutton', { name: '시험 탁주 수량' }).press('Tab')
-  await page.reload()
+  const cartUrl = '/cart?from=guest#main-content'
+  await page.goto(cartUrl)
   await expect(page.getByRole('spinbutton', { name: '시험 탁주 수량' })).toHaveValue('2')
+  await page.getByLabel('테이블·요청 사항', { exact: true }).fill('창가 자리')
   await page.getByRole('button', { name: '12,000원 주문하기' }).click()
-  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/cart')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === cartUrl)
   expect(api.calls.filter((call) => call.method === 'POST')).toEqual([])
+  await page.getByLabel('아이디', { exact: true }).fill('member')
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+  await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
+  await expect(page).toHaveURL(cartUrl)
+  await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('창가 자리')
+  expect(api.calls.filter((call) => call.method === 'POST').map((call) => call.path)).toEqual(['/auth/login'])
 })
 
 test('비회원의 보호 경로 진입은 원래 목적지를 보존해 로그인으로 이동', async ({ page }) => {

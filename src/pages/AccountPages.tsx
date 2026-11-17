@@ -38,6 +38,8 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
   const client = useQueryClient()
   const location = useLocation()
   const checkingSession = checkoutAuthPending(ui.pending) || session.isPending || session.fetchStatus !== 'idle'
+  const guestCanSignIn = !authorityBlocked && !checkingSession && session.isSuccess && session.data === null
+  const signInUrl = `/account?${new URLSearchParams({ redirect: location.pathname + location.search + location.hash })}`
   const currentLocation = useRef(location.key)
   currentLocation.current = location.key
   const mounted = useRef(false)
@@ -54,7 +56,7 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
         current.fetchStatus !== 'idle' || current.data !== session.data) return
     if (!current.data) {
       ui.error(new Error('주문하려면 먼저 로그인해 주세요.'))
-      navigate('/account?redirect=/cart')
+      navigate(signInUrl)
       return
     }
     const userId = current.data.id
@@ -181,7 +183,7 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
                   로그인 상태 다시 확인
                 </button>
               )}
-              {!checkingSession && !session.isError && !authorityBlocked && session.data === null && (
+              {guestCanSignIn && (
                 <p className="purchase-feedback">로그인한 뒤 같은 장바구니에서 주문을 이어갈 수 있어요.</p>
               )}
               <button
@@ -203,11 +205,12 @@ function DeviceCartPage({ authorityBlocked = false, verify }: { authorityBlocked
       ) : (
         <Empty
           title="장바구니가 비어 있습니다"
-          description="상품을 둘러보고 마음에 드는 술을 담아보세요."
+          description={guestCanSignIn ? '이 기기에 담은 상품이 없습니다. 로그인하면 계정 장바구니를 확인할 수 있어요.' : '상품을 둘러보고 마음에 드는 술을 담아보세요.'}
         >
-          <Link className="btn btn-dark" to="/products">
-            전체 주류 보기
-          </Link>
+          {guestCanSignIn && (
+            <Link className="btn btn-dark" to={signInUrl}>로그인하고 장바구니 확인</Link>
+          )}
+          <Link className={guestCanSignIn ? 'text-link' : 'btn btn-dark'} to="/products">전체 주류 보기</Link>
         </Empty>
       )}
       {authorityBlocked && !cart.items.length && !checkingSession && <button className="btn btn-outline-dark" onClick={verify}>로그인 상태 다시 확인</button>}
