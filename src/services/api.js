@@ -157,7 +157,7 @@ export const api = {
   removeFavorite: (id) => request(`/users/me/favorites/${id}`, { method: 'DELETE' }),
 
   products: (params = {}) => productList(params),
-  /** @param {ReturnType<typeof import('../utils/productFilters').parseProductQuery>} params @returns {Promise<{page: import('../types').Page<import('../types').Product>, hint: {kind: 'ALIAS'|'TYPO', q: string}|null}>} */
+  /** @param {ReturnType<typeof import('../utils/productFilters').parseProductQuery>} params @returns {Promise<{page: import('../types').Page<import('../types').CatalogProduct>, hint: {kind: 'ALIAS'|'TYPO', q: string}|null}>} */
   catalogProducts: (params) => productList(params, (page, headers) => ({
     page,
     hint: page?.total === 0 && Array.isArray(page.items) && page.items.length === 0

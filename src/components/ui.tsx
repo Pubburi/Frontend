@@ -160,13 +160,15 @@ export function Quantity({
     </div>
   )
 }
-export function ProductCard({ product, onOpen }: {
+export function ProductCard({ product, volumeMl, onOpen }: {
   product: Product
+  volumeMl?: number | null
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void
 }) {
   const cart = useAccountCart()
   const status = useUi((state) => state.status)
   const title = useId()
+  const verifiedVolume = typeof volumeMl === 'number' && Number.isInteger(volumeMl) && volumeMl >= 1 && volumeMl <= 1_000_000
   return (
     <article className="product-card" data-product-card={product.id}>
       <Link className="product-card-link" to={`/products/${product.id}`} aria-labelledby={title} data-product-link onClick={onOpen}>
@@ -180,6 +182,7 @@ export function ProductCard({ product, onOpen }: {
         <p className="product-meta">
           <strong>{money(product.price)}원</strong>
           <span>도수 {product.abv}%</span>
+          {volumeMl !== undefined && <span>{verifiedVolume ? `용량 ${volumeMl.toLocaleString('ko-KR')} mL` : '용량 미확인'}</span>}
         </p>
         <div className="product-card-actions">
           <button
