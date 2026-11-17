@@ -479,8 +479,8 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
         </Empty>
       ) : resultPage?.items.length ? (
         <div className="product-grid">
-          {resultPage.items.map((product) => (
-            <ProductCard key={product.id} product={product} onOpen={(event) => openProduct(event, product.id)} />
+          {resultPage.items.map(({ volumeMl, ...product }) => (
+            <ProductCard key={product.id} product={product} volumeMl={volumeMl ?? null} onOpen={(event) => openProduct(event, product.id)} />
           ))}
         </div>
       ) : (

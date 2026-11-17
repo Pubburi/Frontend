@@ -53,7 +53,9 @@ const results = (page) => page.getByRole('region', { name: '상품 검색 결과
 for (const width of [390, 1280]) {
   test(`${width}px 카드 사진과 이름은 같은 상세 링크이고 담기와 비교는 독립적으로 작동`, async ({ page, focusApi }) => {
     const secondName = '포커스 상품 1 긴 이름의 전통주 봄 한정판 첫 번째 양조장 병입 상품'
-    focusApi.products = [products[0], { ...products[1], name: secondName }, ...products.slice(2)]
+    focusApi.products = [750, null, undefined, 0, 1.5, '750', 1_000_001, 1, 1_000_000].map((volumeMl, index) => ({
+      ...products[index], name: index === 1 ? secondName : products[index].name, volumeMl,
+    }))
     await page.setViewportSize({ width, height: 880 })
     await page.goto(initialUrl)
     const cards = results(page).getByRole('article')
@@ -65,6 +67,10 @@ for (const width of [390, 1280]) {
     await expect(detail).toHaveAttribute('href', '/products/1700')
     await expect(detail.getByRole('heading', { name: '포커스 상품 0', exact: true })).toBeVisible()
     await expect(detail.getByRole('img')).toBeVisible()
+    const expectedVolumes = ['용량 750 mL', ...Array(6).fill('용량 미확인'), '용량 1 mL', '용량 1,000,000 mL']
+    for (const [index, label] of expectedVolumes.entries()) {
+      await expect(cards.nth(index).getByText(label, { exact: true })).toBeVisible()
+    }
     const originalPrice = await first.getByText('7,777원', { exact: true }).boundingBox()
     const adjacentPrice = await cards.nth(1).getByText('7,777원', { exact: true }).boundingBox()
     expect(Math.abs(originalPrice.y - adjacentPrice.y)).toBeLessThan(1)
@@ -73,6 +79,7 @@ for (const width of [390, 1280]) {
     await expect(add).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: /장바구니/ }).locator('.cart-count')).toHaveText('1')
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pubburi-cart')))).toEqual([{ product: products[0], quantity: 1 }])
     await page.keyboard.press('Tab')
     await expect(select).toBeFocused()
     await page.keyboard.press('Enter')
@@ -80,6 +87,7 @@ for (const width of [390, 1280]) {
     await expect(page).toHaveURL(initialUrl)
     await page.keyboard.press('Tab')
     await expect(results(page).getByRole('link', { name: secondName, exact: true })).toBeFocused()
+    expect(focusApi.calls.filter(({ path }) => path.startsWith('/api/products')).map(({ path }) => path)).toEqual(['/api/products'])
     await detail.getByRole('img').click()
     await expect(page.getByRole('heading', { name: '포커스 상품 0', level: 1, exact: true })).toBeVisible()
   })
