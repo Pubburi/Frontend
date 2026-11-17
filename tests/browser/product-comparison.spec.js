@@ -117,7 +117,7 @@ test('목록·상세의 비교 선택은 필터 URL·Product7 장바구니를 �
   await page.getByRole('button', { name: '비교 표본 201 비교 선택', exact: true }).click()
   await expect(page).toHaveURL(url)
   expect(itemReads(comparisonApi.calls)).toEqual([])
-  await page.locator('.product-card').filter({ has: page.getByRole('heading', { name: '비교 표본 202', exact: true }) }).getByRole('link', { name: '상세 보기', exact: true }).click()
+  await page.getByRole('link', { name: '비교 표본 202', exact: true }).click()
   await page.getByRole('button', { name: '수량 늘리기', exact: true }).click()
   await page.getByRole('button', { name: '2개 장바구니에 담기', exact: true }).click()
   const cart = await page.evaluate(() => localStorage.getItem('pubburi-cart'))

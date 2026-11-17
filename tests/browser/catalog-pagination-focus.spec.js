@@ -50,13 +50,48 @@ async function holdSecondPage(page, status = 200) {
 const nextButton = (page) => page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true })
 const results = (page) => page.getByRole('region', { name: '상품 검색 결과', exact: true })
 
+for (const width of [390, 1280]) {
+  test(`${width}px 카드 사진과 이름은 같은 상세 링크이고 담기와 비교는 독립적으로 작동`, async ({ page, focusApi }) => {
+    const secondName = '포커스 상품 1 긴 이름의 전통주 봄 한정판 첫 번째 양조장 병입 상품'
+    focusApi.products = [products[0], { ...products[1], name: secondName }, ...products.slice(2)]
+    await page.setViewportSize({ width, height: 880 })
+    await page.goto(initialUrl)
+    const cards = results(page).getByRole('article')
+    const first = cards.first()
+    const detail = first.getByRole('link', { name: '포커스 상품 0', exact: true })
+    const add = first.getByRole('button', { name: '빠른 담기', exact: true })
+    const select = first.getByRole('button', { name: '포커스 상품 0 비교 선택', exact: true })
+    await expect(first.getByRole('link')).toHaveCount(1)
+    await expect(detail).toHaveAttribute('href', '/products/1700')
+    await expect(detail.getByRole('heading', { name: '포커스 상품 0', exact: true })).toBeVisible()
+    await expect(detail.getByRole('img')).toBeVisible()
+    const originalPrice = await first.getByText('7,777원', { exact: true }).boundingBox()
+    const adjacentPrice = await cards.nth(1).getByText('7,777원', { exact: true }).boundingBox()
+    expect(Math.abs(originalPrice.y - adjacentPrice.y)).toBeLessThan(1)
+    await detail.focus()
+    await page.keyboard.press('Tab')
+    await expect(add).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: /장바구니/ }).locator('.cart-count')).toHaveText('1')
+    await page.keyboard.press('Tab')
+    await expect(select).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(first.getByRole('button', { name: '포커스 상품 0 비교 해제', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page).toHaveURL(initialUrl)
+    await page.keyboard.press('Tab')
+    await expect(results(page).getByRole('link', { name: secondName, exact: true })).toBeFocused()
+    await detail.getByRole('img').click()
+    await expect(page.getByRole('heading', { name: '포커스 상품 0', level: 1, exact: true })).toBeVisible()
+  })
+}
+
 for (const { width, browserBack } of [{ width: 390, browserBack: false }, { width: 1280, browserBack: true }]) {
   test(`${width}px 상세에서 ${browserBack ? '브라우저 뒤로' : '목록 링크'}로 돌아오면 조건·상품 링크·위치를 복원`, async ({ page, focusApi }) => {
     focusApi.products = Array.from({ length: 24 }, (_, index) => ({ ...products[0], id: 1700 + index, name: `포커스 상품 ${index + 1}` }))
     await page.setViewportSize({ width, height: 880 })
     const listUrl = initialUrl.replace('page=1', 'page=2')
     await page.goto(listUrl)
-    const product = page.getByRole('link', { name: '포커스 상품 23', exact: true }).filter({ hasNot: page.getByRole('img') })
+    const product = page.getByRole('link', { name: '포커스 상품 23', exact: true })
     await expect(product).toBeVisible()
     await product.scrollIntoViewIfNeeded()
     await product.focus()
@@ -86,7 +121,7 @@ test('직접 연 상품 상세에서는 일반 상품 목록 링크로 이동한
 
 test('상세에서 돌아온 뒤 목록을 다시 읽는 동안 사용자가 스크롤하면 그 위치를 유지한다', async ({ page }) => {
   await page.goto(initialUrl)
-  const product = page.getByRole('link', { name: '포커스 상품 11', exact: true }).filter({ hasNot: page.getByRole('img') })
+  const product = page.getByRole('link', { name: '포커스 상품 11', exact: true })
   await product.scrollIntoViewIfNeeded()
   expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0)
   await page.evaluate(() => { history.scrollRestoration = 'manual' })
@@ -133,8 +168,9 @@ for (const width of [1280, 390]) {
       expect(box.y).toBeLessThan(900)
       expect(await results(page).evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('solid')
       await page.keyboard.press('Tab')
-      await expect(page.locator('.product-card .product-image').first()).toBeFocused()
-      await expect(page.locator('.product-card .product-image').first()).toHaveAttribute('href', '/products/1712')
+      const firstProduct = results(page).getByRole('link', { name: '포커스 상품 12', exact: true })
+      await expect(firstProduct).toBeFocused()
+      await expect(firstProduct).toHaveAttribute('href', '/products/1712')
       const query = new URLSearchParams(focusApi.calls.filter((c) => c.path === '/api/products').at(-1).query)
       expect(query.getAll('tasteTag')).toEqual(['dry,sweet', 'line\nbreak'])
       expect(query.getAll('aromaTag')).toEqual(['floral']); expect(query.get('minPriceKrw')).toBe('0')

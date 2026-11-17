@@ -160,36 +160,28 @@ export function Quantity({
     </div>
   )
 }
-export type ProductCardLink = 'image' | 'name' | 'details'
 export function ProductCard({ product, onOpen }: {
   product: Product
-  onOpen?: (event: MouseEvent<HTMLAnchorElement>, link: ProductCardLink) => void
+  onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void
 }) {
   const cart = useAccountCart()
   const status = useUi((state) => state.status)
+  const title = useId()
   return (
     <article className="product-card" data-product-card={product.id}>
-      <Link className="product-image" to={`/products/${product.id}`} data-product-link="image" onClick={(event) => onOpen?.(event, 'image')}>
-        <Image src={productImage(product)} alt={product.name} product />
+      <Link className="product-card-link" to={`/products/${product.id}`} aria-labelledby={title} data-product-link onClick={onOpen}>
+        <div className="product-image"><Image src={productImage(product)} alt={product.name} product /></div>
+        <div className="product-title">
+          <p className="product-type">{product.type}</p>
+          <h2 id={title}>{product.name}</h2>
+        </div>
       </Link>
       <div className="product-body">
-        <p className="product-type">{product.type}</p>
-        <h2>
-          <Link to={`/products/${product.id}`} data-product-link="name" onClick={(event) => onOpen?.(event, 'name')}>{product.name}</Link>
-        </h2>
         <p className="product-meta">
           <strong>{money(product.price)}원</strong>
           <span>도수 {product.abv}%</span>
         </p>
         <div className="product-card-actions">
-          <Link
-            className="btn btn-outline-dark btn-sm"
-            to={`/products/${product.id}`}
-            data-product-link="details"
-            onClick={(event) => onOpen?.(event, 'details')}
-          >
-            상세 보기
-          </Link>
           <button
             className="btn btn-gold btn-sm"
             disabled={cart.pending || cart.loading || cart.mode === 'account' && !cart.ready}
@@ -199,9 +191,9 @@ export function ProductCard({ product, onOpen }: {
           >
             빠른 담기
           </button>
+          <CompareAction product={product} />
         </div>
         {cart.mode === 'unknown' && <small className="muted">로그인 확인 전에는 이 기기에만 담습니다.</small>}
-        <CompareAction product={product} />
       </div>
     </article>
   )
