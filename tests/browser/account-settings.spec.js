@@ -112,7 +112,7 @@ test('직접 query는 계정 선택에 쓰지 않고400 거절 뒤 현재 초안
 })
 test('암호 불확실 응답 뒤 F05는 실제 새me 확인 전 새 상세를 기록하지 않음',async({page,settingsApi:s})=>{
  await ready(page);s.writeStatus=503;await passwords(page);await page.getByRole('button',{name:'비밀번호 변경',exact:true}).click();await expect(page.getByRole('alert')).toContainText('변경 결과를 확인하지 못했습니다.')
- await nav(page,'전체 주류');await page.locator('.product-card').getByRole('link',{name:'상세 보기',exact:true}).click();await expect(page.getByRole('heading',{name:'설정 표본',exact:true})).toBeVisible();await nav(page,'최근 본 상품');await expect(page.getByRole('heading',{name:'최근 본 상품이 없습니다',exact:true})).toBeVisible();expect(writes(s)).toHaveLength(1)
+ await nav(page,'전체 주류');await page.getByRole('link',{name:'설정 표본',exact:true}).click();await expect(page.getByRole('heading',{name:'설정 표본',exact:true})).toBeVisible();await nav(page,'최근 본 상품');await expect(page.getByRole('heading',{name:'최근 본 상품이 없습니다',exact:true})).toBeVisible();expect(writes(s)).toHaveLength(1)
 })
 
 test('새 암호의 실제 UTF8 72B 경계는 잘라보내지 않고 오류입력으로 초점; 기존 긴 현재암호는 그대로',async({page,settingsApi:s})=>{

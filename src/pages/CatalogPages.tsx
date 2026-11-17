@@ -30,7 +30,6 @@ import {
   Pagination,
   ProductCard,
   Quantity,
-  type ProductCardLink,
 } from '../components/ui'
 import { buildProductQuery, defaultProductSort, parseProductQuery, productSortOptions, removeProductCondition } from '../utils/productFilters'
 import { productRangeFields, validateProductRanges, type ProductRangeKey, type ProductRangeErrors } from '../productRanges'
@@ -86,7 +85,6 @@ export type CatalogProductOrigin = {
   key: string
   url: string
   productId: number
-  link: ProductCardLink
   top: number
   keyboard: boolean
 }
@@ -192,8 +190,7 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
       restored.current = catalogReturn
       if (document.activeElement !== document.body) return
       const product = CSS.escape(String(catalogReturn.productId))
-      const link = CSS.escape(catalogReturn.link)
-      const target = region.querySelector<HTMLAnchorElement>(`[data-product-card="${product}"] [data-product-link="${link}"]`)
+      const target = region.querySelector<HTMLAnchorElement>(`[data-product-card="${product}"] [data-product-link]`)
       if (!target) {
         if (catalogReturn.keyboard) region.focus({ preventScroll: true })
         region.scrollIntoView({ block: 'start', behavior: 'instant' })
@@ -276,11 +273,11 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
   function navigate(page = 1, criteria = form) {
     setSearch(new URLSearchParams(pageQuery(buildProductQuery(criteria, page))))
   }
-  function openProduct(event: MouseEvent<HTMLAnchorElement>, productId: number, link: ProductCardLink) {
+  function openProduct(event: MouseEvent<HTMLAnchorElement>, productId: number) {
     if (!opensInSameTab(event)) return
     event.preventDefault()
     navigateTo(`/products/${productId}`, { state: { catalogProductOrigin: {
-      key: location.key, url: location.pathname + location.search + location.hash, productId, link,
+      key: location.key, url: location.pathname + location.search + location.hash, productId,
       top: event.currentTarget.getBoundingClientRect().top,
       keyboard: event.detail === 0 && document.activeElement === event.currentTarget,
     } satisfies CatalogProductOrigin } })
@@ -483,7 +480,7 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
       ) : resultPage?.items.length ? (
         <div className="product-grid">
           {resultPage.items.map((product) => (
-            <ProductCard key={product.id} product={product} onOpen={(event, link) => openProduct(event, product.id, link)} />
+            <ProductCard key={product.id} product={product} onOpen={(event) => openProduct(event, product.id)} />
           ))}
         </div>
       ) : (

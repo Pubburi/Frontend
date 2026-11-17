@@ -58,7 +58,7 @@ async function visit(page, id) {
   await page.getByLabel('상품 검색', { exact: true }).fill(`최근 표본 ${id}`); await page.getByLabel('상품 검색', { exact: true }).press('Enter')
   await expect(page).toHaveURL((url) => url.searchParams.get('q') === `최근 표본 ${id}`)
   const response = page.waitForResponse((r) => new URL(r.url()).pathname === `/api/products/${id}`)
-  await page.locator('.product-card').filter({ has: page.locator(`a.product-image[href="/products/${id}"]`) }).getByRole('link', { name: '상세 보기', exact: true }).click()
+  await page.getByRole('link', { name: `최근 표본 ${id}`, exact: true }).click()
   await (await response).finished()
   await expect(page.getByRole('heading', { name: `최근 표본 ${id}`, exact: true })).toBeVisible()
 }
