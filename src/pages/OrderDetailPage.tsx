@@ -37,7 +37,7 @@ export default function OrderDetailPage() {
   if (id === null) return <OrderShell id={null}><Empty title="주문 번호를 확인해 주세요" description="내 주문 내역에서 다시 선택해 주세요." /></OrderShell>
   if (transitioning || session.isPending || session.fetchStatus !== 'idle') return <OrderShell id={id}><Loading label="현재 로그인 상태를 확인하는 중입니다." /></OrderShell>
   if (session.isError) return <OrderShell id={id}><Empty title="로그인 상태를 확인하지 못했습니다"><button className="btn btn-dark" onClick={() => session.refetch()}>로그인 상태 다시 확인</button></Empty></OrderShell>
-  if (!session.data) return <Navigate to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`} replace />
+  if (!session.data) return <Navigate to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search + location.hash })}`} replace />
   if (!auth) return null
   if (!owners.has(auth)) owners.set(auth, ++nextOwner)
   return <OwnedOrder key={`${owners.get(auth)}:${session.data.id}:${location.key}:${id}`} id={id} user={session.data} auth={auth} />
@@ -75,7 +75,7 @@ function OwnedOrder({ id, user, auth }: { id: number; user: User; auth: Query })
   function loginAgain() {
     if (!ownsActor() || session.fetchStatus !== 'idle' || query.fetchStatus !== 'idle') return
     client.clear(); client.setQueryData(['session'], null)
-    navigate(`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`)
+    navigate(`/account?${new URLSearchParams({ redirect: location.pathname + location.search + location.hash })}`)
   }
   const action = expired ? <button className="btn btn-dark" disabled={query.fetchStatus !== 'idle' || session.fetchStatus !== 'idle'} onClick={loginAgain}>다시 로그인</button> :
     <button className="btn btn-outline-dark" aria-disabled={busy} onClick={() => { if (!busy && ownsActor()) void query.refetch() }}>주문 상태 새로고침</button>

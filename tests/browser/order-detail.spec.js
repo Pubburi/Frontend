@@ -80,11 +80,29 @@ for (const width of [1280, 390]) {
   })
 }
 
-test('invalid IDs never request order details;guest valid link preserves path/query', async ({ page, fixture }) => {
+for (const width of [390, 1440]) test(`invalid IDs never request order details;guest login preserves path/query/anchor at${width}`, async ({ page, fixture }) => {
+  await page.setViewportSize({ width, height: 900 })
   fixture.user = null
   for (const id of ['0', '01', '-1', '+1', '1e0', '2147483648', '1/2']) { await page.goto(`/orders/${id}`); await expect(page.getByRole('heading', { name: id === '1/2' ? '페이지를 찾을 수 없습니다' : '주문 번호를 확인해 주세요', exact: true })).toBeVisible() }
   expect(fixture.calls.filter((c) => /^\/orders\//.test(c.path))).toEqual([])
-  await page.goto('/orders/901?from=demo'); await expect(page.getByRole('heading', { name: '다시 만나 반가워요', exact: true })).toBeVisible(); expect(new URL(page.url()).searchParams.get('redirect')).toBe('/orders/901?from=demo')
+  const target = '/orders/901?from=demo#main-content'
+  await page.goto(target)
+  await expect(page.getByRole('heading', { name: '다시 만나 반가워요', exact: true })).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('redirect')).toBe(target)
+  await page.getByLabel('아이디', { exact: true }).fill('member')
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture')
+  await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
+  await expect(page).toHaveURL(target)
+  await facts(page)
+  await expect(page.locator('.order-detail-total')).toHaveText('15,554원')
+  await expect(page.getByRole('main')).toBeFocused()
+  await expect(page.getByRole('heading', { name: '데모 주문 상세', exact: true })).toBeInViewport()
+  for (let step = 0; step < 5; step++) {
+    await page.keyboard.press('Tab')
+    if (await refresh(page).evaluate((element) => element === document.activeElement)) break
+  }
+  await expect(refresh(page)).toBeFocused()
+  expect(fixture.calls.filter((c) => c.method !== 'GET').map((c) => c.path)).toEqual(['/auth/login'])
 })
 test('admin list link and deleted-account order use fresh ADMIN authority', async ({ page, fixture }) => {
   fixture.user = users[2]; fixture.orders[0].userId = null
@@ -103,11 +121,27 @@ for (const status of [403, 404, 503]) test(`current${status} hides old facts and
   const count = fixture.orderReads(901); await page.evaluate(() => { dispatchEvent(new Event('offline')); dispatchEvent(new Event('online')) }); expect(fixture.orderReads(901)).toBe(count)
   fixture.responses.delete('/orders/901'); await refresh(page).click(); await facts(page); expect(fixture.calls.filter((c) => c.method !== 'GET')).toEqual([])
 })
-test('current session401 hides cached order and explicit login returns to original query', async ({ page, fixture }) => {
-  await page.goto('/orders/901?from=demo'); await facts(page); fixture.user = null
+for (const width of [390, 1440]) test(`current session401 hides cached order and explicit login preserves query/anchor at${width}`, async ({ page, fixture }) => {
+  await page.setViewportSize({ width, height: 900 })
+  const target = '/orders/901?from=demo#main-content'
+  await page.goto(target); await facts(page); fixture.user = null
   await refresh(page).click(); await expect(page.getByRole('heading', { name: '다시 로그인해 주세요', exact: true })).toBeVisible(); await expect(page.locator('.order-item-line')).toHaveCount(0)
-  await page.getByRole('button', { name: '다시 로그인', exact: true }).click(); expect(new URL(page.url()).searchParams.get('redirect')).toBe('/orders/901?from=demo')
-  await page.getByLabel('아이디', { exact: true }).fill('member'); await page.getByLabel('비밀번호', { exact: true }).fill('fixture'); await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).click(); await facts(page)
+  await page.getByRole('button', { name: '다시 로그인', exact: true }).press('Enter')
+  expect(new URL(page.url()).searchParams.get('redirect')).toBe(target)
+  await page.getByLabel('아이디', { exact: true }).fill('member')
+  await page.getByLabel('비밀번호', { exact: true }).fill('fixture')
+  await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
+  await expect(page).toHaveURL(target)
+  await facts(page)
+  await expect(page.locator('.order-detail-total')).toHaveText('15,554원')
+  await expect(page.getByRole('main')).toBeFocused()
+  await expect(page.getByRole('heading', { name: '데모 주문 상세', exact: true })).toBeInViewport()
+  for (let step = 0; step < 5; step++) {
+    await page.keyboard.press('Tab')
+    if (await refresh(page).evaluate((element) => element === document.activeElement)) break
+  }
+  await expect(refresh(page)).toBeFocused()
+  expect(fixture.calls.filter((c) => c.method !== 'GET').map((c) => c.path)).toEqual(['/auth/login'])
 })
 test('bootstrap503 blocks all order reads and recovers without treating it as guest', async ({ page, fixture }) => {
   fixture.meFailures.push(503); await page.goto('/orders/901'); await expect(page.getByRole('heading', { name: '로그인 상태를 확인하지 못했습니다', exact: true })).toBeVisible(); expect(fixture.orderReads(901)).toBe(0)
