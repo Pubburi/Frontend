@@ -33,6 +33,14 @@ const test = base.extend({
           (!query.has('minAbvPercent') || item.abv >= Number(query.get('minAbvPercent'))) && (!query.has('maxAbvPercent') || item.abv <= Number(query.get('maxAbvPercent'))))
         return route.fulfill({ json: success(pageOf(matches, Number(query.get('page') || 1), Number(query.get('size') || 12))) })
       }
+      const detail = url.pathname.match(/^\/api\/products\/(\d+)(\/features|\/comments)?$/)
+      if (request.method() === 'GET' && detail) {
+        const product = state.products.find((item) => item.id === Number(detail[1]))
+        if (!product) return route.fulfill({ status: 404, json: failure('NOT_FOUND') })
+        if (detail[2] === '/features') return route.fulfill({ json: success({ productId: product.id, volumeMl: null, description: null, tasteTags: null, aromaTags: null, sourceName: null, sourceUrl: null, sourceNote: null }) })
+        if (detail[2] === '/comments') return route.fulfill({ json: success({ ...pageOf([]), size: 10, ratingSummary: { count: 0, average: null } }) })
+        return route.fulfill({ json: success(product) })
+      }
       state.unexpected.push(`${request.method()} ${url.pathname}`)
       return route.fulfill({ status: 501, json: failure('UNEXPECTED_TEST_REQUEST') })
     })
@@ -48,6 +56,55 @@ async function fillRanges(page, values) {
 }
 const ranges = { minPriceKrw: '6000', maxPriceKrw: '12000', minAbvPercent: '6.25', maxAbvPercent: '15' }
 const rangeQuery = new URLSearchParams(ranges).toString()
+
+for (const width of [390, 1280]) {
+  test(`${width}px 홈 예산 링크가 기존 가격 입력을 열고 조건·상세 뒤로를 보존`, async ({ page, rangeApi }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/')
+    const entry = page.getByRole('link', { name: '예산으로 찾기', exact: true })
+    await expect(entry).toHaveAttribute('href', '/products#catalog-max-price')
+    expect(rangeApi.calls.filter((call) => call.path === '/api/products')).toHaveLength(0)
+    await entry.press('Enter')
+    await expect(page).toHaveURL('/products#catalog-max-price')
+    const limit = page.getByLabel(labels.maxPriceKrw, { exact: true })
+    await expect(limit).toBeVisible()
+    await expect(limit).toBeFocused()
+    const headerBottom = await page.locator('.topbar').evaluate((header) => header.getBoundingClientRect().bottom)
+    expect((await limit.boundingBox()).y).toBeGreaterThanOrEqual(headerBottom)
+    await limit.fill('12000')
+    await limit.press('Enter')
+    await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('maxPriceKrw') === '12000')
+    await expect(page.getByRole('link', { name: '범위 최대', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '가격 상한 밖', exact: true })).toHaveCount(0)
+    expect(rangeApi.calls.filter((call) => call.path === '/api/products').at(-1).query).toEqual({ maxPriceKrw: '12000', sort: 'name', page: '1', size: '12' })
+
+    await page.goBack()
+    await expect(page).toHaveURL('/products#catalog-max-price')
+    await expect(limit).toBeFocused()
+    await expect(limit).toHaveValue('')
+    const product = page.getByRole('link', { name: '범위 최대', exact: true })
+    await product.press('Enter')
+    await expect(page.getByRole('heading', { name: '범위 최대', level: 1, exact: true })).toBeVisible()
+    await page.goBack()
+    await expect(page).toHaveURL('/products#catalog-max-price')
+    await expect(product).toBeFocused()
+    await page.goBack()
+    await expect(page).toHaveURL('/')
+    await expect(entry).toBeVisible()
+  })
+}
+
+test('예산 입력 해시는 직접 URL의 적용값을 열고 다른 해시는 기본 접힘을 유지', async ({ page }) => {
+  const limit = page.getByLabel(labels.maxPriceKrw, { exact: true })
+  await page.goto('/products?maxPriceKrw=6000#main-content')
+  await expect(page.getByRole('main')).toBeFocused()
+  await expect(limit).toBeHidden()
+  await page.goto('/products?maxPriceKrw=6000#catalog-max-price')
+  await expect(limit).toBeFocused()
+  await expect(limit).toHaveValue('6000')
+  await expect(page.getByRole('link', { name: '범위 최소', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: '범위 최대', exact: true })).toHaveCount(0)
+})
 
 test('가격·도수 네 범위 입력은 포함 경계와 모든 조건을 함께 API에 전달', async ({ page, rangeApi }) => {
   await page.goto('/products')

@@ -102,6 +102,45 @@ if (result.status === 'APPLIED' && op.guest) cartStore.getState().consume(op.gue
 recoveries.delete(scope.id)
 ```
 
+### 검색·상세 이동에서 최신 요청 보존하기
+
+#### 문제
+
+검색 응답 전에 필터를 해제하면 새 조건의 목록이 열리지 않았다. 상품 A의 상세를 읽는 도중 상품 B로 이동해도 B가 표시되지 않았다.
+
+#### 원인
+
+읽기와 쓰기가 같은 중복 실행 차단을 사용해 새 검색까지 막았다. 응답 저장 위치도 하나여서 URL이나 상품이 바뀐 뒤 도착한 응답을 구분하지 못했다.
+
+#### 해결
+
+Vue 화면에서 최신 읽기의 상태만 반영하도록 수정한 뒤, React 전환에서는 URL의 검색 조건과 상품 ID를 TanStack Query의 키로 사용했다. 화면은 현재 키의 결과와 오류만 구독한다. 상세 컴포넌트도 상품 ID에 맞춰 교체해 이전 상품의 수량과 편집 상태가 섞이지 않게 했다.
+
+#### 결과
+
+전환 전 Vue의 프로덕션 번들과 Chromium API fixture에서 같은 두 요청 경합을 고정해 재현한 오류가 2/2에서 0/2로 줄었다. 응답을 보류한 뒤 전체 해제하거나 다른 상품으로 이동하는 조건이었다. React에서도 새 조건의 목록과 현재 상품을 표시하고, 이전 응답의 오류가 현재 화면에 나타나지 않는 동작을 확인했다. 이 수치는 통제한 재현 흐름의 정확성 결과이며, 실제 사용자 오류율이나 로딩 시간은 측정하지 않았다.
+
+#### 대체안/회고
+
+전역 응답에 요청 번호를 붙여 관리할 수도 있었다. React에서는 이미 사용하는 Query 캐시의 키로 요청별 상태를 구분해 별도의 응답 복사를 줄였다. 먼저 보낸 GET은 서버에서 완료될 수 있어, 이 처리만으로 서버 부하가 줄었다고 판단할 수는 없다.
+
+#### 코드
+
+검색 조건과 상품 ID가 각 조회 결과의 소유 범위를 정한다.
+
+```tsx
+const products = useQuery({
+  queryKey: ['catalog', 'products', filters],
+  queryFn: () => api.catalogProducts(filters),
+  enabled: !invalidUrlFilters,
+  refetchOnReconnect: (query) => !(query.state.error instanceof ApiClientError && query.state.error.status === 400),
+})
+const product = useQuery<Product>({
+  queryKey: ['catalog', 'product', id],
+  queryFn: () => api.product(id),
+})
+```
+
 <a id="development"></a>
 
 ## 🚀 로컬 실행
@@ -130,6 +169,8 @@ npm run check
 ```
 
 `npm run check`는 의존성·이미지·타입·단위 테스트·프로덕션 빌드와 Chromium 흐름을 검증합니다. main은 `frontend-ci`를 통과하고 최신 main을 반영한 PR을 Squash merge합니다. 자동화 PR은 최신 커밋의 Codex 리뷰와 대화 해결을 확인합니다. [협업 기준](CONTRIBUTING.md)
+
+제품 변경에는 프로덕션 브라우저의 완료·오류 n/N 측정을 필수로 수행하고, 동작에 맞게 로딩·상호작용 시간의 p50/p95와 요청·전송량을 기록합니다. 관련 Backend에 격리 부하를 걸어 사용자 흐름과 데이터 정합성도 확인합니다. 입력·환경·부하·캐시·반복 조건을 고정해 전후 원값과 한계를 남깁니다. 문서 수정만으로 새 성능 측정을 완료한 것으로 기록하지 않습니다.
 
 <a id="roadmap"></a>
 
