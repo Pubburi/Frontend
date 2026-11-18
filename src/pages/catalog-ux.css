@@ -36,7 +36,8 @@
 .catalog-home-copy .home-search-suggestions { border-radius: 14px; }
 .catalog-home-copy .home-search-suggestions li { padding-inline: 12px; border-radius: 10px; }
 .catalog-home-copy .home-search-suggestions small { color: var(--ink-soft); }
-.catalog-home-copy .catalog-home-all { display: inline-flex; width: fit-content; align-items: center; min-height: 44px; }
+.catalog-home-actions { gap: 4px 16px; }
+.catalog-home-actions .text-link { display: inline-flex; align-items: center; min-height: 44px; }
 
 .catalog-home-cover {
   overflow: hidden;
@@ -114,6 +115,7 @@
 .catalog-search-advanced-fields :is(.range-filter-group, .search-tag-group, .search-tag-kind) {
   border-radius: 14px;
 }
+#catalog-max-price { scroll-margin-top: calc(var(--header-height) + 12px); }
 .tag-choice-row .btn { border-radius: 999px; }
 .catalog-search-apply { justify-self: end; }
 .catalog-applied {
