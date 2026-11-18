@@ -348,6 +348,8 @@ for (const width of [1440, 390]) {
     await page.keyboard.press('Tab')
     await expect(lead.getByRole('link', { name: '전체 주류 둘러보기', exact: true })).toBeFocused()
     await page.keyboard.press('Tab')
+    await expect(lead.getByRole('link', { name: '예산으로 찾기', exact: true })).toBeFocused()
+    await page.keyboard.press('Tab')
     const category = page.getByRole('link', { name: '탁주', exact: true })
     await expect(category).toBeFocused()
     await expect(category).toHaveAttribute('href', '/products?type=%ED%83%81%EC%A3%BC&sort=name&page=1')

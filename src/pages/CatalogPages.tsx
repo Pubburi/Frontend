@@ -41,6 +41,8 @@ import { HomeProductThemes } from '../components/HomeProductThemes'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
 import './catalog-ux.css'
 
+const maxPriceFieldId = 'catalog-max-price'
+
 export function HomePage() {
   return (
     <section className="view home-view catalog-home">
@@ -50,9 +52,10 @@ export function HomePage() {
           <h1 id="catalog-home-title">취향과 순간에 어울리는 한 잔</h1>
           <p>상품명으로 찾거나 주종과 도수, 가격을 비교해 보세요.</p>
           <HomeProductSearch />
-          <Link className="text-link catalog-home-all" to="/products">
-            전체 주류 둘러보기
-          </Link>
+          <div className="button-row catalog-home-actions">
+            <Link className="text-link" to="/products">전체 주류 둘러보기</Link>
+            <Link className="text-link" to={`/products#${maxPriceFieldId}`}>예산으로 찾기</Link>
+          </div>
         </div>
         <div className="catalog-home-cover">
           <Image src="/images/carousel/catalog-cover.webp" alt="" loading="eager" />
@@ -127,6 +130,11 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
   const rangeInputs = useRef<Partial<Record<ProductRangeKey, HTMLInputElement | null>>>({})
   const filterRoot = useRef<HTMLElement>(null)
   const advancedFilters = useRef<HTMLDetailsElement>(null)
+  useLayoutEffect(() => {
+    if (location.hash === `#${maxPriceFieldId}` && advancedFilters.current) {
+      advancedFilters.current.open = true
+    }
+  }, [location.hash])
   const initiallyInvalid = useRef(invalidUrlFilters)
   const clearFilters = useRef<HTMLButtonElement>(null)
   const removalNumber = useRef(0)
@@ -390,6 +398,7 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
                   <label className="field-group" key={key}>
                     <span>{label}</span>
                     <input
+                      id={key === 'maxPriceKrw' ? maxPriceFieldId : undefined}
                       ref={(element) => { rangeInputs.current[key] = element }}
                       className="form-control"
                       type="text"
