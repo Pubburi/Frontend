@@ -3006,6 +3006,43 @@ async function prepareJoin(page, id = 'recovery-member') {
   await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
 }
 
+for (const width of [390, 1280]) {
+  test(`가입 ${width}px은 공백 이름을 전송하지 않고 수정 후 기존 입력과 취향으로 완료`, async ({ page, api }) => {
+    await page.setViewportSize({ width, height: 844 })
+    await prepareJoin(page, 'name-validation-member')
+    const name = page.getByLabel('이름', { exact: true })
+    const password = page.getByLabel('비밀번호', { exact: true })
+    const submit = page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true })
+    const taste = page.getByRole('group', { name: '선호 주종', exact: true }).getByRole('button', { name: '탁주', exact: true })
+    await taste.click()
+    for (const blank of ['   ', '\u3000', '\u00a0']) {
+      await name.fill(blank)
+      await submit.press('Enter')
+      await expect(name).toBeFocused()
+      await expect(name).toHaveValue(blank)
+      await expect(name).toHaveAttribute('aria-invalid', 'true')
+      await expect(name).toHaveAccessibleDescription('이름은 공백을 제외한 글자를 포함해 100자 이내로 입력해 주세요.')
+      await expect(page.getByLabel('아이디', { exact: true })).toHaveValue('name-validation-member')
+      await expect(page.getByText('사용할 수 있는 아이디입니다.', { exact: true })).toBeVisible()
+      await expect(password).toHaveValue('fixture-pass')
+      await expect(taste).toHaveAttribute('aria-pressed', 'true')
+      expect(api.calls.filter((call) => call.method === 'POST')).toEqual([])
+    }
+    await name.fill('  가입 회원  ')
+    await expect(name).not.toHaveAttribute('aria-invalid', 'true')
+    await expect(page.locator('.auth-form').getByRole('alert')).toHaveCount(0)
+    await submit.press('Enter')
+    await expect(page).toHaveURL('/preferences')
+    const review = page.getByRole('form', { name: '가입 취향 확인', exact: true })
+    await expect(review).toContainText('탁주')
+    await review.getByRole('button', { name: '지금은 건너뛰기', exact: true }).press('Enter')
+    await expect(page).toHaveURL('/cart')
+    const writes = api.calls.filter((call) => call.method === 'POST')
+    expect(writes.map((call) => call.path)).toEqual(['/users', '/auth/login'])
+    expect(writes[0].body).toEqual({ id: 'name-validation-member', name: '가입 회원', pass: 'fixture-pass' })
+  })
+}
+
 for (const width of [1280, 390]) {
   test(`가입 ${width}px은 72 UTF-8바이트 초과를 전송 전에 알려주고 입력을 고쳐 완료`, async ({ page, api }) => {
     await page.setViewportSize({ width, height: 844 })

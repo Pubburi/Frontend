@@ -11,7 +11,7 @@ import { profilePrivacy } from '../state/authReadPrivacy'
 import { Empty, Image, Loading, Pagination, Quantity } from '../components/ui'
 import { OrderCard } from '../components/OrderLines'
 import { money, productImage } from '../utils/format'
-import { validPassword } from '../settings'
+import { validAccountName, validPassword } from '../settings'
 import { categories } from '../catalog'
 import { signupAbvPresets, signupPreferenceReviews, type SignupPreferenceChoices } from '../preferences'
 import type { Order, Page, Profile, User } from '../types'
@@ -376,6 +376,8 @@ export function AccountPage() {
   const [mode, setMode] = useState<'login' | 'join'>('login')
   const [login, setLogin] = useState({ id: '', pass: '' })
   const [join, setJoin] = useState({ id: '', name: '', pass: '' })
+  const [nameError, setNameError] = useState('')
+  const nameInput = useRef<HTMLInputElement>(null)
   const [taste, setTaste] = useState<SignupPreferenceChoices>({ categories: [], targetAbvPercent: null })
   const [retryTaste, setRetryTaste] = useState<(SignupPreferenceChoices & { owner: string }) | null>(null)
   const [passwordVisible, setPasswordVisible] = useState(false)
@@ -392,6 +394,7 @@ export function AccountPage() {
   const returning = redirect !== null && safeRedirect(redirect) !== '/profile'
   function switchMode(next: 'login' | 'join') {
     setMode(next)
+    setNameError('')
     setPasswordVisible(false)
   }
   async function authenticate(event: FormEvent) {
@@ -402,6 +405,12 @@ export function AccountPage() {
       ui.error(new Error('아이디 중복 확인이 필요합니다.'))
       return
     }
+    if (mode === 'join' && !validAccountName(join.name.trim())) {
+      setNameError('이름은 공백을 제외한 글자를 포함해 100자 이내로 입력해 주세요.')
+      nameInput.current?.focus()
+      return
+    }
+    setNameError('')
     if (mode === 'join' && !validPassword(join.pass)) {
       ui.error(new Error('비밀번호는 4~100자·UTF-8 최대72바이트로 입력해 주세요. 공백도 비밀번호에 포함됩니다.'))
       passwordInput.current?.focus()
@@ -552,18 +561,23 @@ export function AccountPage() {
             )}
           </label>
           {mode === 'join' && (
-            <label className="field-group">
-              <span>이름</span>
+            <div className="field-group">
+              <label htmlFor="account-name">이름</label>
               <input
+                id="account-name"
+                ref={nameInput}
                 className="form-control"
                 autoComplete="name"
+                aria-invalid={nameError ? true : undefined}
+                aria-describedby={nameError ? 'join-name-error' : undefined}
                 maxLength={100}
                 disabled={authenticating}
                 required
                 value={join.name}
-                onChange={(e) => setJoin({ ...join, name: e.target.value })}
+                onChange={(e) => { setJoin({ ...join, name: e.target.value }); setNameError('') }}
               />
-            </label>
+              {nameError && <small id="join-name-error" className="danger-text" role="alert">{nameError}</small>}
+            </div>
           )}
           <div className="field-group">
             <label htmlFor="account-password">비밀번호</label>
