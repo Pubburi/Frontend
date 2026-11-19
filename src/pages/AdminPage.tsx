@@ -13,6 +13,7 @@ import { featureSaveKey } from '../productFeatures'
 import { publishAdminDeletion, reconcileDeletedEditor, subscribeAdminDeletion, type EditorDraft } from '../adminEditor'
 import { focusAdminEdit, type AdminEditFocusIntent } from '../adminEditFocus'
 import { money, orderType } from '../utils/format'
+import { validAccountName } from '../settings'
 import type { Market, Order, Page, Product, Review, User } from '../types'
 import './account-admin.css'
 
@@ -97,7 +98,7 @@ const blankForm = () => ({
   role: 'USER',
   pass: '',
 })
-type Draft = EditorDraft<ReturnType<typeof blankForm>, Item>
+type Draft = EditorDraft<ReturnType<typeof blankForm>, Item> & { invalidName?: boolean }
 const emptyDraft = (): Draft => ({ form: blankForm(), editing: null, revision: Symbol() })
 function AdminPanel({
   tab,
@@ -138,6 +139,9 @@ function AdminPanel({
   currentEditor.current = { draft, locationKey: location.key }
   const { form, editing } = draft
   useLayoutEffect(() => {
+    setDraft((current) => current.invalidName ? { ...current, invalidName: false } : current)
+  }, [location.key, authOwner, user])
+  useLayoutEffect(() => {
     const intent = editFocus.current
     editFocus.current = null
     if (!intent) return
@@ -165,7 +169,7 @@ function AdminPanel({
   const saveKey = `admin-${tab}-save`
   const deleteKey = `admin-${tab}-delete`
   function updateForm(form: ReturnType<typeof blankForm>) {
-    setDraft((current) => ({ ...current, form, revision: Symbol() }))
+    setDraft((current) => ({ ...current, form, revision: Symbol(), invalidName: current.invalidName && form.name === current.form.name }))
   }
   function ownsMemberEdit(submitted: Draft, account = user) {
     const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
@@ -214,6 +218,11 @@ function AdminPanel({
     const { form, editing } = submitted
     const intent = memberSaveFocus.current
     memberSaveFocus.current = null
+    if (tab === 'users' && (!validAccountName(form.name.trim()) || !/[^\p{White_Space}]/u.test(form.name))) {
+      setDraft((current) => current === submitted ? { ...current, invalidName: true } : current)
+      editInput.current?.focus()
+      return
+    }
     const keyboard = event.isTrusted && intent?.draft === submitted && intent.form === event.currentTarget &&
       (event.nativeEvent as SubmitEvent).submitter === intent.submitter && document.activeElement === intent.source &&
       ownsMemberEdit(submitted) ? intent : null
@@ -367,12 +376,16 @@ function AdminPanel({
       maxLength?: number
     } = {},
   ) {
+    const invalidName = key === 'name' && tab === 'users' && draft.invalidName
     return (
       <label className="field-group" key={key}>
         <span>{label}</span>
         <input
           ref={key === 'name' ? editInput : undefined}
           className="form-control"
+          aria-label={key === 'name' && tab === 'users' ? label : undefined}
+          aria-invalid={invalidName || undefined}
+          aria-describedby={invalidName ? 'admin-member-name-error' : undefined}
           type={options.type || 'text'}
           required={options.required !== false}
           maxLength={options.maxLength || 100}
@@ -382,6 +395,7 @@ function AdminPanel({
           value={form[key]}
           onChange={(e) => updateForm({ ...form, [key]: e.target.value })}
         />
+        {invalidName && <small id="admin-member-name-error" className="danger-text" role="alert">이름은 공백을 제외한 글자를 포함해 100자 이내로 입력해 주세요.</small>}
       </label>
     )
   }
