@@ -28,6 +28,8 @@ const test = base.extend({
         return route.fulfill({ json: ok({ items: s.members.slice((current - 1) * size, current * size), total, size, page: current, totalPages: Math.ceil(total / size), hasNext: current * size < total }) })
       }
       if (method === 'PUT' && path.startsWith('/api/admin/users/')) {
+        // Paired Backend fix: provided blank names are rejected; the legacy API stored them.
+        if (typeof body.name === 'string' && !/[^\p{White_Space}]/u.test(body.name)) return route.fulfill({ status: 400, json: bad(400) })
         if (s.status !== 200) return route.fulfill({ status: s.status, json: bad(s.status) })
         const id = decodeURIComponent(path.split('/').at(-1)); s.members = s.members.map((m) => m.id === id ? { ...m, ...body } : m)
         if (s.user?.id === id) s.user = { ...s.user, ...body }
@@ -98,6 +100,82 @@ test('required 검증은 입력에 머물고 실패 응답은 초안 보존·명
   expect(memberApi.calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
   memberApi.status = 200; await keyboardSave(page); await expect(form(page)).toHaveCount(0)
   await expect(edit(page)).toBeFocused(); await expect(row(page)).toContainText('재시도할 이름')
+})
+
+for (const width of [390, 1280, 1440, 1920]) test(`관리자 공백 이름은 전송하지 않고 이름에서 수정해 다른 입력과 함께 저장 ${width}px`, async ({ page, memberApi }) => {
+  await open(page, width)
+  const name = form(page).getByLabel('이름', { exact: true }), stamps = form(page).getByLabel('스탬프', { exact: true })
+  for (const whitespace of [' \u3000\u00a0 ', '\u0085']) {
+    await name.fill(whitespace); await stamps.fill('13'); await keyboardSave(page)
+    await expect.poll(async () => await name.getAttribute('aria-invalid') === 'true' || memberApi.calls.some((call) => call.method === 'PUT')).toBe(true)
+    expect(memberApi.calls.filter((call) => call.method === 'PUT')).toEqual([])
+    await expect(name).toHaveAccessibleName('이름'); await expect(name).toHaveAttribute('aria-invalid', 'true')
+    await expect(name).toHaveAccessibleDescription(/공백/); await expect(name).toBeFocused()
+    await expect(name).toHaveValue(whitespace); await expect(stamps).toHaveValue('13')
+    await stamps.fill('14'); await expect(name).toHaveAttribute('aria-invalid', 'true')
+    await expect(name).toHaveAccessibleDescription(/공백/); await expect(stamps).toBeFocused()
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+  await name.fill(' 수정한 회원 이름 ')
+  await expect(name).not.toHaveAttribute('aria-invalid', 'true'); await expect(name).not.toHaveAccessibleDescription(/공백/)
+  await keyboardSave(page); await expect(form(page)).toHaveCount(0)
+  expect(memberApi.calls.filter((call) => call.method === 'PUT').map((call) => ({ path: call.path, body: call.body }))).toEqual([
+    { path: '/api/admin/users/member-07', body: { name: '수정한 회원 이름', stamps: 14, role: 'USER' } },
+  ])
+  await expect(row(page)).toContainText('수정한 회원 이름'); await expect(edit(page)).toBeFocused()
+})
+
+test('관리자 공백 이름 오류는 다른 회원이나 관리 탭의 입력으로 옮겨가지 않음', async ({ page, memberApi }) => {
+  await open(page, 390)
+  const name = () => form(page).getByLabel('이름', { exact: true })
+  await name().fill(' \u3000 '); await keyboardSave(page)
+  await expect(name()).toHaveAttribute('aria-invalid', 'true')
+  await edit(page, 'member-08').focus(); await edit(page, 'member-08').press('Enter')
+  await expect(name()).toHaveValue('관리 표본 8'); await expect(name()).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(name()).not.toHaveAccessibleDescription(/공백/)
+  await name().fill(' \u3000 '); await keyboardSave(page); await expect(name()).toHaveAttribute('aria-invalid', 'true')
+  await form(page).getByRole('button', { name: '편집 취소', exact: true }).click()
+  await edit(page, 'member-08').focus(); await edit(page, 'member-08').press('Enter')
+  await expect(name()).toHaveValue('관리 표본 8'); await expect(name()).not.toHaveAttribute('aria-invalid', 'true')
+  await name().fill(' \u3000 '); await keyboardSave(page); await expect(name()).toHaveAttribute('aria-invalid', 'true')
+  await page.getByRole('navigation', { name: '관리 메뉴', exact: true }).getByRole('button', { name: '매장', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '매장 관리', exact: true })).toBeVisible()
+  await expect(form(page).getByLabel('매장명', { exact: true })).not.toHaveAttribute('aria-invalid', 'true')
+  await memberTab(page).click(); await edit(page).focus(); await edit(page).press('Enter')
+  await expect(name()).toHaveValue('관리 표본 7'); await expect(name()).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(name()).not.toHaveAccessibleDescription(/공백/)
+  expect(memberApi.calls.filter((call) => call.method === 'PUT')).toEqual([])
+})
+
+for (const departure of ['same-url', 'route']) test(`관리자 공백 이름 오류는 ${departure} 재진입의 수명에 남지 않음`, async ({ page, memberApi }) => {
+  await open(page, 390)
+  const name = () => form(page).getByLabel('이름', { exact: true })
+  await name().fill(' \u3000 '); await keyboardSave(page); await expect(name()).toHaveAttribute('aria-invalid', 'true')
+  if (departure === 'same-url') {
+    await memberTab(page).click(); await expect(page).toHaveURL('/admin?tab=users&page=1')
+    await expect(name()).toHaveValue(' \u3000 '); await expect(name()).not.toHaveAttribute('aria-invalid', 'true')
+  } else {
+    await page.getByRole('banner').getByRole('link', { name: '장바구니', exact: true }).click(); await expect(page).toHaveURL(/\/cart$/)
+  }
+  await page.goBack(); await expect(edit(page)).toBeVisible()
+  if (departure === 'route') { await edit(page).focus(); await edit(page).press('Enter') }
+  await expect(name()).not.toHaveAttribute('aria-invalid', 'true'); await expect(name()).not.toHaveAccessibleDescription(/공백/)
+  expect(memberApi.calls.filter((call) => call.method === 'PUT')).toEqual([])
+})
+
+for (const account of ['operator', 'other-operator']) test(`관리자 공백 이름 오류는 ${account} 재로그인 편집으로 옮겨가지 않음`, async ({ page, memberApi }) => {
+  await open(page, 390)
+  const name = () => form(page).getByLabel('이름', { exact: true })
+  await name().fill(' \u3000 '); await keyboardSave(page); await expect(name()).toHaveAttribute('aria-invalid', 'true')
+  await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()
+  await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect(page).toHaveURL('/'); await page.goBack()
+  await expect(page.getByLabel('아이디', { exact: true })).toBeVisible()
+  await page.getByLabel('아이디', { exact: true }).fill(account); await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+  await page.getByLabel('비밀번호', { exact: true }).press('Enter'); await expect(edit(page)).toBeVisible()
+  await edit(page).focus(); await edit(page).press('Enter')
+  await expect(name()).toHaveValue('관리 표본 7'); await expect(name()).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(name()).not.toHaveAccessibleDescription(/공백/)
+  expect(memberApi.calls.filter((call) => call.method === 'PUT')).toEqual([])
 })
 
 test('저장 대기 중 새 입력·다른 회원 편집은 늦은 성공의 초기화/복귀 대상이 아님', async ({ page, memberApi }) => {
