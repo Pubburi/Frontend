@@ -60,6 +60,97 @@ async function open(page) {
 }
 function gate() { let release; const promise = new Promise((r) => { release = r }); return { promise, release } }
 async function nav(page, name) { const link = page.getByRole('link', { name, exact: true }); await expect(link).toBeVisible(); await link.click() }
+const pagingEntries = () => Array.from({ length: 11 }, (_, i) => entry({
+  id: `11111111-1111-4111-8111-${String(i + 1).padStart(12, '0')}`, productId: 7 + i,
+  productName: `페이지 기록 ${i + 1}`, currentProduct: { ...product, id: 7 + i, name: `페이지 기록 ${i + 1}` }, memo: `페이지 메모 ${i + 1}`,
+}))
+const pagingHeading = (page) => page.getByRole('heading', { name: '내 취향 기록', exact: true })
+const pagination = (page) => page.getByRole('navigation', { name: 'pagination', exact: true })
+
+for (const width of [390, 1440]) test(`기록 페이지 키보드 왕복은 현재 결과와 페이지 제목에서 첫 기록 조작으로 이어짐 ${width}px`, async ({ page, notebookApi: s }) => {
+  s.notes.member = pagingEntries(); await page.setViewportSize({ width, height: 900 }); await page.goto('/notebook?page=1')
+  await expect(page.locator('.notebook-card')).toHaveCount(10)
+  for (const destination of [{ page: 2, button: '다음', count: 1, name: '페이지 기록 11' }, { page: 1, button: '이전', count: 10, name: '페이지 기록 1' }]) {
+    const button = pagination(page).getByRole('button', { name: destination.button, exact: true }); await button.focus(); await button.press('Enter')
+    await expect(page).toHaveURL(`/notebook?page=${destination.page}`); await expect(page.locator('.notebook-card')).toHaveCount(destination.count)
+    await expect(page.locator('.notebook-card').first().getByRole('heading', { name: destination.name, exact: true })).toBeVisible()
+    await expect(pagingHeading(page)).toBeFocused(); await expect(pagingHeading(page)).toBeInViewport()
+    const target = page.locator('.notebook-card').first().getByRole('link', { name: `현재 상품 보기 · ${destination.name}`, exact: true })
+    for (let count = 0; count < 3 && !(await target.evaluate((element) => document.activeElement === element)); count++) await page.keyboard.press('Tab')
+    await expect(target).toBeFocused()
+    const visible = await target.evaluate((element) => { const rect = element.getBoundingClientRect(); return rect.top >= document.querySelector('.topbar').getBoundingClientRect().bottom && rect.bottom <= innerHeight })
+    expect(visible).toBe(true); expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+  }
+  expect(writes(s)).toEqual([])
+})
+
+test('기록 페이지 포인터 이동과 늦은 키보드 결과는 다른 현재 조작의 초점을 가져가지 않음', async ({ page, notebookApi: s }) => {
+  s.notes.member = pagingEntries()
+  for (const activation of ['pointer', 'keyboard']) {
+    await page.goto('/notebook?page=1'); await expect(page.locator('.notebook-card')).toHaveCount(10)
+    const g = gate(); let started = false
+    const handler = async (route) => {
+      if (new URL(route.request().url()).searchParams.get('page') !== '2') return route.fallback()
+      started = true; await g.promise; await route.fallback()
+    }
+    await page.route('**/api/users/me/notebook?**', handler)
+    try {
+      const next = pagination(page).getByRole('button', { name: '다음', exact: true })
+      if (activation === 'pointer') await next.click()
+      else { await next.focus(); await next.press('Enter') }
+      await expect.poll(() => started).toBe(true)
+      if (activation === 'pointer') await expect(pagingHeading(page)).not.toBeFocused()
+      const current = page.getByRole('link', { name: '마이페이지', exact: true }); await current.focus()
+      g.release(); await expect(page.locator('.notebook-card')).toHaveCount(1)
+      await expect(current).toBeFocused(); await expect(pagingHeading(page)).not.toBeFocused()
+    } finally { g.release(); await page.unroute('**/api/users/me/notebook?**', handler) }
+  }
+  expect(writes(s)).toEqual([])
+})
+
+test('기록 키보드 페이지 읽기 실패는 제목과 명시 복구를 남기고 빈 목록으로 바꾸지 않음', async ({ page, notebookApi: s }) => {
+  s.notes.member = pagingEntries(); let failures = 1
+  await page.route('**/api/users/me/notebook?**', (route) => {
+    if (new URL(route.request().url()).searchParams.get('page') === '2' && failures-- > 0) return route.fulfill({ status: 503, json: bad(503) })
+    return route.fallback()
+  })
+  await page.goto('/notebook?page=1'); await expect(page.locator('.notebook-card')).toHaveCount(10)
+  const next = pagination(page).getByRole('button', { name: '다음', exact: true }); await next.focus(); await next.press('Enter')
+  await expect(page.getByText('내 취향 기록을 확인하지 못했습니다.', { exact: true })).toBeVisible()
+  await expect(pagingHeading(page)).toBeFocused(); await expect(page.locator('.notebook-card')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '아직 저장한 취향 기록이 없습니다', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '내 기록 다시 불러오기', exact: true }).click(); await expect(page.locator('.notebook-card')).toHaveCount(1)
+  await expect(page).toHaveURL('/notebook?page=2'); expect(writes(s)).toEqual([])
+})
+
+for (const departure of ['route', 'account']) test(`기록 페이지의 늦은 응답은 ${departure} 전환 뒤 현재 화면과 초점에 적용되지 않음`, async ({ page, notebookApi: s }) => {
+  s.notes.member = pagingEntries(); s.notes.other = [entry({ productName: '다른 계정 기록', memo: '다른 계정 메모' })]
+  const old = pageOf(structuredClone(s.notes.member), 2), g = gate(); let started = false
+  await page.route('**/api/users/me/notebook?**', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('page') !== '2') return route.fallback()
+    started = true; await g.promise; await route.fulfill({ json: ok(old) })
+  })
+  try {
+    await page.goto('/notebook?page=1'); await expect(page.locator('.notebook-card')).toHaveCount(10)
+    const next = pagination(page).getByRole('button', { name: '다음', exact: true }); await next.focus(); await next.press('Enter')
+    await expect.poll(() => started).toBe(true)
+    let current
+    if (departure === 'route') {
+      await nav(page, '장바구니'); await expect(page).toHaveURL('/cart')
+      current = page.getByRole('link', { name: '전체 주류 보기', exact: true })
+    } else {
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect(page).toHaveURL('/'); await nav(page, '로그인')
+      await page.getByLabel('아이디', { exact: true }).fill('other'); await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click(); await nav(page, '내 취향 기록')
+      await expect(page.locator('.notebook-card')).toContainText('다른 계정 메모'); current = page.getByRole('button', { name: '내 기록 목록 새로고침', exact: true })
+    }
+    await current.focus()
+    const settled = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/users/me/notebook' && new URL(response.url()).searchParams.get('page') === '2')
+    g.release(); await (await settled).finished(); await page.evaluate(() => new Promise(requestAnimationFrame))
+    await expect(current).toBeFocused(); await expect(page.getByText('페이지 메모 11', { exact: true })).toHaveCount(0)
+    expect(writes(s)).toEqual([])
+  } finally { g.release() }
+})
 
 for (const width of [1280, 390]) test(`비공개 기록 ${width}px 상세에서 경험0점·개인태그/메모 저장, 본인목록에서 관심 전환·삭제`, async ({ page, notebookApi: s }) => {
   await page.setViewportSize({ width, height: 900 }); await open(page)

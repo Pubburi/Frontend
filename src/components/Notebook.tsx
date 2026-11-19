@@ -184,10 +184,11 @@ function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFo
 }
 
 export function NotebookPage() {
-  return <section className="view notebook-view"><div className="shop-intro compact-intro"><div><p className="section-kicker">마이 · 기록</p><h1>내 취향 기록</h1><p>마셔 본 주류와 관심 있는 주류를 나만의 메모로 남겨 보세요.</p></div><Link className="text-link" to="/profile">마이페이지</Link></div>
-    <NotebookAccount>{(actor) => <NotebookList actor={actor} />}</NotebookAccount></section>
+  const heading = useRef<HTMLHeadingElement>(null)
+  return <section className="view notebook-view"><div className="shop-intro compact-intro"><div><p className="section-kicker">마이 · 기록</p><h1 ref={heading} tabIndex={-1}>내 취향 기록</h1><p>마셔 본 주류와 관심 있는 주류를 나만의 메모로 남겨 보세요.</p></div><Link className="text-link" to="/profile">마이페이지</Link></div>
+    <NotebookAccount>{(actor) => <NotebookList actor={actor} focusPage={() => heading.current?.focus({ preventScroll: true })} />}</NotebookAccount></section>
 }
-function NotebookList({ actor }: { actor: Actor }) {
+function NotebookList({ actor, focusPage }: { actor: Actor; focusPage: () => void }) {
   const [search, setSearch] = useSearchParams(), [editing, setEditing] = useState<string | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), client = useQueryClient()
   const page = /^\d+$/.test(search.get('page') ?? '') ? Math.max(1, Math.min(2147483647, Number(search.get('page')))) : 1
@@ -229,7 +230,11 @@ function NotebookList({ actor }: { actor: Actor }) {
             client.setQueryData<Page<NotebookEntry>>(listKey, (data) => data ? { ...data, items: data.items.map((item) => item.id === entry.id ? entry : item) } : data)
           }} fallbackFocus={() => heading.current} />}
         </article>)}</div>
-        {actor.ready && <Pagination page={query.data} onChange={(next) => { setEditing(null); setSearch({ page: String(next) }) }} />}
+        {actor.ready && <Pagination page={query.data} onChange={(next) => { setEditing(null); setSearch({ page: String(next) }) }} onKeyboardNavigate={(next, trigger) => {
+          if (!actor.owns()) return
+          if (document.activeElement === trigger && document.hasFocus()) focusPage()
+          setEditing(null); setSearch({ page: String(next) })
+        }} />}
       </>}
   </section>
 }
