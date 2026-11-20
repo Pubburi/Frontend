@@ -522,7 +522,7 @@ export function ProductDetailPage() {
   const { id = '' } = useParams()
   return <ProductDetail key={id} id={id} />
 }
-type ReviewEdit = Review & { initialRating: number; tagsDraft?: string[] }
+type ReviewEdit = Review & { initialRating: number; tagsDraft?: string[]; invalidBody?: boolean }
 type ReviewFocus = { editing: ReviewEdit | null; account: object; view: object; locationKey: string; source: HTMLElement; row: HTMLElement }
 function ProductDetail({ id }: { id: string }) {
   const session = useSession()
@@ -545,7 +545,7 @@ function ProductDetail({ id }: { id: string }) {
   const { page, sort } = reviewView
   const currentReviewView = useRef(reviewView)
   currentReviewView.current = reviewView
-  const [draft, setDraft] = useState({ rating: 5, comment: '', tasteTags: [] as string[] })
+  const [draft, setDraft] = useState({ rating: 5, comment: '', tasteTags: [] as string[], invalidBody: false })
   const [editing, setEditing] = useState<ReviewEdit | null>(null)
   const [deleting, setDeleting] = useState<Review | null>(null)
   const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
@@ -554,6 +554,8 @@ function ProductDetail({ id }: { id: string }) {
   const [account, setAccount] = useState({ auth, id: session.data?.id, role: session.data?.role, transitioning })
   const currentAccount = useRef(account)
   const reviewHeading = useRef<HTMLHeadingElement>(null)
+  const reviewBody = useRef<HTMLTextAreaElement>(null)
+  const editBody = useRef<HTMLTextAreaElement>(null)
   const focusIntent = useRef<ReviewFocus | null>(null)
   const saveFocus = useRef<{ editing: ReviewEdit; form: HTMLFormElement; row: HTMLElement } | null>(null)
   const currentContext = useRef({ account, view: reviewView, locationKey: location.key, editing })
@@ -583,7 +585,7 @@ function ProductDetail({ id }: { id: string }) {
     focusIntent.current = null
     saveFocus.current = null
     setAccount(next)
-    setDraft({ rating: 5, comment: '', tasteTags: [] })
+    setDraft({ rating: 5, comment: '', tasteTags: [], invalidBody: false })
     setEditing(null)
     setDeleting(null)
   }
@@ -606,6 +608,12 @@ function ProductDetail({ id }: { id: string }) {
     event.preventDefault()
     if (!writable) return
     const submitted = draft
+    const comment = submitted.comment.trim()
+    if (!comment) {
+      setDraft((current) => current === submitted ? { ...current, invalidBody: true } : current)
+      reviewBody.current?.focus()
+      return
+    }
     let tasteTags: string[]
     try { tasteTags = buildReviewTasteTags(submitted.tasteTags) } catch (error) { ui.error(error); return }
     const result = await ui.run(
@@ -614,7 +622,7 @@ function ProductDetail({ id }: { id: string }) {
         await api.createComment({
           productId: Number(id),
           rating: submitted.rating,
-          comment: submitted.comment.trim(),
+          comment,
           ...(tasteTags.length ? { tasteTags } : {}),
         })
         await refresh()
@@ -633,6 +641,12 @@ function ProductDetail({ id }: { id: string }) {
     const submitted = editing
     const keyboard = saveFocus.current
     saveFocus.current = null
+    const comment = submitted.comment.trim()
+    if (!comment) {
+      setEditing((current) => current === submitted ? { ...current, invalidBody: true } : current)
+      editBody.current?.focus()
+      return
+    }
     let anchor: HTMLHeadingElement | null = null
     const ownsFocus = () => currentContext.current.account === account && currentContext.current.view === reviewView &&
       currentContext.current.locationKey === location.key && currentContext.current.editing === submitted
@@ -643,7 +657,7 @@ function ProductDetail({ id }: { id: string }) {
       async () => {
         await api.updateComment(submitted.id, {
           rating: submitted.rating,
-          comment: submitted.comment.trim(),
+          comment,
           ...(tasteTags === undefined ? {} : { tasteTags }),
         })
         if (keyboard?.editing === submitted && ownsFocus() && keyboard.form.isConnected && keyboard.form.contains(document.activeElement)) {
@@ -800,17 +814,21 @@ function ProductDetail({ id }: { id: string }) {
                 <label className="field-group comment-input">
                   <span>후기</span>
                   <textarea
+                    ref={reviewBody}
                     className="form-control"
                     maxLength={200}
                     placeholder="상품에 대한 솔직한 후기를 남겨주세요."
                     aria-label="후기"
+                    aria-invalid={draft.invalidBody || undefined}
+                    aria-describedby={draft.invalidBody ? 'review-body-error' : undefined}
                     required
                     value={draft.comment}
                     onChange={(e) =>
-                      setDraft({ ...draft, comment: e.target.value })
+                      setDraft({ ...draft, comment: e.target.value, invalidBody: false })
                     }
                   />
                   <small>{draft.comment.length} / 200</small>
+                  {draft.invalidBody && <small id="review-body-error" className="danger-text" role="alert">후기 내용을 입력해 주세요.</small>}
                 </label>
                 <div className="review-tag-input">
                   <p className="muted">맛 태그는 선택입니다. 회원이 느낀 맛이며 상품의 검수 정보와 다를 수 있습니다.</p>
@@ -898,8 +916,11 @@ function ProductDetail({ id }: { id: string }) {
                         <label className="field-group">
                           <span>후기 내용</span>
                           <textarea
+                            ref={editBody}
                             className="form-control"
                             aria-label="후기 내용"
+                            aria-invalid={editing.invalidBody || undefined}
+                            aria-describedby={editing.invalidBody ? 'review-edit-body-error' : undefined}
                             maxLength={200}
                             required
                             value={editing.comment}
@@ -907,9 +928,11 @@ function ProductDetail({ id }: { id: string }) {
                               setEditing({
                                 ...editing,
                                 comment: e.target.value,
+                                invalidBody: false,
                               })
                             }
                           />
+                          {editing.invalidBody && <small id="review-edit-body-error" className="danger-text" role="alert">후기 내용을 입력해 주세요.</small>}
                         </label>
                         {readReviewTasteTags(editing.tasteTags) === null && <p className="muted">기존 맛 태그를 확인하지 못했습니다. 태그를 바꾸지 않으면 기존 값을 유지합니다.</p>}
                         <TagEditor label="느낀 맛 태그" optional
