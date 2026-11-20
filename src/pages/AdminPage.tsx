@@ -208,6 +208,17 @@ function AdminPanel({
     if (tab === 'products' || tab === 'markets')
       await client.invalidateQueries({ queryKey: ['catalog'] })
   }
+  function expireAdminSession() {
+    const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+    const pending = useUi.getState().pending
+    if (!auth || auth !== authOwner || auth.state.data !== user || auth.state.status !== 'success' ||
+        auth.state.fetchStatus !== 'idle' || user?.role !== 'ADMIN' ||
+        pending.login || pending.join || pending.logout || pending['settings-password']) return
+    // The route guard preserves the exact destination for the next login.
+    client.clear()
+    client.setQueryData(['session'], null)
+    ui.error(new Error('관리자 로그인 상태가 만료되었습니다. 다시 로그인해 주세요.'))
+  }
   async function save(event: FormEvent) {
     event.preventDefault()
     if (draft.deleted) {
@@ -233,59 +244,68 @@ function AdminPanel({
     const result = await ui.run(
       saveKey,
       async () => {
-        if (tab === 'products') {
-          const payload = {
-            name: form.name.trim(),
-            type: form.type,
-            price: Number(form.price),
-            img: form.img.trim(),
-            abv: Number(form.abv),
-            orderCount: Number(form.orderCount),
+        try {
+          if (tab === 'products') {
+            const payload = {
+              name: form.name.trim(),
+              type: form.type,
+              price: Number(form.price),
+              img: form.img.trim(),
+              abv: Number(form.abv),
+              orderCount: Number(form.orderCount),
+            }
+            if (editing) await api.updateProduct(idOf(editing), payload)
+            else await api.createProduct(payload)
+          } else if (tab === 'markets') {
+            const payload = {
+              name: form.name.trim(),
+              latitude: Number(form.latitude),
+              longitude: Number(form.longitude),
+              image: form.image.trim(),
+            }
+            if (editing) await api.updateMarket(idOf(editing), payload)
+            else await api.createMarket(payload)
+          } else if (tab === 'users' && editing) {
+            await api.updateUser(idOf(editing), {
+              name: form.name.trim(),
+              stamps: Number(form.stamps),
+              role: form.role,
+              ...(form.pass ? { pass: form.pass } : {}),
+            })
+            await client.invalidateQueries({
+              queryKey: ['account', idOf(editing)],
+            })
+            if (idOf(editing) === user?.id) {
+              await client.invalidateQueries({ queryKey: ['session'] })
+              const currentAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
+              const refreshed = currentAuth?.state.data as User | undefined
+              if (currentAuth === authOwner && user && refreshed?.id === user.id && refreshed.role === 'ADMIN')
+                savedAccount = refreshed
+            }
           }
-          if (editing) await api.updateProduct(idOf(editing), payload)
-          else await api.createProduct(payload)
-        } else if (tab === 'markets') {
-          const payload = {
-            name: form.name.trim(),
-            latitude: Number(form.latitude),
-            longitude: Number(form.longitude),
-            image: form.image.trim(),
+          if (keyboard && ownsMemberEdit(submitted, savedAccount) && keyboard.form.isConnected && document.activeElement === keyboard.form) {
+            anchor = memberHeading.current
+            anchor?.focus({ preventScroll: true })
           }
-          if (editing) await api.updateMarket(idOf(editing), payload)
-          else await api.createMarket(payload)
-        } else if (tab === 'users' && editing) {
-          await api.updateUser(idOf(editing), {
-            name: form.name.trim(),
-            stamps: Number(form.stamps),
-            role: form.role,
-            ...(form.pass ? { pass: form.pass } : {}),
-          })
-          await client.invalidateQueries({
-            queryKey: ['account', idOf(editing)],
-          })
-          if (idOf(editing) === user?.id) {
-            await client.invalidateQueries({ queryKey: ['session'] })
-            const currentAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
-            const refreshed = currentAuth?.state.data as User | undefined
-            if (currentAuth === authOwner && user && refreshed?.id === user.id && refreshed.role === 'ADMIN')
-              savedAccount = refreshed
-          }
+          await refresh()
+          return true
+        } catch (error) {
+          if (error instanceof ApiClientError && error.status === 401) return false
+          throw error
         }
-        if (keyboard && ownsMemberEdit(submitted, savedAccount) && keyboard.form.isConnected && document.activeElement === keyboard.form) {
-          anchor = memberHeading.current
-          anchor?.focus({ preventScroll: true })
-        }
-        await refresh()
       },
-      `${labels[tab]} 정보가 저장되었습니다.`,
     )
-    if (result.ok) {
-      if (keyboard && anchor && document.activeElement === anchor && ownsMemberEdit(submitted, savedAccount))
-        returnMemberFocus(keyboard.target)
-      setDraft((current) =>
-        current === submitted ? emptyDraft() : current,
-      )
+    if (!result.ok) return
+    if (!result.data) {
+      expireAdminSession()
+      return
     }
+    ui.status(`${labels[tab]} 정보가 저장되었습니다.`)
+    if (keyboard && anchor && document.activeElement === anchor && ownsMemberEdit(submitted, savedAccount))
+      returnMemberFocus(keyboard.target)
+    setDraft((current) =>
+      current === submitted ? emptyDraft() : current,
+    )
   }
   async function remove() {
     if (!deleting || !user) return
@@ -341,15 +361,7 @@ function AdminPanel({
       ui.status('주문을 완료 처리했습니다.')
       return
     }
-    const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
-    const pending = useUi.getState().pending
-    if (!auth || auth !== authOwner || auth.state.data !== user || auth.state.status !== 'success' ||
-        auth.state.fetchStatus !== 'idle' || user?.role !== 'ADMIN' ||
-        pending.login || pending.join || pending.logout || pending['settings-password']) return
-    // The route guard preserves the exact destination for the next login.
-    client.clear()
-    client.setQueryData(['session'], null)
-    ui.error(new Error('관리자 로그인 상태가 만료되었습니다. 다시 로그인해 주세요.'))
+    expireAdminSession()
   }
   function loginAgain() {
     const cache = client.getQueryCache()
