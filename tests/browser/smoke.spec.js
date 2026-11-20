@@ -4135,6 +4135,131 @@ async function loginAdminRecovery(page, id = 'admin') {
   await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
 }
 
+for (const width of [390, 1440]) {
+  test(`현재 관리자 회원 저장401은 사적 편집을 숨기고 재로그인 후 명시적으로만 저장 ${width}px`, async ({ page, api }) => {
+    await page.setViewportSize({ width, height: 900 })
+    api.user = api.users.find((user) => user.id === 'admin')
+    const member = api.users.find((user) => user.id === 'member')
+    const original = { ...member }
+    let writes = 0
+    await guardAdminReads(page, api)
+    await page.route('**/api/admin/users/member', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback()
+      writes++
+      if (!api.user) return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+      return route.fallback()
+    })
+    const target = '/admin?tab=users&page=1&return=session-recovery'
+    await page.goto(target)
+    await page.locator('.table-row').filter({ hasText: original.name }).getByRole('button', { name: '편집', exact: true }).click()
+    let form = page.getByRole('form', { name: '회원 편집', exact: true })
+    await form.getByLabel('이름', { exact: true }).fill('다시 확인할 이름')
+    await form.getByLabel('스탬프', { exact: true }).fill('13')
+    api.user = null
+    await form.getByRole('button', { name: '변경 저장', exact: true }).press('Enter')
+    await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === target)
+    await expect(page.locator('.admin-table')).toHaveCount(0)
+    await expect(page.locator('.admin-panel .result-count')).toHaveCount(0)
+    await expect(page.getByRole('form', { name: '회원 편집', exact: true })).toHaveCount(0)
+    await expect(page.getByText(original.name, { exact: true })).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: '회원 정보가 저장되었습니다.' })).toHaveCount(0)
+    expect(writes).toBe(1)
+    expect(member).toEqual(original)
+    await loginAdminRecovery(page)
+    await expect(page).toHaveURL(target)
+    await expect(page.locator('.table-row').filter({ hasText: original.name })).toBeVisible()
+    await expect(page.getByRole('form', { name: '회원 편집', exact: true })).toHaveCount(0)
+    expect(writes).toBe(1)
+    expect(member).toEqual(original)
+    await page.locator('.table-row').filter({ hasText: original.name }).getByRole('button', { name: '편집', exact: true }).press('Enter')
+    form = page.getByRole('form', { name: '회원 편집', exact: true })
+    await expect(form.getByLabel('이름', { exact: true })).toHaveValue(original.name)
+    await form.getByLabel('이름', { exact: true }).fill('명시적으로 저장한 이름')
+    await form.getByRole('button', { name: '변경 저장', exact: true }).press('Enter')
+    await expect(form).toHaveCount(0)
+    await expect(page.locator('.table-row').filter({ hasText: '명시적으로 저장한 이름' })).toBeVisible()
+    expect(writes).toBe(2)
+  })
+}
+
+for (const status of [403, 503]) {
+  test(`관리자 회원 저장 ${status}는 세션 만료로 바꾸지 않고 초안과 명시 재시도를 유지`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    let writes = 0
+    await page.route('**/api/admin/users/member', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback()
+      if (++writes === 1) return route.fulfill({ status, json: failure(status === 403 ? 'FORBIDDEN' : 'SERVICE_UNAVAILABLE') })
+      return route.fallback()
+    })
+    const target = '/admin?tab=users&page=1&return=retry'
+    await page.goto(target)
+    await page.locator('.table-row').filter({ hasText: '시험회원' }).getByRole('button', { name: '편집', exact: true }).click()
+    const form = page.getByRole('form', { name: '회원 편집', exact: true })
+    await form.getByLabel('이름', { exact: true }).fill('실패 뒤 확인한 이름')
+    await form.getByLabel('스탬프', { exact: true }).fill('13')
+    const save = form.getByRole('button', { name: '변경 저장', exact: true })
+    await save.press('Enter')
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page).toHaveURL(target)
+    await expect(form.getByLabel('이름', { exact: true })).toHaveValue('실패 뒤 확인한 이름')
+    await expect(form.getByLabel('스탬프', { exact: true })).toHaveValue('13')
+    await expect(save).toBeEnabled()
+    expect(api.user.id).toBe('admin')
+    expect(writes).toBe(1)
+    await save.press('Enter')
+    await expect(form).toHaveCount(0)
+    await expect(page.locator('.table-row').filter({ hasText: '실패 뒤 확인한 이름' })).toBeVisible()
+    expect(writes).toBe(2)
+  })
+}
+
+for (const nextAdmin of ['admin', 'admin-other']) {
+  test(`이전 관리자 저장401은 ${nextAdmin} 새 세대의 편집과 오류 안내를 침범하지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    api.users.push({ id: 'admin-other', name: '다른 관리자', role: 'ADMIN', stamps: 0 })
+    let release, started = false, delivered = false
+    const gate = new Promise((resolve) => { release = resolve })
+    await page.route('**/api/admin/users/member', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback()
+      started = true
+      await gate
+      await route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+      delivered = true
+    })
+    try {
+      await page.goto('/admin?tab=orders&page=1')
+      await page.getByRole('navigation', { name: '관리 메뉴' }).getByRole('button', { name: '회원', exact: true }).click()
+      await page.locator('.table-row').filter({ hasText: '시험회원' }).getByRole('button', { name: '편집', exact: true }).click()
+      let form = page.getByRole('form', { name: '회원 편집', exact: true })
+      await form.getByLabel('이름', { exact: true }).fill('이전 세대의 미완료 입력')
+      await form.getByRole('button', { name: '변경 저장', exact: true }).click()
+      await expect.poll(() => started).toBe(true)
+      await page.goBack()
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await page.getByRole('link', { name: '로그인', exact: true }).click()
+      await loginAdminRecovery(page, nextAdmin)
+      await expect(page.getByRole('heading', { name: (nextAdmin === 'admin' ? '관리회원' : '다른 관리자') + '님의 취향 기록', exact: true })).toBeVisible()
+      await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '관리', exact: true }).click()
+      await page.getByRole('navigation', { name: '관리 메뉴' }).getByRole('button', { name: '회원', exact: true }).click()
+      const row = page.locator('.table-row').filter({ hasText: '시험회원' })
+      await row.getByRole('button', { name: '편집', exact: true }).click()
+      form = page.getByRole('form', { name: '회원 편집', exact: true })
+      await form.getByLabel('이름', { exact: true }).fill('새 세대가 작성한 초안')
+      const reads = api.calls.filter((call) => call.path === '/admin/users' && call.method === 'GET').length
+      release()
+      await expect.poll(() => delivered).toBe(true)
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      await expect(form.getByLabel('이름', { exact: true })).toHaveValue('새 세대가 작성한 초안')
+      await expect(form.getByRole('button', { name: '변경 저장', exact: true })).toBeEnabled()
+      await expect(row).toBeVisible()
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      await expect(page.getByRole('status').filter({ hasText: '회원 정보가 저장되었습니다.' })).toHaveCount(0)
+      expect(api.user.id).toBe(nextAdmin)
+      expect(api.calls.filter((call) => call.path === '/admin/users' && call.method === 'GET')).toHaveLength(reads)
+    } finally { release() }
+  })
+}
+
 for (const kind of ['users-first', 'orders-refresh']) {
   test(`관리자401 ${kind}는 명시적 로그인 후 원래 private 목록으로 복귀`, async ({ page, api }) => {
     api.user = api.users.find((user) => user.id === 'admin')
