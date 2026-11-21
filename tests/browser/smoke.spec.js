@@ -3956,12 +3956,54 @@ for (const editingOther of [false, true]) {
   })
 }
 
-test('삭제 취소와 서버 거절은 현재 편집을 유지하고 성공한 명시적 재시도만 정리', async ({ page, api }) => {
+for (const width of [390, 1440]) test(`현재 상품 삭제401은 확인창과 편집을 숨기고 재로그인 후 명시적으로만 삭제 ${width}px`, async ({ page, api }) => {
+  await page.setViewportSize({ width, height: 900 })
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.catalog[0].img = 'technical-fixture.webp'
+  const original = structuredClone(api.catalog)
+  let attempts = 0
+  await page.route('**/api/admin/products/901', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    attempts++
+    if (!api.user) return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+    await route.fallback()
+  })
+  const target = '/admin?tab=products&page=1&return=delete-recovery'
+  await page.goto(target)
+  const row = page.locator('.table-row').filter({ hasText: '시험 탁주' })
+  await row.getByRole('button', { name: '편집', exact: true }).click()
+  await page.getByLabel('상품명', { exact: true }).fill('아직 저장하지 않은 초안')
+  await row.getByRole('button', { name: '삭제', exact: true }).press('Enter')
+  api.user = null
+  await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).press('Enter')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === target)
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  await expect(page.locator('.admin-table')).toHaveCount(0)
+  await expect(page.locator('.admin-form')).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: '상품 정보가 삭제되었습니다.' })).toHaveCount(0)
+  expect(attempts).toBe(1)
+  expect(api.catalog).toEqual(original)
+  await loginAdminRecovery(page)
+  await expect(page).toHaveURL(target)
+  await expect(row).toBeVisible()
+  await expect(page.getByLabel('상품명', { exact: true })).toHaveValue('')
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  expect(attempts).toBe(1)
+  expect(api.catalog).toEqual(original)
+  await row.getByRole('button', { name: '삭제', exact: true }).press('Enter')
+  await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).press('Enter')
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  await expect(row).toHaveCount(0)
+  expect(attempts).toBe(2)
+  expect(api.catalog.map((item) => item.id)).toEqual(original.filter((item) => item.id !== 901).map((item) => item.id))
+})
+
+for (const status of [403, 503]) test(`삭제 취소와 서버 ${status} 거절은 현재 편집을 유지하고 성공한 명시적 재시도만 정리`, async ({ page, api }) => {
   api.user = api.users.find((user) => user.id === 'admin')
   api.catalog[0].img = 'technical-fixture.webp'
   let attempts = 0
   await page.route('**/api/admin/products/901', async (route) => {
-    if (route.request().method() === 'DELETE' && ++attempts === 1) return route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+    if (route.request().method() === 'DELETE' && ++attempts === 1) return route.fulfill({ status, json: failure(status === 403 ? 'FORBIDDEN' : 'SERVICE_UNAVAILABLE') })
     await route.fallback()
   })
   await page.goto('/admin?tab=products&page=1')
@@ -4007,7 +4049,7 @@ test('삭제200 뒤 목록 읽기 실패도 죽은 편집은 정리하고 재삭
 })
 
 for (const nextAdmin of ['admin', 'admin-other']) {
-  test(`이전 삭제 응답은 ${nextAdmin} 새 인증 세대의 폼과 캐시를 지우지 않음`, async ({ page, api }) => {
+  for (const status of [200, 401]) test(`이전 삭제 응답${status}은 ${nextAdmin} 새 인증 세대의 폼과 캐시를 지우지 않음`, async ({ page, api }) => {
     api.user = api.users.find((user) => user.id === 'admin')
     api.users.push({ id: 'admin-other', name: '다른 관리자', role: 'ADMIN', stamps: 0 })
     api.catalog[0].img = 'technical-fixture.webp'
@@ -4017,7 +4059,8 @@ for (const nextAdmin of ['admin', 'admin-other']) {
       if (route.request().method() !== 'DELETE') return route.fallback()
       started = true
       await gate
-      await route.fallback()
+      if (status === 401) await route.fulfill({ status, json: failure('UNAUTHORIZED') })
+      else await route.fallback()
       delivered = true
     })
     try {
@@ -4047,6 +4090,8 @@ for (const nextAdmin of ['admin', 'admin-other']) {
       await expect(form.getByLabel('상품명', { exact: true })).toHaveValue('새 로그인의 입력')
       await expect(form.getByRole('button', { name: '변경 저장', exact: true })).toBeEnabled()
       await expect(row).toBeVisible()
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      await expect(page.getByRole('status').filter({ hasText: '상품 정보가 삭제되었습니다.' })).toHaveCount(0)
       expect(api.calls.filter((call) => call.path === '/products' && call.method === 'GET')).toHaveLength(reads)
     } finally { release() }
   })
