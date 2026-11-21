@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient, type Query, type QueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '../services/api'
@@ -87,6 +87,7 @@ function NotebookEditor({ actor, productId, entryId, onChanged, fallbackFocus }:
   actor: Actor; productId?: number; entryId?: string; onChanged?: (entry: NotebookEntry | null) => void; fallbackFocus?: () => HTMLElement | null
 }) {
   const client = useQueryClient(), [load, setLoad] = useState(0)
+  const editor = useRef<HTMLElement>(null)
   const query = useQuery({
     queryKey: ['account', actor.user.id, 'notebook', entryId ?? productId, load], gcTime: 0, networkMode: 'always', refetchOnReconnect: false,
     queryFn: async ({ signal }) => {
@@ -99,14 +100,20 @@ function NotebookEditor({ actor, productId, entryId, onChanged, fallbackFocus }:
       } catch (error) { actor.rejectAuth(error); throw error }
     },
   })
-  if (query.isPending || query.fetchStatus !== 'idle') return <p role="status">내 취향 기록을 불러오는 중입니다.</p>
-  if (query.isError) return <ReadFailure error={query.error} actor={actor} retry={() => void query.refetch()} />
-  return <NotebookForm key={load} initial={query.data} productId={productId} actor={actor} onChanged={onChanged} fallbackFocus={fallbackFocus}
-    reload={() => setLoad((value) => value + 1)} />
+  return <section ref={editor} tabIndex={-1} aria-label="내 취향 기록 편집 영역">
+    {query.isPending || query.fetchStatus !== 'idle' ? <p role="status">내 취향 기록을 불러오는 중입니다.</p> :
+      query.isError ? <ReadFailure error={query.error} actor={actor} retry={() => void query.refetch()} /> :
+        <NotebookForm key={load} initial={query.data} productId={productId} actor={actor} onChanged={onChanged} fallbackFocus={fallbackFocus}
+          reload={(event) => {
+            if (!actor.owns()) return
+            if (event.detail === 0 && document.activeElement === event.currentTarget && document.hasFocus()) editor.current?.focus({ preventScroll: true })
+            setLoad((value) => value + 1)
+          }} />}
+  </section>
 }
 
 function NotebookForm({ initial, productId, actor, reload, onChanged, fallbackFocus }: {
-  initial: NotebookEntry | null; productId?: number; actor: Actor; reload: () => void; onChanged?: (entry: NotebookEntry | null) => void; fallbackFocus?: () => HTMLElement | null
+  initial: NotebookEntry | null; productId?: number; actor: Actor; reload: (event: MouseEvent<HTMLButtonElement>) => void; onChanged?: (entry: NotebookEntry | null) => void; fallbackFocus?: () => HTMLElement | null
 }) {
   const client = useQueryClient()
   const [note, setNote] = useState(initial), [draft, setDraft] = useState(() => notebookDraft(initial))

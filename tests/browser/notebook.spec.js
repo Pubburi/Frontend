@@ -204,7 +204,8 @@ test('비회원과 세션503은 개인 API를 요청하지 않고 공개 상세�
   s.meFailure = false; await page.getByRole('button', { name: '기록 로그인 상태 다시 확인', exact: true }).click(); await expect(form(page)).toBeVisible()
 })
 
-test('400은 입력을 보존하고409는 이전 revision 재전송 없이 명시 최신 기록으로 복구', async ({ page, notebookApi: s }) => {
+for (const width of [390, 1440]) test(`400은 입력을 보존하고409 최신 기록 복구는 키보드 편집 문맥을 유지 ${width}px`, async ({ page, notebookApi: s }) => {
+  await page.setViewportSize({ width, height: 900 })
   s.notes.member.push(entry()); await open(page); await memo(page).fill('나의 미제출 입력')
   s.writeStatus = 400; await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('입력한 내용'); await expect(memo(page)).toHaveValue('나의 미제출 입력')
@@ -212,7 +213,21 @@ test('400은 입력을 보존하고409는 이전 revision 재전송 없이 명�
   await expect(page.getByRole('alert')).toContainText('다른 곳에서'); await expect(memo(page)).toHaveValue('나의 미제출 입력')
   await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).focus(); await page.keyboard.press('Enter'); expect(writes(s)).toHaveLength(2)
   s.notes.member[0] = entry({ version: 3, memo: '다른 창 최신값' }); s.writeStatus = 0
-  await page.getByRole('button', { name: '최신 기록으로 다시 편집', exact: true }).click(); await expect(memo(page)).toHaveValue('다른 창 최신값')
+  const g = gate(); let started = false
+  await page.route('**/api/users/me/notebook/by-product/7', async (route) => { started = true; await g.promise; await route.fallback() })
+  try {
+    const reads = s.calls.filter((call) => call.path === '/api/users/me/notebook/by-product/7').length
+    await page.getByRole('button', { name: '최신 기록으로 다시 편집', exact: true }).press('Enter')
+    await expect.poll(() => started).toBe(true)
+    const editor = page.getByRole('region', { name: '내 취향 기록 편집 영역', exact: true })
+    await expect(editor).toBeFocused(); await expect(form(page)).toHaveCount(0)
+    await expect(editor).toContainText('내 취향 기록을 불러오는 중입니다.')
+    g.release(); await expect(memo(page)).toHaveValue('다른 창 최신값')
+    await expect(editor).toBeFocused()
+    await page.keyboard.press('Tab'); await expect(form(page).getByRole('combobox', { name: '기록 구분', exact: true })).toBeFocused()
+    expect(s.calls.filter((call) => call.path === '/api/users/me/notebook/by-product/7')).toHaveLength(reads + 1)
+    expect(writes(s)).toHaveLength(2)
+  } finally { g.release() }
   await memo(page).fill('명시적으로 합친 값'); await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).click()
   await expect(page.getByText('비공개 기록을 저장했습니다.', { exact: true })).toBeVisible(); expect(writes(s).at(-1).body.expectedVersion).toBe(3)
 })
@@ -228,7 +243,40 @@ test('생성은 실제 저장 뒤503이어도 자동 재전송 없이 원문을 
   await expect(page.getByRole('alert')).toContainText('저장 결과를 확인하지 못했습니다.'); await expect(memo(page)).toHaveValue('불확실 원문')
   await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).focus(); await page.keyboard.press('Enter'); expect(writes(s)).toHaveLength(1)
   await page.getByRole('button', { name: '최신 기록으로 다시 편집', exact: true }).click(); await expect(memo(page)).toHaveValue('불확실 원문')
+  await expect(page.getByRole('region', { name: '내 취향 기록 편집 영역', exact: true })).not.toBeFocused()
   await expect(form(page).getByRole('button', { name: '내 기록 삭제', exact: true })).toBeVisible(); expect(writes(s)).toHaveLength(1)
+})
+
+for (const departure of ['other-control', 'route', 'account']) test(`최신 기록 복구의 늦은 응답은 ${departure}의 초점을 가져가지 않음`, async ({ page, notebookApi: s }) => {
+  s.notes.member = [entry()]; s.notes.other = [entry({ memo: '다른 계정 메모' })]
+  await open(page); await memo(page).fill('미제출 입력')
+  const latest = entry({ version: 1, memo: '갱신된 기록' }); s.notes.member[0] = latest
+  await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('다른 곳에서')
+  const g = gate(); let started = false, delivered = false
+  await page.route('**/api/users/me/notebook/by-product/7', async (route) => {
+    started = true; await g.promise; await route.fulfill({ json: ok(latest) }); delivered = true
+  })
+  try {
+    await page.getByRole('button', { name: '최신 기록으로 다시 편집', exact: true }).press('Enter')
+    await expect.poll(() => started).toBe(true)
+    let current
+    if (departure === 'other-control') current = page.getByRole('spinbutton', { name: `${product.name} 수량`, exact: true })
+    else if (departure === 'route') {
+      await nav(page, '장바구니'); await expect(page).toHaveURL('/cart')
+      current = page.getByRole('navigation', { name: '주요 메뉴', exact: true }).getByRole('link', { name: '장바구니', exact: true })
+    } else {
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect(page).toHaveURL('/'); await nav(page, '로그인')
+      await page.getByLabel('아이디', { exact: true }).fill('other'); await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click(); await nav(page, '내 취향 기록')
+      await expect(page.locator('.notebook-card')).toContainText('다른 계정 메모')
+      current = page.getByRole('button', { name: '내 기록 목록 새로고침', exact: true })
+    }
+    await current.focus(); await expect(current).toBeFocused(); g.release(); await expect.poll(() => delivered).toBe(true)
+    if (departure === 'other-control') await expect(memo(page)).toHaveValue(latest.memo)
+    else await expect(page.getByText(latest.memo, { exact: true })).toHaveCount(0)
+    await expect(current).toBeFocused(); expect(writes(s)).toHaveLength(1)
+  } finally { g.release() }
 })
 
 test('보류된 쓰기 중 새 입력과 disclosure 닫기/열기를 보존하고 중복 저장하지 않음', async ({ page, notebookApi: s }) => {
