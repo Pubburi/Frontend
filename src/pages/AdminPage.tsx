@@ -314,20 +314,30 @@ function AdminPanel({
     const result = await ui.run(
       deleteKey,
       async () => {
-        if (tab === 'products') await api.deleteProduct(id)
-        if (tab === 'markets') await api.deleteMarket(id)
-        if (tab === 'orders') await api.deleteOrder(id)
-        if (tab === 'comments') await api.deleteComment(id)
-        if (tab === 'users') await api.deleteUser(id)
+        try {
+          if (tab === 'products') await api.deleteProduct(id)
+          if (tab === 'markets') await api.deleteMarket(id)
+          if (tab === 'orders') await api.deleteOrder(id)
+          if (tab === 'comments') await api.deleteComment(id)
+          if (tab === 'users') await api.deleteUser(id)
+          return true
+        } catch (error) {
+          if (error instanceof ApiClientError && error.status === 401) return false
+          throw error
+        }
       },
-      `${labels[tab]} 정보가 삭제되었습니다.`,
     )
     if (result.ok) {
+      if (!result.data) {
+        expireAdminSession()
+        return
+      }
       const currentAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
       if (!authOwner || currentAuth !== authOwner || currentAuth.state.data !== user || currentAuth.state.status !== 'success') return
       await client.cancelQueries({ queryKey: ['admin', user.id, tab] })
       const latestAuth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
       if (latestAuth !== authOwner || latestAuth.state.data !== user || latestAuth.state.status !== 'success') return
+      ui.status(`${labels[tab]} 정보가 삭제되었습니다.`)
       client.setQueriesData<Page<Item>>({ queryKey: ['admin', user.id, tab] }, (data) => {
         if (!data || !data.items.some((item) => idOf(item) === id)) return data
         const total = Math.max(0, data.total - 1)
