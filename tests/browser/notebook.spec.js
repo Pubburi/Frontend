@@ -264,7 +264,7 @@ for (const departure of ['other-control', 'route', 'account']) test(`최신 기�
     if (departure === 'other-control') current = page.getByRole('spinbutton', { name: `${product.name} 수량`, exact: true })
     else if (departure === 'route') {
       await nav(page, '장바구니'); await expect(page).toHaveURL('/cart')
-      current = page.getByRole('link', { name: '전체 주류 보기', exact: true })
+      current = page.getByRole('navigation', { name: '주요 메뉴', exact: true }).getByRole('link', { name: '장바구니', exact: true })
     } else {
       await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect(page).toHaveURL('/'); await nav(page, '로그인')
       await page.getByLabel('아이디', { exact: true }).fill('other'); await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
@@ -272,7 +272,7 @@ for (const departure of ['other-control', 'route', 'account']) test(`최신 기�
       await expect(page.locator('.notebook-card')).toContainText('다른 계정 메모')
       current = page.getByRole('button', { name: '내 기록 목록 새로고침', exact: true })
     }
-    await current.focus(); g.release(); await expect.poll(() => delivered).toBe(true)
+    await current.focus(); await expect(current).toBeFocused(); g.release(); await expect.poll(() => delivered).toBe(true)
     if (departure === 'other-control') await expect(memo(page)).toHaveValue(latest.memo)
     else await expect(page.getByText(latest.memo, { exact: true })).toHaveCount(0)
     await expect(current).toBeFocused(); expect(writes(s)).toHaveLength(1)
