@@ -249,6 +249,19 @@ export function ProfilePage() {
   ]
   const unauthorizedReads = failures.filter((failure) => failure.auth === authOwner && failure.account === user &&
     currentReads.some(({ query }) => query === failure.query))
+  const repairOrdersPage = orders.isSuccess && orders.fetchStatus === 'idle' && orders.data.page === page &&
+    orders.data.items.length === 0 && orders.data.total > 0 && Number.isSafeInteger(orders.data.totalPages) &&
+    orders.data.totalPages > 0 && orders.data.totalPages < page ? orders.data.totalPages : null
+  useEffect(() => {
+    if (repairOrdersPage === null || !user || unauthorizedReads.length || checkoutAuthPending(ui.pending)) return
+    const auth = queryCache.find({ queryKey: ['session'], exact: true })
+    const currentOrders = queryCache.find({ queryKey: ['account', user.id, 'orders', page], exact: true })
+    if (auth && auth === authOwner && auth.state.data === user && auth.state.status === 'success' && auth.state.fetchStatus === 'idle' &&
+        currentOrders?.state.status === 'success' && currentOrders.state.fetchStatus === 'idle' && currentOrders.state.data === orders.data) {
+      client.removeQueries({ queryKey: ['account', user.id, 'orders', repairOrdersPage], exact: true, type: 'inactive' })
+      setPage(repairOrdersPage)
+    }
+  }, [repairOrdersPage, page, orders.data, user, authOwner, queryCache, client, unauthorizedReads.length, ui.pending])
   const orderAnchorReady = Boolean(user && !profile.isPending && !unauthorizedReads.length)
   useEffect(() => {
     if (location.hash !== '#order-history' || !orderAnchorReady) return
@@ -334,10 +347,10 @@ export function ProfilePage() {
           <div>
             <h2 ref={orderHeading} tabIndex={-1}>주문 내역</h2>
           </div>
-          {orders.data && <span className="muted">총 {orders.data.total}건</span>}
+          {orders.data && repairOrdersPage === null && <span className="muted">총 {orders.data.total}건</span>}
         </div>
-        {orders.isPending ? (
-          <Loading />
+        {orders.isPending || repairOrdersPage !== null ? (
+          <Loading label="주문 내역을 불러오는 중입니다." />
         ) : orders.isError ? (
           <Empty title="주문 내역을 불러오지 못했습니다">
             <button onClick={() => orders.refetch()}>다시 시도</button>
