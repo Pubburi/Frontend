@@ -1280,6 +1280,112 @@ test('관리자가 미확인·빈 태그·출처를 구분해 상품 특성을 �
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
+for (const width of [390, 1440]) test(`상품 특성 저장401은 관리자 입력을 숨기고 재로그인 뒤 명시적으로만 저장 ${width}px`, async ({ page, api }) => {
+  await page.setViewportSize({ width, height: 900 })
+  api.user = api.users.find((user) => user.id === 'admin')
+  const original = { ...unknownFeatures(901), volumeMl: 500, description: '기존 검수 설명', tasteTags: ['grain'], sourceName: '자체 작성 검수 표본' }
+  api.features[901] = structuredClone(original)
+  let writes = 0
+  await page.route('**/api/admin/products/901/features', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes++
+    if (!api.user) return route.fulfill({ status: 401, json: failure('UNAUTHORIZED') })
+    await route.fallback()
+  })
+  const target = '/admin?tab=products&page=1&return=feature-recovery'
+  await page.goto(target)
+  const trigger = page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '특성 편집', exact: true })
+  await trigger.click()
+  let form = page.getByRole('form', { name: '시험 탁주 상품 특성', exact: true })
+  await form.getByLabel('상품 설명', { exact: true }).fill('아직 저장하지 않은 특성 초안')
+  api.user = null
+  await form.getByRole('button', { name: '특성 저장', exact: true }).press('Enter')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === target)
+  await expect(page.locator('.admin-table')).toHaveCount(0)
+  await expect(page.locator('.feature-editor')).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: '시험 탁주 특성이 저장되었습니다.' })).toHaveCount(0)
+  expect(writes).toBe(1)
+  expect(api.features[901]).toEqual(original)
+  await loginAdminRecovery(page)
+  await expect(page).toHaveURL(target)
+  await expect(trigger).toBeVisible()
+  await expect(page.locator('.feature-editor')).toHaveCount(0)
+  expect(writes).toBe(1)
+  await trigger.click()
+  form = page.getByRole('form', { name: '시험 탁주 상품 특성', exact: true })
+  await expect(form.getByLabel('상품 설명', { exact: true })).toHaveValue(original.description)
+  await expect(form.getByLabel('용량 (mL)', { exact: true })).toHaveValue('500')
+  await expect(form.getByLabel('맛 태그 1', { exact: true })).toHaveValue('grain')
+  await form.getByLabel('상품 설명', { exact: true }).fill('재로그인 후 명시 저장한 설명')
+  await form.getByRole('button', { name: '특성 저장', exact: true }).press('Enter')
+  await expect(page.getByRole('status')).toContainText('시험 탁주 특성이 저장되었습니다.')
+  expect(writes).toBe(2)
+  expect(api.features[901]).toEqual({ ...original, description: '재로그인 후 명시 저장한 설명' })
+})
+
+for (const nextAdmin of ['admin', 'admin-other']) for (const status of [200, 401]) {
+  test(`이전 특성 저장${status}은 ${nextAdmin} 새 인증 세대의 편집과 안내를 바꾸지 않음`, async ({ page, api }) => {
+    api.user = api.users.find((user) => user.id === 'admin')
+    api.users.push({ id: 'admin-other', name: '다른 관리자', role: 'ADMIN', stamps: 0 })
+    const original = { ...unknownFeatures(901), volumeMl: 500, description: '초기 서버의 검수 설명', sourceName: '자체 작성 검수 표본' }
+    api.features[901] = structuredClone(original)
+    let release, started = false, delivered = false
+    const gate = new Promise((resolve) => { release = resolve })
+    await page.route('**/api/admin/products/901/features', async (route) => {
+      const saved = { productId: 901, ...route.request().postDataJSON() }
+      started = true
+      await gate
+      await route.fulfill({ status, json: status === 200 ? success(saved) : failure('UNAUTHORIZED') })
+      delivered = true
+    })
+    try {
+      await page.goto('/admin?tab=orders&page=1')
+      await page.getByRole('navigation', { name: '관리 메뉴' }).getByRole('button', { name: '상품', exact: true }).click()
+      await page.locator('.table-row').filter({ hasText: '시험 탁주' }).getByRole('button', { name: '특성 편집', exact: true }).click()
+      const old = page.getByRole('form', { name: '시험 탁주 상품 특성', exact: true })
+      await old.getByLabel('상품 설명', { exact: true }).fill('이전 인증에서 제출한 설명')
+      await old.getByLabel('출처명', { exact: true }).fill('자체 작성 검수 표본')
+      await old.getByRole('button', { name: '특성 저장', exact: true }).click()
+      await expect.poll(() => started).toBe(true)
+      await page.goBack()
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await page.getByRole('link', { name: '로그인', exact: true }).click()
+      await loginAdminRecovery(page, nextAdmin)
+      await expect(page.getByRole('heading', { name: (nextAdmin === 'admin' ? '관리회원' : '다른 관리자') + '님의 취향 기록', exact: true })).toBeVisible()
+      await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '관리', exact: true }).click()
+      const sameId = nextAdmin === 'admin'
+      const trigger = page.locator('.table-row').filter({ hasText: sameId ? '시험 탁주' : '시험 사케' }).getByRole('button', { name: '특성 편집', exact: true })
+      const current = page.getByRole('form', { name: `${sameId ? '시험 탁주' : '시험 사케'} 상품 특성`, exact: true })
+      if (sameId) {
+        await expect(trigger).toBeDisabled()
+        await expect(page.locator('.feature-editor')).toHaveCount(0)
+      } else {
+        await trigger.click()
+        await current.getByLabel('상품 설명', { exact: true }).fill('새 인증에서 편집하는 설명')
+      }
+      const reads = api.calls.filter((call) => call.method === 'GET' && call.path.endsWith('/features')).length
+      release()
+      await expect.poll(() => delivered).toBe(true)
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      await expect(page.getByRole('status').filter({ hasText: '시험 탁주 특성이 저장되었습니다.' })).toHaveCount(0)
+      expect(api.user.id).toBe(nextAdmin)
+      expect(api.calls.filter((call) => call.method === 'GET' && call.path.endsWith('/features'))).toHaveLength(reads)
+      if (sameId) {
+        await expect(trigger).toBeEnabled()
+        await trigger.click()
+        await expect(current.getByLabel('상품 설명', { exact: true })).toHaveValue(original.description)
+        await expect(current.getByLabel('용량 (mL)', { exact: true })).toHaveValue('500')
+        expect(api.calls.filter((call) => call.method === 'GET' && call.path === '/products/901/features')).toHaveLength(2)
+        await current.getByLabel('상품 설명', { exact: true }).fill('새 인증에서 편집하는 설명')
+      }
+      await expect(current.getByLabel('상품 설명', { exact: true })).toHaveValue('새 인증에서 편집하는 설명')
+      await expect(current.getByRole('button', { name: '특성 저장', exact: true })).toBeEnabled()
+      expect(api.features[901]).toEqual(original)
+    } finally { release() }
+  })
+}
+
 test('특성 조회·권한·필드 오류는 빈 저장으로 숨기지 않고 초안을 유지', async ({ page, api }) => {
   api.user = api.users.find((user) => user.id === 'admin')
   let reads = 0

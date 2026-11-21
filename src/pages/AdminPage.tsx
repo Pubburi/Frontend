@@ -208,12 +208,15 @@ function AdminPanel({
     if (tab === 'products' || tab === 'markets')
       await client.invalidateQueries({ queryKey: ['catalog'] })
   }
-  function expireAdminSession() {
+  function ownsAdminSession() {
     const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
     const pending = useUi.getState().pending
-    if (!auth || auth !== authOwner || auth.state.data !== user || auth.state.status !== 'success' ||
-        auth.state.fetchStatus !== 'idle' || user?.role !== 'ADMIN' ||
-        pending.login || pending.join || pending.logout || pending['settings-password']) return
+    return Boolean(auth && auth === authOwner && auth.state.data === user && auth.state.status === 'success' &&
+      auth.state.fetchStatus === 'idle' && user?.role === 'ADMIN' &&
+      !pending.login && !pending.join && !pending.logout && !pending['settings-password'])
+  }
+  function expireAdminSession() {
+    if (!ownsAdminSession()) return
     // The route guard preserves the exact destination for the next login.
     client.clear()
     client.setQueryData(['session'], null)
@@ -568,6 +571,8 @@ function AdminPanel({
             key={`${user.id}:${featureProduct.id}`}
             product={featureProduct}
             userId={user.id}
+            ownsSession={ownsAdminSession}
+            onSessionExpired={expireAdminSession}
             onClose={() => {
               setFeatureProduct(null)
               if (featureTrigger.current?.isConnected)
