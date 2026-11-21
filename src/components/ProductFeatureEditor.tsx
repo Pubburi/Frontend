@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '../services/api'
+import { api, ApiClientError } from '../services/api'
 import { useUi } from '../state/ui'
 import {
   buildFeaturePayload,
@@ -17,10 +17,14 @@ export function ProductFeatureEditor({
   product,
   userId,
   onClose,
+  ownsSession,
+  onSessionExpired,
 }: {
   product: Product
   userId: string
   onClose: () => void
+  ownsSession: () => boolean
+  onSessionExpired: () => void
 }) {
   const title = useRef<HTMLHeadingElement>(null)
   const titleId = useId()
@@ -62,7 +66,7 @@ export function ProductFeatureEditor({
           </button>
         </Empty>
       ) : (
-        <FeatureForm product={product} userId={userId} initial={query.data} />
+        <FeatureForm product={product} userId={userId} initial={query.data} ownsSession={ownsSession} onSessionExpired={onSessionExpired} />
       )}
     </section>
   )
@@ -72,10 +76,14 @@ function FeatureForm({
   product,
   userId,
   initial,
+  ownsSession,
+  onSessionExpired,
 }: {
   product: Product
   userId: string
   initial: ProductFeatures
+  ownsSession: () => boolean
+  onSessionExpired: () => void
 }) {
   const [draft, setDraft] = useState(() => featuresToDraft(initial))
   const client = useQueryClient()
@@ -89,6 +97,7 @@ function FeatureForm({
   )
   async function save(event: FormEvent) {
     event.preventDefault()
+    if (!ownsSession()) return
     const submitted = draft
     let payload
     try {
@@ -100,16 +109,28 @@ function FeatureForm({
     const result = await ui.run(
       featureSaveKey(userId, product.id),
       async () => {
-        const saved = await api.replaceProductFeatures(product.id, payload)
-        client.setQueryData(featureQueryKey(userId, product.id), saved)
-        return saved
+        try {
+          const saved = await api.replaceProductFeatures(product.id, payload)
+          if (!ownsSession()) return null
+          client.setQueryData(featureQueryKey(userId, product.id), saved)
+          return saved
+        } catch (error) {
+          if (!ownsSession()) return null
+          if (error instanceof ApiClientError && error.status === 401) {
+            onSessionExpired()
+            return null
+          }
+          throw error
+        }
       },
-      `${product.name} 특성이 저장되었습니다.`,
     )
-    if (result.ok)
+    if (result.ok && result.data && ownsSession()) {
+      const saved = result.data
+      ui.status(`${product.name} 특성이 저장되었습니다.`)
       setDraft((current) =>
-        current === submitted ? featuresToDraft(result.data) : current,
+        current === submitted ? featuresToDraft(saved) : current,
       )
+    }
   }
   return (
     <form
