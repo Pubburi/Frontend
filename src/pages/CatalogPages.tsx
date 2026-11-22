@@ -517,7 +517,7 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
 }
 
 const stars = (rating: number) =>
-  '★'.repeat(Math.max(1, Math.min(5, Math.round(Number(rating)))))
+  Number(rating) === 0 ? '' : '★'.repeat(Math.max(1, Math.min(5, Math.round(Number(rating)))))
 export function ProductDetailPage() {
   const { id = '' } = useParams()
   return <ProductDetail key={id} id={id} />
