@@ -66,7 +66,19 @@ for (const width of [1280, 390]) {
     await cards(page).first().getByRole('button', { name: '읽음으로 표시', exact: true }).focus(); await page.keyboard.press('Enter'); await expect(cards(page).first().getByText('읽음', { exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: '알림', exact: true })).toBeFocused()
     expect(writes(s)[0].method).toBe('PUT'); expect(writes(s)[0].body).toBeNull()
-    await page.getByRole('button', { name: '현재 페이지 읽음', exact: true }).click(); await expect(page.getByRole('button', { name: '현재 페이지 읽음', exact: true })).toBeDisabled(); await expect(badge(page)).toHaveCount(0)
+    const bulk = page.getByRole('button', { name: '현재 페이지 읽음', exact: true }), g = gate(); let started = false, attempts = 0
+    await page.route('**/api/users/me/notifications/read', async (route) => { attempts++; started = true; await g.promise; await route.fallback() })
+    try {
+      await bulk.press('Enter'); await expect.poll(() => started).toBe(true)
+      await expect(bulk).toBeFocused(); await expect(bulk).toHaveAttribute('aria-disabled', 'true'); await expect(bulk).toHaveAttribute('tabindex', '-1')
+      await bulk.press('Enter'); await bulk.press('Space'); expect(attempts).toBe(1)
+      g.release(); await expect(badge(page)).toHaveCount(0); await expect(cards(page).last().getByText('읽음', { exact: true })).toBeVisible()
+      await expect(bulk).toBeFocused(); await expect(bulk).toBeDisabled(); await expect(bulk).toHaveCSS('opacity', '0.5')
+      const readAt = s.notes.member.map((item) => item.readAt)
+      await bulk.press('Enter'); await bulk.press('Space'); expect(attempts).toBe(1); expect(s.notes.member.map((item) => item.readAt)).toEqual(readAt)
+      await page.keyboard.press('Tab'); await expect(cards(page).first().getByRole('link', { name: '주문 #901 보기', exact: true })).toBeFocused()
+      await page.keyboard.press('Shift+Tab'); await expect(page.getByRole('button', { name: '알림 새로고침', exact: true })).toBeFocused()
+    } finally { g.release() }
     expect(writes(s)[1].body).toEqual({ ids: [uuid(2), uuid(4)] }); expect(s.notes.member.every((n) => n.readAt !== null)).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     if (width === 390) await info.attach('notifications-390.png', { body: await page.screenshot(), contentType: 'image/png' })
@@ -102,7 +114,11 @@ test('받은 알림이 없는 계정은 실제 빈목록을 표시', async ({ pa
 })
 for (const status of [404, 503]) test(`일반 ${status} 읽기실패는 빈 알림/미지원으로 바꾸지 않고 같은페이지에서 복구`, async ({ page, notifications: s }) => {
   s.readStatus = status; await page.goto('/notifications?from=error'); await expect(page.getByRole('heading', { name: '알림을 불러오지 못했습니다', exact: true })).toBeVisible(); await expect(cards(page)).toHaveCount(0); await expect(badge(page)).toHaveCount(0)
+  const bulk = page.getByRole('button', { name: '현재 페이지 읽음', exact: true })
+  await expect(bulk).toHaveAttribute('aria-disabled', 'true'); await expect(bulk).toHaveAttribute('tabindex', '-1')
+  await bulk.press('Enter'); await bulk.press('Space'); expect(writes(s)).toHaveLength(0)
   s.readStatus = 0; await page.getByRole('button', { name: '알림 새로고침', exact: true }).click(); await expect(cards(page)).toHaveCount(2); await expect(badge(page)).toHaveText('2'); await expect(page).toHaveURL('/notifications?from=error')
+  await expect(bulk).toHaveAttribute('aria-disabled', 'false'); expect(await bulk.evaluate((button) => button.tabIndex)).toBe(0)
 })
 for (const kind of ['GET', 'PUT', 'POST']) test(`${kind}401은 헤더와 개인목록을 함께 차폐하고 명시 재확인`, async ({ page, notifications: s }) => {
   await page.goto('/notifications'); await expect(cards(page)).toHaveCount(2); await expect(badge(page)).toHaveText('2')
@@ -138,9 +154,21 @@ test('이전페이지의 늦은 읽음 응답은 새 URL·현재 목록·전역 
   s.notes.member = Array.from({ length: 22 }, (_, i) => note(i + 1)); const g = gate(); let started = false
   await page.route('**/api/users/me/notifications/read', async (route) => { started = true; await g.promise; await route.fallback() })
   try {
-    await page.goto('/notifications'); await expect(cards(page)).toHaveCount(20); await page.getByRole('button', { name: '현재 페이지 읽음', exact: true }).click(); await expect.poll(() => started).toBe(true)
-    await page.getByRole('button', { name: '다음', exact: true }).click(); await expect(page).toHaveURL('/notifications?page=2'); g.release(); await expect(cards(page)).toHaveCount(2)
+    await page.goto('/notifications'); await expect(cards(page)).toHaveCount(20); await page.getByRole('button', { name: '현재 페이지 읽음', exact: true }).press('Enter'); await expect.poll(() => started).toBe(true)
+    await page.getByRole('button', { name: '다음', exact: true }).click(); await expect(page).toHaveURL('/notifications?page=2')
+    const current = await openMenu(page); await current.focus(); await expect(current).toBeFocused()
+    g.release(); await expect(cards(page)).toHaveCount(2); await expect(current).toBeFocused()
     await expect(page.getByText('현재 페이지의 알림을 읽음으로 표시했습니다.', { exact: true })).toHaveCount(0); await expect(cards(page).first().getByText('읽지 않음', { exact: true })).toBeVisible()
+  } finally { g.release() }
+})
+test('묶음 읽음 대기 중 옮긴 현재 조작의 초점은 완료 응답이 가져가지 않음', async ({ page, notifications: s }) => {
+  const g = gate(); let started = false
+  await page.route('**/api/users/me/notifications/read', async (route) => { started = true; await g.promise; await route.fallback() })
+  try {
+    await page.goto('/notifications'); await expect(cards(page)).toHaveCount(2)
+    await page.getByRole('button', { name: '현재 페이지 읽음', exact: true }).press('Enter'); await expect.poll(() => started).toBe(true)
+    const current = await openMenu(page); await current.focus(); await expect(current).toBeFocused()
+    g.release(); await expect(badge(page)).toHaveCount(0); await expect(current).toBeFocused(); expect(writes(s)).toHaveLength(1)
   } finally { g.release() }
 })
 test('초기 인증 읽기 전에는 알림 GET/개인 수를 노출하지 않음', async ({ page, notifications: s }) => {

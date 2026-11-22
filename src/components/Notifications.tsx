@@ -78,6 +78,7 @@ function NotificationList({ state, page, onPage, focusFallback }: {
   const unsupported = status === 404 && query.error instanceof ApiClientError && query.error.code === 'NOTIFICATIONS_NOT_SUPPORTED'
   const busy = query.isPending || query.fetchStatus !== 'idle'
   const unread = query.data?.items.filter((item) => item.readAt === null).map((item) => item.id) ?? []
+  const bulkDisabled = pending || busy || !unread.length || query.isError
   return <>
     <div className="purchase-notification-tools">
       {!busy && !repair && query.isSuccess && <div>
@@ -86,7 +87,8 @@ function NotificationList({ state, page, onPage, focusFallback }: {
       </div>}
       <div className="button-row">
         <button className="btn btn-outline-dark" disabled={pending || busy} onClick={() => void query.refetch()}>알림 새로고침</button>
-        <button className="btn btn-dark" disabled={pending || busy || !unread.length || query.isError} onClick={() => void read(unread, true)}>현재 페이지 읽음</button>
+        <button className="btn btn-dark" aria-disabled={bulkDisabled} tabIndex={bulkDisabled ? -1 : undefined}
+          onClick={() => { if (!bulkDisabled) void read(unread, true) }}>현재 페이지 읽음</button>
       </div>
     </div>
     {message && <p role="status" className="notice success">{message}</p>}
