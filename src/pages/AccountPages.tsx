@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '../services/api'
+import { api, ApiClientError } from '../services/api'
 import { safeRedirect, useSession } from '../queries'
 import { useCart, cartTotals } from '../state/cart'
 import { accountCart as accountCartState, useAccountCart } from '../state/accountCart'
@@ -414,6 +414,7 @@ export function AccountPage() {
     event.preventDefault()
     const submittedLocation = location.key
     const target = safeRedirect(search.get('redirect'))
+    if (mode === 'join' && ui.pending['id-check']) return
     if (mode === 'join' && (!check.available || check.id !== join.id.trim())) {
       ui.error(new Error('아이디 중복 확인이 필요합니다.'))
       return
@@ -441,11 +442,31 @@ export function AccountPage() {
       mode,
       async () => {
         if (mode === 'join') {
-          await api.join({
-            id: credentials.id,
-            name: join.name.trim(),
-            pass: credentials.pass,
-          })
+          try {
+            await api.join({
+              id: credentials.id,
+              name: join.name.trim(),
+              pass: credentials.pass,
+            })
+          } catch (error) {
+            if (error instanceof ApiClientError && Object.keys(error.fields).length === 0 && (
+              (error.status === 400 && error.code === 'BAD_REQUEST') ||
+              (error.status === 409 && error.code === 'CONFLICT')
+            )) {
+              const confirmation = await api.idAvailable(credentials.id).catch(() => null)
+              if (confirmation?.available !== true && mounted.current &&
+                  currentLocation.current === submittedLocation && latestJoinId.current.trim() === credentials.id) {
+                setCheck({
+                  id: credentials.id,
+                  available: false,
+                  message: confirmation?.available === false
+                    ? '이미 사용 중인 아이디입니다.'
+                    : '아이디 중복 확인을 다시 해 주세요.',
+                })
+              }
+            }
+            throw error
+          }
           accountCreated = true
         }
         return api.login(credentials)
@@ -486,8 +507,9 @@ export function AccountPage() {
   async function checkId() {
     const id = join.id.trim()
     if (!id) return
+    const checkedLocation = location.key
     const result = await ui.run('id-check', () => api.idAvailable(id))
-    if (result.ok && latestJoinId.current.trim() === id)
+    if (result.ok && mounted.current && currentLocation.current === checkedLocation && latestJoinId.current.trim() === id)
       setCheck({
         id,
         available: Boolean(result.data?.available),
@@ -645,11 +667,12 @@ export function AccountPage() {
             </div>
           </fieldset>}
           <button
+            type="submit"
             className="btn btn-dark w-100"
             disabled={
               authenticating ||
               (mode === 'join' &&
-                (!check.available || check.id !== join.id.trim()))
+                (ui.pending['id-check'] || !check.available || check.id !== join.id.trim()))
             }
           >
             {ui.pending[mode]

@@ -3095,6 +3095,7 @@ for (const failureKind of ['server-error', 'network-error']) {
     await expect.poll(() => loginAttempts).toBe(1)
     expect(api.users.filter((user) => user.id === 'created-member')).toHaveLength(1)
     expect(api.user).toBeNull()
+    expect(api.calls.filter((call) => call.path === '/users/id-available')).toHaveLength(1)
     await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
     await page.locator('.auth-form').getByRole('button', { name: /^(회원가입|로그인)$/ }).click()
     await expect(page).toHaveURL('/cart')
@@ -3191,42 +3192,181 @@ test('가입의 새 비밀번호 제한은 기존 로그인 비밀번호를 변�
   expect(api.calls.find((call) => call.method === 'POST' && call.path === '/auth/login').body.pass).toBe(literal)
 })
 
-test('가입 요청 자체의 실패는 완료로 오인하지 않고 입력과 재가입을 유지', async ({ page, api }) => {
-  let attempts = 0
-  await page.route('**/api/users', async (route) => {
-    if (route.request().method() !== 'POST') return route.fallback()
-    attempts += 1
-    if (attempts === 1) return route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+for (const failureKind of ['server-error', 'network-error', 'field-error']) {
+  test(`가입 요청 ${failureKind}는 중복 재확인 없이 입력과 명시적 재가입을 유지`, async ({ page, api }) => {
+    let attempts = 0
+    await page.route('**/api/users', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      attempts += 1
+      if (attempts === 1) {
+        if (failureKind === 'network-error') return route.abort('failed')
+        return route.fulfill(failureKind === 'field-error'
+          ? { status: 400, json: { data: null, error: { code: 'BAD_REQUEST', fields: { name: '이름을 확인해 주세요.' } } } }
+          : { status: 503, json: failure('SERVICE_UNAVAILABLE') })
+      }
+      await route.fallback()
+    })
+    await prepareJoin(page)
+    await page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true }).click()
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true })).toBeEnabled()
+    await expect(page.getByLabel('아이디', { exact: true })).toHaveValue('recovery-member')
+    await expect(page.getByLabel('이름', { exact: true })).toHaveValue('복구흐름회원')
+    await expect(page.getByLabel('비밀번호', { exact: true })).toHaveValue('fixture-pass')
+    expect(api.users.some((user) => user.id === 'recovery-member')).toBe(false)
+    expect(api.calls.filter((call) => call.path === '/auth/login')).toHaveLength(0)
+    expect(api.calls.filter((call) => call.path === '/users/id-available')).toHaveLength(1)
+    await page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true }).click()
+    await expect(page).toHaveURL('/cart')
+    expect(attempts).toBe(2)
+  })
+}
+
+for (const [width, status, code] of [[390, 400, 'BAD_REQUEST'], [1280, 409, 'CONFLICT']]) {
+  test(`가입 ${width}px ${status} 아이디 경쟁은 한 번 재확인하고 새 아이디로 복구`, async ({ page, api }) => {
+    await page.setViewportSize({ width, height: 844 })
+    await prepareJoin(page)
+    const submit = page.locator('.auth-form').locator('button[type=submit]')
+    const taste = page.getByRole('group', { name: '선호 주종', exact: true }).getByRole('button', { name: '탁주', exact: true })
+    await taste.click()
+    api.users.push({ id: 'recovery-member', name: '다른 요청의 회원', role: 'USER', stamps: 0 })
+    let registrations = 0, confirmations = 0, release
+    const gate = new Promise((resolve) => { release = resolve })
+    await page.route('**/api/users', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      registrations += 1
+      if (route.request().postDataJSON().id === 'recovery-member') return route.fulfill({ status, json: failure(code) })
+      await route.fallback()
+    })
+    await page.route('**/api/users/id-available?**', async (route) => {
+      if (new URL(route.request().url()).searchParams.get('id') === 'recovery-member') {
+        confirmations += 1
+        await gate
+      }
+      await route.fallback()
+    })
+    try {
+      await submit.press('Enter')
+      await expect.poll(() => confirmations).toBe(1)
+      for (const label of ['아이디', '이름', '비밀번호']) await expect(page.getByLabel(label, { exact: true })).toBeDisabled()
+      await expect(submit).toBeDisabled()
+      release()
+      await expect(page.getByText('이미 사용 중인 아이디입니다.', { exact: true })).toBeVisible()
+      await expect(page.getByText('사용할 수 있는 아이디입니다.', { exact: true })).toHaveCount(0)
+      await expect(submit).toBeDisabled()
+      await expect(page.getByLabel('아이디', { exact: true })).toHaveValue('recovery-member')
+      await expect(page.getByLabel('이름', { exact: true })).toHaveValue('복구흐름회원')
+      await expect(page.getByLabel('비밀번호', { exact: true })).toHaveValue('fixture-pass')
+      await expect(taste).toHaveAttribute('aria-pressed', 'true')
+      await expect(page).toHaveURL('/account?redirect=/cart')
+      await page.getByLabel('비밀번호', { exact: true }).press('Enter')
+      expect(registrations).toBe(1)
+      expect(confirmations).toBe(1)
+      expect(api.calls.filter((call) => call.path === '/auth/login')).toHaveLength(0)
+      await page.getByLabel('아이디', { exact: true }).fill('another-recovery-member')
+      await expect(submit).toBeDisabled()
+      await page.getByRole('button', { name: '중복 확인', exact: true }).press('Enter')
+      await expect(page.getByText('사용할 수 있는 아이디입니다.', { exact: true })).toBeVisible()
+      await submit.press('Enter')
+      await expect(page).toHaveURL('/preferences')
+      const review = page.getByRole('form', { name: '가입 취향 확인', exact: true })
+      await expect(review).toContainText('탁주')
+      await review.getByRole('button', { name: '지금은 건너뛰기', exact: true }).press('Enter')
+      await expect(page).toHaveURL('/cart')
+      expect(registrations).toBe(2)
+      expect(api.calls.filter((call) => call.path === '/auth/login')).toHaveLength(1)
+      expect(api.user.id).toBe('another-recovery-member')
+    } finally { release() }
+  })
+}
+
+for (const confirmation of ['available', 'failed', 'unknown']) {
+  test(`가입 거절 후 아이디 재확인 ${confirmation}는 충돌을 단정하지 않고 명시적 복구`, async ({ page, api }) => {
+    await prepareJoin(page)
+    let attempts = 0, confirmations = 0
+    await page.route('**/api/users', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      attempts += 1
+      if (attempts === 1) return route.fulfill({ status: 400, json: failure('BAD_REQUEST') })
+      await route.fallback()
+    })
+    await page.route('**/api/users/id-available?**', async (route) => {
+      confirmations += 1
+      if (confirmations > 1 || confirmation === 'available') return route.fallback()
+      return route.fulfill(confirmation === 'failed'
+        ? { status: 503, json: failure('SERVICE_UNAVAILABLE') }
+        : { json: success({ available: 'unknown' }) })
+    })
+    const submit = page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true })
+    await submit.press('Enter')
+    await expect.poll(() => confirmations).toBe(1)
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page.getByText('이미 사용 중인 아이디입니다.', { exact: true })).toHaveCount(0)
+    if (confirmation === 'available') {
+      await expect(page.getByText('사용할 수 있는 아이디입니다.', { exact: true })).toBeVisible()
+      await expect(submit).toBeEnabled()
+    } else {
+      await expect(page.getByText('아이디 중복 확인을 다시 해 주세요.', { exact: true })).toBeVisible()
+      await expect(submit).toBeDisabled()
+      await page.getByRole('button', { name: '중복 확인', exact: true }).press('Enter')
+      await expect(page.getByText('사용할 수 있는 아이디입니다.', { exact: true })).toBeVisible()
+    }
+    expect(attempts).toBe(1)
+    expect(api.calls.filter((call) => call.path === '/auth/login')).toHaveLength(0)
+    await submit.press('Enter')
+    await expect(page).toHaveURL('/cart')
+    expect(attempts).toBe(2)
+    expect(api.user.id).toBe('recovery-member')
+  })
+}
+
+test('명시적으로 아이디를 다시 확인하는 동안 기존 승인으로 가입할 수 없음', async ({ page, api }) => {
+  await prepareJoin(page)
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  api.users.push({ id: 'recovery-member', name: '다른 요청의 회원', role: 'USER', stamps: 0 })
+  await page.route('**/api/users/id-available?**', async (route) => {
+    await gate
     await route.fallback()
   })
-  await prepareJoin(page)
-  await page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true }).click()
-  await expect(page.getByRole('alert')).toBeVisible()
-  await expect(page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true })).toBeEnabled()
-  await expect(page.getByLabel('아이디', { exact: true })).toHaveValue('recovery-member')
-  await expect(page.getByLabel('이름', { exact: true })).toHaveValue('복구흐름회원')
-  await expect(page.getByLabel('비밀번호', { exact: true })).toHaveValue('fixture-pass')
-  expect(api.users.some((user) => user.id === 'recovery-member')).toBe(false)
-  expect(api.calls.filter((call) => call.path === '/auth/login')).toHaveLength(0)
-  await page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true }).click()
-  await expect(page).toHaveURL('/cart')
-  expect(attempts).toBe(2)
+  const submit = page.locator('.auth-form button[type=submit]')
+  try {
+    const check = page.getByRole('button', { name: '중복 확인', exact: true })
+    await check.press('Enter')
+    await expect(check).toBeDisabled()
+    await expect(submit).toBeDisabled()
+    await page.getByLabel('비밀번호', { exact: true }).press('Enter')
+    expect(api.calls.filter((call) => call.path === '/users')).toHaveLength(0)
+    release()
+    await expect(page.getByText('이미 사용 중인 아이디입니다.', { exact: true })).toBeVisible()
+    await expect(check).toBeEnabled()
+    await expect(submit).toBeDisabled()
+  } finally { release() }
 })
 
-test('아이디 경쟁으로 가입이 거절되면 로그인 완료로 바꾸지 않고 새 아이디 확인을 요구', async ({ page, api }) => {
+test('가입 거절의 늦은 중복 재확인은 떠난 뒤 새 계정 폼에 적용되지 않음', async ({ page }) => {
   await prepareJoin(page)
-  api.users.push({ id: 'recovery-member', name: '다른 요청의 회원', role: 'USER', stamps: 0 })
-  await page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true }).click()
-  await expect(page.getByRole('alert')).toBeVisible()
-  await expect(page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true })).toBeEnabled()
-  expect(api.calls.filter((call) => call.path === '/auth/login')).toHaveLength(0)
-  await page.getByLabel('아이디', { exact: true }).fill('another-recovery-member')
-  await expect(page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true })).toBeDisabled()
-  await page.getByRole('button', { name: '중복 확인', exact: true }).click()
-  await expect(page.getByText('사용할 수 있는 아이디입니다.', { exact: true })).toBeVisible()
-  await page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true }).click()
-  await expect(page).toHaveURL('/cart')
-  expect(api.user.id).toBe('another-recovery-member')
+  let release, pending = false
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/users', (route) => route.fulfill({ status: 409, json: failure('CONFLICT') }))
+  await page.route('**/api/users/id-available?**', async (route) => {
+    pending = true
+    await gate
+    await route.fulfill({ json: success({ available: false }) })
+  })
+  try {
+    await page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true }).press('Enter')
+    await expect.poll(() => pending).toBe(true)
+    await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link', { name: '전체 주류', exact: true }).click()
+    release()
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page).toHaveURL('/products')
+    await page.getByRole('link', { name: '로그인', exact: true }).click()
+    await page.locator('.segmented').getByRole('button', { name: '회원가입', exact: true }).click()
+    await expect(page.getByLabel('아이디', { exact: true })).toHaveValue('')
+    await expect(page.getByText('이미 사용 중인 아이디입니다.', { exact: true })).toHaveCount(0)
+    await expect(page.locator('.auth-form').getByRole('button', { name: '회원가입', exact: true })).toBeDisabled()
+  } finally { release() }
 })
 
 test('가입과 자동 로그인 대기는 자격 입력·모드를 고정하고 복구 로그인 거절 뒤 명시적 재입력을 허용', async ({ page, api }) => {
