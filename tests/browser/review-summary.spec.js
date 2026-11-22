@@ -192,6 +192,9 @@ test('실제 0평균은 빈값으로 바꾸지 않고, 등록·수정·삭제 �
   reviewsApi.reviews = [review(1, 0)]
   await page.goto('/products/901')
   await expect(page.locator('.review-summary')).toHaveText('평균 0점 · 전체 후기 1개')
+  await expect(page.locator('.rating-stars')).toHaveText('')
+  await expect(page.locator('.rating-stars')).toHaveAttribute('aria-label', '0점')
+  await expect(page.locator('.comment-head > .badge')).toHaveText('0.0점')
   await page.getByRole('combobox', { name: '후기 정렬', exact: true }).selectOption('rating_asc')
   await page.getByLabel('후기', { exact: true }).fill('새 회원 평가')
   await page.locator('.comment-form').getByRole('combobox', { name: '평점', exact: true }).selectOption('5')
@@ -199,6 +202,7 @@ test('실제 0평균은 빈값으로 바꾸지 않고, 등록·수정·삭제 �
   await expect(page.locator('.review-summary')).toHaveText('평균 2.5점 · 전체 후기 2개')
   const old = page.locator('.comment-row').filter({ has: page.getByText('회원 평가 1', { exact: true }) })
   await old.getByRole('button', { name: '수정', exact: true }).click()
+  await expect(old.getByRole('combobox', { name: '평점', exact: true })).toHaveValue('0')
   await old.getByRole('combobox', { name: '평점', exact: true }).selectOption('3')
   await old.getByRole('button', { name: '저장', exact: true }).click()
   await expect(page.locator('.review-summary')).toHaveText('평균 4점 · 전체 후기 2개')
@@ -206,6 +210,13 @@ test('실제 0평균은 빈값으로 바꾸지 않고, 등록·수정·삭제 �
   await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click()
   await expect(page.locator('.review-summary')).toHaveText('평균 5점 · 전체 후기 1개')
   await expect(page.getByRole('combobox', { name: '후기 정렬', exact: true })).toHaveValue('rating_asc')
+})
+
+test('양수 소수 평점의 채운 별은 기존 표현을 유지', async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [review(1, 0.25), review(2, 2.75), review(3, 5)]
+  await page.goto('/products/901')
+  for (const [rating, expected] of [[0.25, '★'], [2.75, '★★★'], [5, '★★★★★']])
+    await expect(page.locator(`.rating-stars[aria-label="${rating}점"]`)).toHaveText(expected)
 })
 
 test('review-delete-focus: 마지막 페이지 삭제는 앞 페이지와 후기 제목으로 돌아옴', async ({ page, reviewsApi }) => {
