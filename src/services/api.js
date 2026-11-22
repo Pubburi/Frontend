@@ -107,7 +107,7 @@ export const api = {
   login: (payload) => request('/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   join: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
-  idAvailable: (id) => request(`/users/id-available?id=${encodeURIComponent(id)}`),
+  idAvailable: (id) => request(`/users/id-available?id=${encodeURIComponent(id)}`, { cache: 'no-store' }),
   /** @param {string} owner @param {number} page @param {number} size @param {AbortSignal} signal @returns {Promise<unknown>} */
   notifications: (owner, page, size, signal) => request(`/users/me/notifications?${pageQuery({ page, size })}`, { signal, cache: 'no-store', headers: { 'X-Pubburi-Account-Owner': encodeURIComponent(owner) } }),
   /** @param {string} owner @param {string} id @returns {Promise<unknown>} */
