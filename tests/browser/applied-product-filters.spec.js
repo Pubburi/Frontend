@@ -43,6 +43,62 @@ const requestQuery = (api) => new URLSearchParams(catalogCalls(api).at(-1).query
 const remove = (page, name) => page.getByRole('button', { name, exact: true })
 const hintAction = (page, keyword) => page.getByRole('button', { name: `‘${keyword}’로 다시 검색`, exact: true })
 
+for (const width of [390, 1440]) test(`동일 조건 명시 검색은 ${width}px에서 새 상품을 한 번 조회하고 URL·입력·초점을 보존`, async ({ page, filtersApi }) => {
+  const query = applied(); query.set('page', '1'); query.set('q', '새로 등록한'); query.set('sort', 'priceAsc'); query.set('from', 'saved-search')
+  await page.setViewportSize({ width, height: 900 }); await page.goto(`/products?${query}`)
+  await expect(page.getByRole('heading', { name: '조건에 맞는 상품이 없습니다', exact: true })).toBeVisible()
+  const url = page.url(), input = page.getByLabel('상품 검색', { exact: true })
+  filtersApi.items = [{ ...items[0], name: '새로 등록한 상품' }]
+  await input.fill('  새로 등록한  '); await input.press('Enter')
+  await expect(page.getByRole('heading', { name: '새로 등록한 상품', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '상품 검색 결과', exact: true })).toContainText('검색 결과 1개')
+  await expect(page).toHaveURL(url); await expect(input).toHaveValue('  새로 등록한  '); await expect(input).toBeFocused()
+  expect(catalogCalls(filtersApi)).toHaveLength(2)
+  expect(catalogCalls(filtersApi)[1].query).toEqual(catalogCalls(filtersApi)[0].query)
+  expect(requestQuery(filtersApi).getAll('tasteTag')).toEqual(['dry,sweet', 'line\nbreak'])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('동일 검색 읽기 중 반복 Enter는 요청을 늘리지 않고 새 초안과 현재 결과를 유지', async ({ page, filtersApi }) => {
+  await page.goto('/products?q=초기&sort=name&page=1'); await expect(page.locator('.product-card')).toHaveCount(12)
+  let release, started = 0; const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/products?**', async (route) => { started++; await gate; await route.fallback() })
+  try {
+    const input = page.getByLabel('상품 검색', { exact: true }), url = page.url()
+    await input.press('Enter'); await expect.poll(() => started).toBe(1)
+    await expect(page.getByRole('region', { name: '상품 검색 결과', exact: true })).toHaveAttribute('aria-busy', 'true')
+    await input.press('Enter'); await input.press('Enter'); expect(started).toBe(1)
+    await input.fill('아직 제출하지 않은 검색어')
+    release()
+    await expect(page.getByRole('region', { name: '상품 검색 결과', exact: true })).toHaveAttribute('aria-busy', 'false')
+    await expect(page.locator('.product-card')).toHaveCount(12)
+    await expect(page).toHaveURL(url); await expect(input).toHaveValue('아직 제출하지 않은 검색어'); await expect(input).toBeFocused()
+    expect(started).toBe(1); expect(catalogCalls(filtersApi)).toHaveLength(2)
+    expect(catalogCalls(filtersApi)[1].query).toEqual(catalogCalls(filtersApi)[0].query)
+    await input.press('Enter')
+    await expect(page.getByRole('heading', { name: '조건에 맞는 상품이 없습니다', exact: true })).toBeVisible()
+    expect(urlQuery(page).get('q')).toBe('아직 제출하지 않은 검색어')
+    expect(catalogCalls(filtersApi)).toHaveLength(3)
+  } finally { release() }
+})
+
+test('현재 조건의503도 검색하기로 다시 읽고 잘못된 URL은 먼저 정리한 주소로 조회', async ({ page, filtersApi }) => {
+  filtersApi.failures = 1
+  await page.goto('/products?q=초기&sort=name&page=1')
+  await expect(page.getByRole('heading', { name: '상품을 불러오지 못했습니다', exact: true })).toBeVisible()
+  const input = page.getByLabel('상품 검색', { exact: true }), url = page.url()
+  await input.press('Enter'); await expect(page.locator('.product-card')).toHaveCount(12)
+  await expect(page).toHaveURL(url); await expect(input).toBeFocused()
+  expect(catalogCalls(filtersApi)).toHaveLength(2)
+  await page.goto('/products?maxPriceKrw=12000&maxPriceKrw=12000&sort=name&page=1')
+  await expect(page.getByRole('heading', { name: '검색 조건을 확인해 주세요', exact: true })).toBeVisible()
+  expect(catalogCalls(filtersApi)).toHaveLength(2)
+  await remove(page, '검색하기').press('Enter')
+  await expect(page.locator('.product-card')).toHaveCount(12)
+  expect(urlQuery(page).getAll('maxPriceKrw')).toEqual(['12000'])
+  expect(catalogCalls(filtersApi)).toHaveLength(3)
+})
+
 for (const [width, original, canonical, kind] of [
   [1280, '약주', '약 · 청주', 'ALIAS'],
   [390, '과실쥬', '과실주', 'TYPO'],
