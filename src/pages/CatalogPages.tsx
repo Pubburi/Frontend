@@ -613,6 +613,13 @@ function ProductDetail({ id }: { id: string }) {
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!writable) return
+    const form = event.currentTarget, authUpdates = auth?.state.dataUpdateCount
+    const ownsRequest = () => form.isConnected && currentAccount.current === account &&
+      currentContext.current.locationKey === location.key &&
+      client.getQueryCache().find({ queryKey: ['session'], exact: true }) === auth &&
+      auth?.state.data === session.data && auth?.state.dataUpdateCount === authUpdates &&
+      auth?.state.status === 'success' && auth.state.fetchStatus === 'idle' &&
+      !['login', 'join', 'logout', 'settings-password'].some((key) => useUi.getState().pending[key])
     const submitted = draft
     const comment = submitted.comment.trim()
     if (!comment) {
@@ -625,16 +632,27 @@ function ProductDetail({ id }: { id: string }) {
     const result = await ui.run(
       'comment-create',
       async () => {
-        await api.createComment({
-          productId: Number(id),
-          rating: submitted.rating,
-          comment,
-          ...(tasteTags.length ? { tasteTags } : {}),
-        })
+        try {
+          await api.createComment({
+            productId: Number(id),
+            rating: submitted.rating,
+            comment,
+            ...(tasteTags.length ? { tasteTags } : {}),
+          })
+        } catch (error) {
+          if (!(error instanceof ApiClientError) || error.status !== 401) throw error
+          if (ownsRequest()) {
+            client.removeQueries({ queryKey: ['account', account.id] })
+            client.setQueryData(['session'], null)
+            ui.error(error)
+          }
+          return false
+        }
         await refresh()
+        return true
       },
     )
-    if (result.ok && currentAccount.current === account) {
+    if (result.ok && result.data && reviewHeading.current?.isConnected && currentAccount.current === account && currentContext.current.locationKey === location.key) {
       ui.status('후기가 등록되었습니다.')
       setDraft((current) =>
         current === submitted ? { ...current, comment: '', tasteTags: [] } : current,

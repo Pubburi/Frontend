@@ -38,6 +38,7 @@ const test = base.extend({
         return route.fulfill({ json: ok(state.response(url)) })
       }
       if (path === '/api/comments' && method === 'POST') {
+        if (!state.user) return route.fulfill({ status: 401, json: error('UNAUTHORIZED') })
         if (!body.comment.trim()) return route.fulfill({ status: 400, json: error('VALIDATION_ERROR') })
         const item = { ...body, tasteTags: (body.tasteTags ?? []).toSorted(), id: Math.max(1000, ...state.reviews.map((item) => item.id)) + 1, userId: state.user.id }
         state.reviews.push(item)
@@ -472,6 +473,92 @@ test('제출 뒤 입력한 새 태그는 늦은 등록 성공이 지우지 않�
     await expect(page.locator('.comment-row .review-taste-tags li')).toHaveText('first')
     await expect(form.getByLabel('느낀 맛 태그 1', { exact: true })).toHaveValue('next')
     await expect(form.getByLabel('후기', { exact: true })).toHaveValue('먼저 제출')
+  } finally { release() }
+})
+
+for (const width of [390, 1440]) test(`후기 등록401은 ${width}px에서 공개 화면을 보존하고 원래 상품에 재로그인해 명시적으로 작성`, async ({ page, reviewsApi }) => {
+  reviewsApi.reviews = [review(1, 3)]
+  await page.setViewportSize({ width, height: 900 }); await page.goto('/products/901?source=expired-review')
+  const form = page.locator('.comment-form'), quantity = page.getByRole('spinbutton', { name: '후기 표본 901 수량', exact: true })
+  await quantity.fill('2'); await page.getByRole('combobox', { name: '후기 정렬', exact: true }).selectOption('rating_asc')
+  await form.getByLabel('후기', { exact: true }).fill('이전 인증의 비공개 작성 초안')
+  await form.getByRole('combobox', { name: '평점', exact: true }).selectOption('4')
+  await form.getByRole('button', { name: '느낀 맛 태그 추가', exact: true }).click()
+  await form.getByLabel('느낀 맛 태그 1', { exact: true }).fill('이전 인증 태그')
+  reviewsApi.user = null
+  await form.getByRole('button', { name: '후기 등록', exact: true }).press('Enter')
+  const login = page.locator('.comment-box .login-prompt').getByRole('link', { name: '로그인', exact: true })
+  await expect(login).toBeVisible(); await expect(form).toHaveCount(0)
+  await expect(page.getByRole('alert')).toContainText('로그인이 필요합니다.')
+  await expect(page.getByRole('heading', { name: '후기 표본 901', exact: true })).toBeVisible()
+  await expect(page.locator('.comment-row > p')).toHaveText('회원 평가 1')
+  await expect(quantity).toHaveValue('2'); await expect(page.getByRole('combobox', { name: '후기 정렬', exact: true })).toHaveValue('rating_asc')
+  await expect(page).toHaveURL('/products/901?source=expired-review')
+  expect(reviewsApi.reviews).toHaveLength(1)
+  expect(reviewsApi.calls.filter((call) => call.path === '/api/comments' && call.method === 'POST')).toHaveLength(1)
+  await page.getByRole('heading', { name: '회원 후기 1', exact: true }).focus(); await page.keyboard.press('Tab')
+  await expect(page.getByRole('combobox', { name: '후기 정렬', exact: true })).toBeFocused()
+  await page.keyboard.press('Tab'); await expect(login).toBeFocused(); await page.keyboard.press('Enter')
+  await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/products/901?source=expired-review')
+  await page.getByLabel('아이디', { exact: true }).fill('member'); await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+  await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
+  await expect(page).toHaveURL('/products/901?source=expired-review')
+  await expect(form.getByLabel('후기', { exact: true })).toHaveValue('')
+  await expect(form.getByLabel('느낀 맛 태그 1', { exact: true })).toHaveCount(0)
+  expect(reviewsApi.calls.filter((call) => call.path === '/api/comments' && call.method === 'POST')).toHaveLength(1)
+  await form.getByLabel('후기', { exact: true }).fill('다시 로그인한 뒤 직접 작성한 후기')
+  await form.getByRole('button', { name: '후기 등록', exact: true }).press('Enter')
+  await expect(page.locator('.comment-row > p')).toContainText(['다시 로그인한 뒤 직접 작성한 후기', '회원 평가 1'])
+  expect(reviewsApi.calls.filter((call) => call.path === '/api/comments' && call.method === 'POST')).toHaveLength(2)
+})
+
+for (const status of [400, 403, 503]) test(`후기 등록${status}는 세션과 초안을 유지해 수동 재시도`, async ({ page, reviewsApi }) => {
+  await page.goto('/products/901')
+  let attempts = 0
+  await page.route('**/api/comments', (route) => ++attempts === 1 ? route.fulfill({ status, json: error('REQUEST_FAILED') }) : route.fallback())
+  const form = page.locator('.comment-form')
+  await form.getByLabel('후기', { exact: true }).fill('거절 뒤 보존할 후기')
+  await form.getByRole('combobox', { name: '평점', exact: true }).selectOption('3')
+  await form.getByRole('button', { name: '느낀 맛 태그 추가', exact: true }).click(); await form.getByLabel('느낀 맛 태그 1', { exact: true }).fill('보존할 맛')
+  await form.getByRole('button', { name: '후기 등록', exact: true }).press('Enter')
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(form.getByLabel('후기', { exact: true })).toHaveValue('거절 뒤 보존할 후기')
+  await expect(form.getByRole('combobox', { name: '평점', exact: true })).toHaveValue('3')
+  await expect(form.getByLabel('느낀 맛 태그 1', { exact: true })).toHaveValue('보존할 맛')
+  await expect(page.locator('.comment-box .login-prompt')).toHaveCount(0)
+  expect(attempts).toBe(1); expect(reviewsApi.reviews).toHaveLength(0)
+  await form.getByRole('button', { name: '후기 등록', exact: true }).press('Enter')
+  await expect(page.locator('.comment-row > p')).toHaveText('거절 뒤 보존할 후기')
+  expect(attempts).toBe(2)
+})
+
+for (const departure of ['same-url', 'route', 'same-account', 'other-account']) test(`후기 등록의 늦은401은 ${departure}의 현재 세션·초안·초점을 바꾸지 않음`, async ({ page, reviewsApi }) => {
+  await page.goto('/products/901?source=late-review')
+  const form = page.locator('.comment-form'); await form.getByLabel('후기', { exact: true }).fill('이전 요청의 입력')
+  let release, started = false, delivered = false
+  const gate = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/comments', async (route) => { started = true; await gate; await route.fulfill({ status: 401, json: error('UNAUTHORIZED') }); delivered = true })
+  try {
+    await form.getByRole('button', { name: '후기 등록', exact: true }).press('Enter'); await expect.poll(() => started).toBe(true)
+    let target
+    if (departure === 'same-url') {
+      await page.evaluate(() => { history.pushState({ key: 'review-create-same-url' }, '', location.href); dispatchEvent(new PopStateEvent('popstate')) })
+      target = form.getByLabel('후기', { exact: true }); await target.fill('새 탐색의 입력')
+    } else if (departure === 'route') {
+      await page.evaluate(() => { history.pushState({ key: 'review-create-next' }, '', '/products/902'); dispatchEvent(new PopStateEvent('popstate')) })
+      target = form.getByLabel('후기', { exact: true }); await target.fill('새 탐색의 입력')
+    } else {
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await expect(page).toHaveURL('/')
+      await page.evaluate(() => { history.pushState({ key: 'review-create-relogin' }, '', '/account?redirect=' + encodeURIComponent('/products/901?source=late-review')); dispatchEvent(new PopStateEvent('popstate')) })
+      await page.getByLabel('아이디', { exact: true }).fill(departure === 'same-account' ? 'member' : 'other-member')
+      await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
+      target = form.getByLabel('후기', { exact: true }); await target.fill('새 탐색의 입력')
+    }
+    await target.focus(); release(); await expect.poll(() => delivered).toBe(true)
+    await expect(form).toBeVisible(); await expect(target).toHaveValue('새 탐색의 입력'); await expect(target).toBeFocused()
+    await expect(page.getByRole('alert')).toHaveCount(0); await expect(page.locator('.comment-box .login-prompt')).toHaveCount(0)
+    expect(reviewsApi.reviews).toHaveLength(0)
   } finally { release() }
 })
 
