@@ -279,13 +279,23 @@ test('결과 영역이 계속 집중된 POP은 지난 키보드 이동의 스크
   await expect(page.locator('.product-card')).toHaveCount(12); await expect(results(page)).toBeFocused()
   // Native history can subsequently restore its own position; observe the unchanged App request.
   await expect.poll(() => page.evaluate(() => window.__catalogScrollRequests.filter((call) => call.args[0]?.top === 0).length)).toBe(1)
-  // Canonicalize once, then push an identical URL to refresh only navigation ownership.
+  // Refresh the first page in place, then revisit the original keyboard entry with Forward.
   const search = page.getByRole('button', { name: '검색하기', exact: true })
-  await search.click(); await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
-  const sameUrl = page.url(); const previousKey = await page.evaluate(() => history.state.key)
-  await search.click(); await expect(page).toHaveURL(sameUrl)
-  await expect.poll(() => page.evaluate(() => history.state.key)).not.toBe(previousKey)
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+  const sameUrl = page.url(); const historyLength = await page.evaluate(() => history.length)
+  const [response] = await Promise.all([
+    page.waitForResponse((result) => new URL(result.url()).pathname === '/api/products'),
+    search.click(),
+  ])
+  expect(response.ok()).toBe(true)
+  await expect(page).toHaveURL(sameUrl)
+  await expect(page.locator('.product-card')).toHaveCount(12)
+  expect(await page.evaluate(() => history.length)).toBe(historyLength)
+  await results(page).focus()
+  await page.evaluate(() => { window.__catalogScrollRequests = [] })
+  await page.goForward(); await expect(page).toHaveURL((url) => url.searchParams.get('page') === '2')
+  await expect(page.locator('.product-card')).toHaveCount(2); await expect(results(page)).toBeFocused()
+  await expect.poll(() => page.evaluate(() => window.__catalogScrollRequests.filter((call) => call.args[0]?.top === 0).length)).toBe(1)
+  await page.goBack(); await expect(page.locator('.product-card')).toHaveCount(12)
   await nextButton(page).focus(); await nextButton(page).press('Enter')
   await expect(page.locator('.product-card')).toHaveCount(2); await expect(results(page)).toBeFocused()
   expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0)
