@@ -78,7 +78,7 @@ export function ProductNotebook({ productId }: { productId: number }) {
   </details>
 }
 
-function ReadFailure({ error, actor, retry }: { error: unknown; actor: Actor; retry: () => void }) {
+function ReadFailure({ error, actor, retry }: { error: unknown; actor: Actor; retry: (event: MouseEvent<HTMLButtonElement>) => void }) {
   const status = error instanceof ApiClientError ? error.status : 0
   return <div role="status"><p>{status === 401 ? '로그인 상태가 바뀌어 내 기록을 표시하지 않았습니다.' : status === 404 ? '이 기록을 사용할 수 없습니다. 삭제되었거나 제공되지 않는 기록입니다.' : '내 취향 기록을 확인하지 못했습니다.'}</p>
     <button className="btn btn-outline-dark" onClick={status === 401 ? actor.recheck : retry}>{status === 401 ? '기록 로그인 상태 다시 확인' : '내 기록 다시 불러오기'}</button></div>
@@ -103,7 +103,12 @@ function NotebookEditor({ actor, productId, entryId, onChanged, fallbackFocus, h
   })
   return <section ref={editor} hidden={hidden} tabIndex={-1} aria-label="내 취향 기록 편집 영역">
     {query.isPending || query.fetchStatus !== 'idle' ? <p role="status">내 취향 기록을 불러오는 중입니다.</p> :
-      query.isError ? <ReadFailure error={query.error} actor={actor} retry={() => void query.refetch()} /> :
+      query.isError ? <ReadFailure error={query.error} actor={actor} retry={(event) => {
+        if (!actor.owns()) return
+        if (query.error instanceof ApiClientError && query.error.status === 503 && event.detail === 0 &&
+            document.activeElement === event.currentTarget && document.hasFocus()) editor.current?.focus({ preventScroll: true })
+        void query.refetch()
+      }} /> :
         <NotebookForm key={load} initial={query.data} productId={productId} actor={actor} onChanged={onChanged} fallbackFocus={fallbackFocus}
           reload={(event) => {
             if (!actor.owns()) return
