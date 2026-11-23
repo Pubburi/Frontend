@@ -83,8 +83,9 @@ function ReadFailure({ error, actor, retry }: { error: unknown; actor: Actor; re
   return <div role="status"><p>{status === 401 ? '로그인 상태가 바뀌어 내 기록을 표시하지 않았습니다.' : status === 404 ? '이 기록을 사용할 수 없습니다. 삭제되었거나 제공되지 않는 기록입니다.' : '내 취향 기록을 확인하지 못했습니다.'}</p>
     <button className="btn btn-outline-dark" onClick={status === 401 ? actor.recheck : retry}>{status === 401 ? '기록 로그인 상태 다시 확인' : '내 기록 다시 불러오기'}</button></div>
 }
-function NotebookEditor({ actor, productId, entryId, onChanged, fallbackFocus }: {
-  actor: Actor; productId?: number; entryId?: string; onChanged?: (entry: NotebookEntry | null) => void; fallbackFocus?: () => HTMLElement | null
+function NotebookEditor({ actor, productId, entryId, onChanged, fallbackFocus, hidden = false }: {
+  actor: Actor; productId?: number; entryId?: string; onChanged?: (entry: NotebookEntry | null) => void
+  fallbackFocus?: () => HTMLElement | null; hidden?: boolean
 }) {
   const client = useQueryClient(), [load, setLoad] = useState(0)
   const editor = useRef<HTMLElement>(null)
@@ -100,7 +101,7 @@ function NotebookEditor({ actor, productId, entryId, onChanged, fallbackFocus }:
       } catch (error) { actor.rejectAuth(error); throw error }
     },
   })
-  return <section ref={editor} tabIndex={-1} aria-label="내 취향 기록 편집 영역">
+  return <section ref={editor} hidden={hidden} tabIndex={-1} aria-label="내 취향 기록 편집 영역">
     {query.isPending || query.fetchStatus !== 'idle' ? <p role="status">내 취향 기록을 불러오는 중입니다.</p> :
       query.isError ? <ReadFailure error={query.error} actor={actor} retry={() => void query.refetch()} /> :
         <NotebookForm key={load} initial={query.data} productId={productId} actor={actor} onChanged={onChanged} fallbackFocus={fallbackFocus}
@@ -196,7 +197,7 @@ export function NotebookPage() {
     <NotebookAccount>{(actor) => <NotebookList actor={actor} focusPage={() => heading.current?.focus({ preventScroll: true })} />}</NotebookAccount></section>
 }
 function NotebookList({ actor, focusPage }: { actor: Actor; focusPage: () => void }) {
-  const [search, setSearch] = useSearchParams(), [editing, setEditing] = useState<string | null>(null)
+  const [search, setSearch] = useSearchParams(), [editing, setEditing] = useState<{ id: string; open: boolean } | null>(null)
   const heading = useRef<HTMLHeadingElement>(null), client = useQueryClient()
   const page = /^\d+$/.test(search.get('page') ?? '') ? Math.max(1, Math.min(2147483647, Number(search.get('page')))) : 1
   const listKey = ['account', actor.user.id, 'notebook', 'list', page] as const
@@ -222,7 +223,7 @@ function NotebookList({ actor, focusPage }: { actor: Actor; focusPage: () => voi
     {query.isPending || query.isFetching || outOfRange ? <p role="status">내 기록 목록을 불러오는 중입니다.</p> : query.isError ? <ReadFailure error={query.error} actor={actor} retry={() => void query.refetch()} /> : !query.data.items.length ?
       actor.ready && <Empty title="아직 저장한 취향 기록이 없습니다"><Link className="btn btn-outline-dark" to="/products">상품을 고르고 내 기록 남기기</Link></Empty> : <>
         {actor.ready && <p className="muted">총 {query.data.total}개 · 목록을 새로 불러오면 최근 수정한 순서로 표시합니다.</p>}
-        <div className="notebook-list">{query.data.items.filter((note) => actor.ready || editing === note.id).map((note) => <article className="notebook-card settings-card" key={note.id}>
+        <div className="notebook-list">{query.data.items.filter((note) => actor.ready || editing?.id === note.id).map((note) => <article className="notebook-card settings-card" key={note.id}>
           {actor.ready && <>
           <h3>{note.productName}</h3><span className="badge">{note.experience === 'TRIED' ? '직접 마셔봄 · 경험 기록' : '아직 마시지 않음 · 관심 기록'}</span>
           {note.currentProduct && note.productId !== null ? <Link className="text-link" to={`/products/${note.productId}`}>현재 상품 보기 · {note.currentProduct.name}</Link> : <p className="muted">삭제된 상품 · 기록은 남아 있습니다.</p>}
@@ -230,9 +231,19 @@ function NotebookList({ actor, focusPage }: { actor: Actor; focusPage: () => voi
             {(['tasteTags', 'aromaTags'] as const).map((key) => <div key={key}><span>{key === 'tasteTags' ? '내가 느낀 맛' : '내가 느낀 향'}</span>
               {note[key] === null ? <p>미기록</p> : !note[key].length ? <p>기록할 태그 없음</p> : <ul className="product-feature-tags notebook-tags">{note[key].map((tag, index) => <li key={index}>{tag}</li>)}</ul>}</div>)}</>}
           <p className="notebook-memo">{note.memo || '메모 없음'}</p><small>수정 {new Date(note.updatedAt).toLocaleString('ko-KR')}</small>
-          <button className="btn btn-outline-dark" aria-expanded={editing === note.id} onClick={() => setEditing(editing === note.id ? null : note.id)}>{editing === note.id ? '기록 편집 닫기' : '내 기록 편집'}</button>
+          <button
+            className="btn btn-outline-dark"
+            type="button"
+            aria-expanded={editing?.id === note.id && editing.open}
+            onClick={() => setEditing((current) => ({
+              id: note.id,
+              open: current?.id === note.id ? !current.open : true,
+            }))}
+          >
+            {editing?.id === note.id && editing.open ? '기록 편집 닫기' : '내 기록 편집'}
+          </button>
           </>}
-          {editing === note.id && <NotebookEditor actor={actor} entryId={note.id} onChanged={(entry) => {
+          {editing?.id === note.id && <NotebookEditor actor={actor} entryId={note.id} hidden={!editing.open} onChanged={(entry) => {
             if (!entry) { void query.refetch(); return }
             client.setQueryData<Page<NotebookEntry>>(listKey, (data) => data ? { ...data, items: data.items.map((item) => item.id === entry.id ? entry : item) } : data)
           }} fallbackFocus={() => heading.current} />}
