@@ -204,6 +204,65 @@ test('비회원과 세션503은 개인 API를 요청하지 않고 공개 상세�
   s.meFailure = false; await page.getByRole('button', { name: '기록 로그인 상태 다시 확인', exact: true }).click(); await expect(form(page)).toBeVisible()
 })
 
+for (const width of [390, 1440]) for (const activation of ['keyboard', 'pointer']) test(`기록 최초503의 ${activation} 재시도는 편집 문맥과 기존 Tab 순서를 유지 ${width}px`, async ({ page, notebookApi: s }) => {
+  await page.setViewportSize({ width, height: 900 }); s.notes.member = [entry()]
+  const g = gate(); let attempts = 0
+  await page.route('**/api/users/me/notebook/by-product/7', async (route) => {
+    if (++attempts === 1) return route.fulfill({ status: 503, json: bad(503) })
+    await g.promise; await route.fallback()
+  })
+  try {
+    await page.goto('/products/7'); await page.locator('.notebook-panel summary').click()
+    const retry = page.getByRole('button', { name: '내 기록 다시 불러오기', exact: true })
+    await expect(retry).toBeVisible()
+    if (activation === 'keyboard') await retry.press('Enter')
+    else await retry.click()
+    await expect.poll(() => attempts).toBe(2)
+    const editor = page.getByRole('region', { name: '내 취향 기록 편집 영역', exact: true })
+    await expect(editor).toContainText('내 취향 기록을 불러오는 중입니다.'); await expect(form(page)).toHaveCount(0)
+    if (activation === 'keyboard') await expect(editor).toBeFocused()
+    else await expect(editor).not.toBeFocused()
+    g.release(); await expect(memo(page)).toHaveValue('private original')
+    if (activation === 'keyboard') {
+      await expect(editor).toBeFocused(); await page.keyboard.press('Tab')
+      await expect(form(page).getByRole('combobox', { name: '기록 구분', exact: true })).toBeFocused()
+    } else await expect(editor).not.toBeFocused()
+    expect(attempts).toBe(2); expect(writes(s)).toEqual([])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  } finally { g.release() }
+})
+
+for (const departure of ['other-control', 'route', 'account']) test(`최초503 재시도의 늦은 응답은 ${departure}의 현재 초점을 가져가지 않음`, async ({ page, notebookApi: s }) => {
+  s.notes.member = [entry({ memo: '이전 화면의 기록' })]; s.notes.other = [entry({ memo: '다른 계정 기록' })]
+  const g = gate(); let attempts = 0, delivered = false
+  await page.route('**/api/users/me/notebook/by-product/7', async (route) => {
+    if (++attempts === 1) return route.fulfill({ status: 503, json: bad(503) })
+    await g.promise; await route.fulfill({ json: ok(s.notes.member[0]) }); delivered = true
+  })
+  try {
+    await page.goto('/products/7'); await page.locator('.notebook-panel summary').click()
+    await page.getByRole('button', { name: '내 기록 다시 불러오기', exact: true }).press('Enter')
+    await expect.poll(() => attempts).toBe(2)
+    await expect(page.getByRole('region', { name: '내 취향 기록 편집 영역', exact: true })).toBeFocused()
+    let current
+    if (departure === 'other-control') current = page.getByRole('spinbutton', { name: `${product.name} 수량`, exact: true })
+    else if (departure === 'route') {
+      await nav(page, '장바구니'); await expect(page).toHaveURL('/cart')
+      current = page.getByRole('navigation', { name: '주요 메뉴', exact: true }).getByRole('link', { name: '장바구니', exact: true })
+    } else {
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click(); await nav(page, '로그인')
+      await page.getByLabel('아이디', { exact: true }).fill('other'); await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click(); await nav(page, '내 취향 기록')
+      await expect(page.locator('.notebook-card')).toContainText('다른 계정 기록')
+      current = page.getByRole('button', { name: '내 기록 목록 새로고침', exact: true })
+    }
+    await current.focus(); await expect(current).toBeFocused(); g.release(); await expect.poll(() => delivered).toBe(true)
+    if (departure === 'other-control') await expect(memo(page)).toHaveValue('이전 화면의 기록')
+    else await expect(page.getByText('이전 화면의 기록', { exact: true })).toHaveCount(0)
+    await expect(current).toBeFocused(); expect(attempts).toBe(2); expect(writes(s)).toEqual([])
+  } finally { g.release() }
+})
+
 for (const width of [390, 1440]) test(`400은 입력을 보존하고409 최신 기록 복구는 키보드 편집 문맥을 유지 ${width}px`, async ({ page, notebookApi: s }) => {
   await page.setViewportSize({ width, height: 900 })
   s.notes.member.push(entry()); await open(page); await memo(page).fill('나의 미제출 입력')
