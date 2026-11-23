@@ -276,6 +276,12 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
     }
     const canonical = { ...form, ...buildProductTags(form) }
     setForm(canonical)
+    const sameQuery = pageQuery(buildProductQuery(canonical, 1)) ===
+      pageQuery(buildProductQuery(filters, filters.page))
+    if (!invalidUrlFilters && sameQuery) {
+      if (products.fetchStatus === 'idle') void products.refetch({ cancelRefetch: false })
+      return
+    }
     navigate(1, canonical)
   }
   function navigate(page = 1, criteria = form) {
