@@ -292,6 +292,85 @@ test('보류된 쓰기 중 새 입력과 disclosure 닫기/열기를 보존하�
   } finally { g.release() }
 })
 
+for (const width of [390, 1440]) test(`목록의 같은 기록 접기·펼치기는 초안과 키보드 순서를 유지하고 다시 읽지 않음 ${width}px`, async ({ page, notebookApi: s }) => {
+  const first = entry({ rating: 2.25, tasteTags: ['원래 맛'], memo: '저장된 메모' })
+  const second = entry({ id: '22222222-2222-4222-8222-222222222222', productId: 8, currentProduct: { ...product, id: 8, name: '두 번째 상품' } })
+  s.notes.member = [first, second]
+  await page.setViewportSize({ width, height: 900 }); await page.goto('/notebook')
+  const card = page.locator('.notebook-card').first(), next = page.locator('.notebook-card').nth(1)
+  await card.getByRole('button', { name: '내 기록 편집', exact: true }).press('Enter')
+  await expect(memo(page)).toHaveValue('저장된 메모')
+  await memo(page).fill('  접어도 남는 메모\n다음 줄  ')
+  await form(page).getByLabel('나의 평점 (선택)', { exact: true }).fill('4.25')
+  await form(page).getByRole('textbox', { name: '내가 느낀 맛 1', exact: true }).fill(' 바꾸는 맛 ')
+  const reads = s.calls.filter((call) => call.method === 'GET' && call.path === `/api/users/me/notebook/${first.id}`).length
+  const toggle = card.getByRole('button', { name: '기록 편집 닫기', exact: true })
+  await toggle.press('Enter')
+  await expect(card.getByRole('button', { name: '내 기록 편집', exact: true })).toHaveAttribute('aria-expanded', 'false')
+  await expect(form(page)).toHaveCount(0)
+  await expect(card.getByRole('textbox')).toHaveCount(0)
+  await page.keyboard.press('Tab')
+  await expect(next.getByRole('link', { name: '현재 상품 보기 · 두 번째 상품', exact: true })).toBeFocused()
+  await card.getByRole('button', { name: '내 기록 편집', exact: true }).press('Enter')
+  await expect(card.getByRole('button', { name: '기록 편집 닫기', exact: true })).toHaveAttribute('aria-expanded', 'true')
+  await expect(memo(page)).toHaveValue('  접어도 남는 메모\n다음 줄  ')
+  await expect(form(page).getByLabel('나의 평점 (선택)', { exact: true })).toHaveValue('4.25')
+  await expect(form(page).getByRole('textbox', { name: '내가 느낀 맛 1', exact: true })).toHaveValue(' 바꾸는 맛 ')
+  expect(s.calls.filter((call) => call.method === 'GET' && call.path === `/api/users/me/notebook/${first.id}`)).toHaveLength(reads)
+  expect(writes(s)).toEqual([]); expect(first.memo).toBe('저장된 메모')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await form(page).getByRole('button', { name: '내 기록 저장', exact: true }).press('Enter')
+  await expect(page.getByText('비공개 기록을 저장했습니다.', { exact: true })).toBeVisible()
+  expect(writes(s).map((call) => call.method)).toEqual(['PUT'])
+  expect(first).toMatchObject({ memo: '  접어도 남는 메모\n다음 줄  ', rating: 4.25, tasteTags: [' 바꾸는 맛 '], version: 1 })
+})
+
+test('접힌 목록 초안은 다른 기록·새로고침·페이지·경로·재로그인으로 넘겨지지 않음', async ({ page, notebookApi: s }) => {
+  s.notes.member = pagingEntries()
+  await page.goto('/notebook?page=1')
+  const first = page.locator('.notebook-card').first()
+  for (const departure of ['other-note', 'refresh', 'page', 'route', 'login']) {
+    await first.getByRole('button', { name: '내 기록 편집', exact: true }).click()
+    await expect(memo(page)).toHaveValue('페이지 메모 1')
+    await memo(page).fill('이전 편집에서만 보이는 초안')
+    await first.getByRole('button', { name: '기록 편집 닫기', exact: true }).click()
+    if (departure === 'other-note') {
+      const second = page.locator('.notebook-card').nth(1)
+      await second.getByRole('button', { name: '내 기록 편집', exact: true }).click()
+      await expect(memo(page)).toHaveValue('페이지 메모 2')
+      await expect(page.locator('.notebook-form')).toHaveCount(1)
+      await second.getByRole('button', { name: '기록 편집 닫기', exact: true }).click()
+    } else if (departure === 'refresh') {
+      await page.getByRole('button', { name: '내 기록 목록 새로고침', exact: true }).click()
+      await expect(page.locator('.notebook-card')).toHaveCount(10)
+      await expect(page.locator('.notebook-form')).toHaveCount(0)
+    } else if (departure === 'page') {
+      await pagination(page).getByRole('button', { name: '다음', exact: true }).click()
+      await expect(page).toHaveURL('/notebook?page=2')
+      await pagination(page).getByRole('button', { name: '이전', exact: true }).click()
+      await expect(page).toHaveURL('/notebook?page=1')
+    } else if (departure === 'route') {
+      await nav(page, '장바구니')
+      await expect(page).toHaveURL('/cart')
+      await expect(page.locator('.cart-view')).toBeVisible()
+      await expect(page.locator('.notebook-form')).toHaveCount(0)
+      await page.goBack()
+      await expect(page).toHaveURL('/notebook?page=1')
+    } else {
+      await page.getByRole('button', { name: '로그아웃', exact: true }).click()
+      await expect(page).toHaveURL('/')
+      await nav(page, '로그인')
+      await page.getByLabel('아이디', { exact: true }).fill('member')
+      await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+      await page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true }).click()
+      await expect(page).toHaveURL('/profile')
+      await nav(page, '내 취향 기록')
+    }
+  }
+  await first.getByRole('button', { name: '내 기록 편집', exact: true }).click()
+  await expect(memo(page)).toHaveValue('페이지 메모 1'); expect(writes(s)).toEqual([])
+})
+
 test('이탈한 상세의 쓰기가 끝난 후에 새 본인 목록을 읽어 오래된 빈 목록을 표시하지 않음', async ({ page, notebookApi: s }) => {
   const g = gate(); let started = false
   await page.route('**/api/users/me/notebook', async (route) => { if (route.request().method() !== 'POST') return route.fallback(); started = true; await g.promise; return route.fallback() })

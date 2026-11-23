@@ -102,43 +102,44 @@ if (result.status === 'APPLIED' && op.guest) cartStore.getState().consume(op.gue
 recoveries.delete(scope.id)
 ```
 
-### 검색·상세 이동에서 최신 요청 보존하기
+### 취향 기록을 접어도 작성 중인 입력 지키기
 
 #### 문제
 
-검색 응답 전에 필터를 해제하면 새 조건의 목록이 열리지 않았다. 상품 A의 상세를 읽는 도중 상품 B로 이동해도 B가 표시되지 않았다.
+내 취향 기록 목록에서 편집을 접었다가 다시 열면 작성 중인 메모·평점·맛 태그가 사라졌다. 다시 열 때마다 서버에서 저장된 값을 불러왔다.
 
 #### 원인
 
-읽기와 쓰기가 같은 중복 실행 차단을 사용해 새 검색까지 막았다. 응답 저장 위치도 하나여서 URL이나 상품이 바뀐 뒤 도착한 응답을 구분하지 못했다.
+같은 상태로 편집할 기록과 열림 여부를 관리했다. 접을 때 선택을 해제하면서 편집 폼과 초안이 사라졌고, 다음에 열 때 상세 조회부터 시작했다.
 
 #### 해결
 
-Vue 화면에서 최신 읽기의 상태만 반영하도록 수정한 뒤, React 전환에서는 URL의 검색 조건과 상품 ID를 TanStack Query의 키로 사용했다. 화면은 현재 키의 결과와 오류만 구독한다. 상세 컴포넌트도 상품 ID에 맞춰 교체해 이전 상품의 수량과 편집 상태가 섞이지 않게 했다.
+편집할 기록 ID와 열림 상태를 구분했다. 같은 기록을 접으면 폼은 유지하고 `hidden`으로 가려 Tab 탐색에서 건너뛰게 했다. 다른 기록·페이지·계정으로 이동하거나 목록을 새로고침하면 기존 폼을 제거한다.
 
 #### 결과
 
-전환 전 Vue의 프로덕션 번들과 Chromium API fixture에서 같은 두 요청 경합을 고정해 재현한 오류가 2/2에서 0/2로 줄었다. 응답을 보류한 뒤 전체 해제하거나 다른 상품으로 이동하는 조건이었다. React에서도 새 조건의 목록과 현재 상품을 표시하고, 이전 응답의 오류가 현재 화면에 나타나지 않는 동작을 확인했다. 이 수치는 통제한 재현 흐름의 정확성 결과이며, 실제 사용자 오류율이나 로딩 시간은 측정하지 않았다.
+390px·1440px Chromium을 실제 PostgreSQL에 연결하고 같은 기록을 읽는 세션 1개·4개가 있는 조건에서 전후 각각 12회 측정했다. 초안 손실은 12/12회에서 0/12회, 다시 열 때 보낸 상세 조회는 12건에서 0건이 됐다. Enter로 펼쳐 메모 입력이 보일 때까지의 p95는 41.26ms에서 7.43ms로 33.83ms(82.0%) 줄었다. 실제 저장값과 버전도 전후 동일했다.
 
 #### 대체안/회고
 
-전역 응답에 요청 번호를 붙여 관리할 수도 있었다. React에서는 이미 사용하는 Query 캐시의 키로 요청별 상태를 구분해 별도의 응답 복사를 줄였다. 먼저 보낸 GET은 서버에서 완료될 수 있어, 이 처리만으로 서버 부하가 줄었다고 판단할 수는 없다.
+초안을 전역 상태나 브라우저 저장소에 두면 다른 화면에서도 복원할 수 있지만 비공개 입력을 지우는 계정·페이지 경계가 늘어난다. 편집 폼이 이미 가진 상태를 써서 같은 화면의 한 기록에만 초안을 남겼다. 탭을 닫거나 다시 로그인하면 서버에 저장된 값부터 편집한다.
 
 #### 코드
 
-검색 조건과 상품 ID가 각 조회 결과의 소유 범위를 정한다.
+같은 기록은 열림만 바꾼다. 편집 영역은 이 상태를 받아 접힐 때 `hidden`을 적용한다.
 
 ```tsx
-const products = useQuery({
-  queryKey: ['catalog', 'products', filters],
-  queryFn: () => api.catalogProducts(filters),
-  enabled: !invalidUrlFilters,
-  refetchOnReconnect: (query) => !(query.state.error instanceof ApiClientError && query.state.error.status === 400),
-})
-const product = useQuery<Product>({
-  queryKey: ['catalog', 'product', id],
-  queryFn: () => api.product(id),
-})
+<button
+  className="btn btn-outline-dark"
+  type="button"
+  aria-expanded={editing?.id === note.id && editing.open}
+  onClick={() => setEditing((current) => ({
+    id: note.id,
+    open: current?.id === note.id ? !current.open : true,
+  }))}
+>
+  {editing?.id === note.id && editing.open ? '기록 편집 닫기' : '내 기록 편집'}
+</button>
 ```
 
 <a id="development"></a>
