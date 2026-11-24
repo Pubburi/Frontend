@@ -564,8 +564,8 @@ function ProductDetail({ id }: { id: string }) {
   const editBody = useRef<HTMLTextAreaElement>(null)
   const focusIntent = useRef<ReviewFocus | null>(null)
   const saveFocus = useRef<{ editing: ReviewEdit; form: HTMLFormElement; row: HTMLElement } | null>(null)
-  const currentContext = useRef({ account, view: reviewView, locationKey: location.key, editing })
-  currentContext.current = { account, view: reviewView, locationKey: location.key, editing }
+  const currentContext = useRef({ account, view: reviewView, locationKey: location.key, editing, deleting })
+  currentContext.current = { account, view: reviewView, locationKey: location.key, editing, deleting }
   useLayoutEffect(() => {
     const intent = focusIntent.current
     focusIntent.current = null
@@ -610,16 +610,23 @@ function ProductDetail({ id }: { id: string }) {
   async function refresh() {
     await client.invalidateQueries({ queryKey: ['reviews', id] })
   }
+  function handleReviewExpiry(error: unknown, authUpdates: number | undefined, source: Element | null, active = true) {
+    if (!(error instanceof ApiClientError) || error.status !== 401) return false
+    if (active && source?.isConnected && currentAccount.current === account && currentContext.current.locationKey === location.key &&
+        client.getQueryCache().find({ queryKey: ['session'], exact: true }) === auth &&
+        auth?.state.data === session.data && auth?.state.dataUpdateCount === authUpdates &&
+        auth?.state.status === 'success' && auth.state.fetchStatus === 'idle' &&
+        !['login', 'join', 'logout', 'settings-password'].some((key) => useUi.getState().pending[key])) {
+      client.removeQueries({ queryKey: ['account', account.id] })
+      client.setQueryData(['session'], null)
+      ui.error(error)
+    }
+    return true
+  }
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!writable) return
     const form = event.currentTarget, authUpdates = auth?.state.dataUpdateCount
-    const ownsRequest = () => form.isConnected && currentAccount.current === account &&
-      currentContext.current.locationKey === location.key &&
-      client.getQueryCache().find({ queryKey: ['session'], exact: true }) === auth &&
-      auth?.state.data === session.data && auth?.state.dataUpdateCount === authUpdates &&
-      auth?.state.status === 'success' && auth.state.fetchStatus === 'idle' &&
-      !['login', 'join', 'logout', 'settings-password'].some((key) => useUi.getState().pending[key])
     const submitted = draft
     const comment = submitted.comment.trim()
     if (!comment) {
@@ -640,13 +647,8 @@ function ProductDetail({ id }: { id: string }) {
             ...(tasteTags.length ? { tasteTags } : {}),
           })
         } catch (error) {
-          if (!(error instanceof ApiClientError) || error.status !== 401) throw error
-          if (ownsRequest()) {
-            client.removeQueries({ queryKey: ['account', account.id] })
-            client.setQueryData(['session'], null)
-            ui.error(error)
-          }
-          return false
+          if (handleReviewExpiry(error, authUpdates, form)) return false
+          throw error
         }
         await refresh()
         return true
@@ -662,6 +664,7 @@ function ProductDetail({ id }: { id: string }) {
   async function saveReview(event: FormEvent) {
     event.preventDefault()
     if (!editing || !writable) return
+    const form = event.currentTarget, authUpdates = auth?.state.dataUpdateCount
     const submitted = editing
     const keyboard = saveFocus.current
     saveFocus.current = null
@@ -679,19 +682,25 @@ function ProductDetail({ id }: { id: string }) {
     const result = await ui.run(
       `comment-edit-${submitted.id}`,
       async () => {
-        await api.updateComment(submitted.id, {
-          rating: submitted.rating,
-          comment,
-          ...(tasteTags === undefined ? {} : { tasteTags }),
-        })
+        try {
+          await api.updateComment(submitted.id, {
+            rating: submitted.rating,
+            comment,
+            ...(tasteTags === undefined ? {} : { tasteTags }),
+          })
+        } catch (error) {
+          if (handleReviewExpiry(error, authUpdates, form)) return false
+          throw error
+        }
         if (keyboard?.editing === submitted && ownsFocus() && keyboard.form.isConnected && keyboard.form.contains(document.activeElement)) {
           anchor = reviewHeading.current
           anchor?.focus({ preventScroll: true })
         }
         await refresh()
+        return true
       },
     )
-    if (result.ok && currentAccount.current === account) {
+    if (result.ok && result.data && currentAccount.current === account) {
       ui.status('후기가 수정되었습니다.')
       if (anchor && document.activeElement === anchor && keyboard && ownsFocus())
         focusIntent.current = { editing: null, account, view: reviewView, locationKey: location.key, source: anchor, row: keyboard.row }
@@ -702,16 +711,24 @@ function ProductDetail({ id }: { id: string }) {
     if (!deleting || !writable) return
     const submitted = deleting
     const submittedView = reviewView
+    const source = reviewHeading.current, authUpdates = auth?.state.dataUpdateCount
     const result = await ui.run(
       'comment-delete',
       async () => {
-        await api.deleteComment(submitted.id)
+        try {
+          await api.deleteComment(submitted.id)
+        } catch (error) {
+          if (handleReviewExpiry(error, authUpdates, source,
+            currentContext.current.deleting === submitted && currentContext.current.view === submittedView)) return false
+          throw error
+        }
         if (currentReviewView.current === submittedView && comments.data?.items.length === 1 && page > 1)
           setReviewView((current) => current === submittedView ? { ...current, page: page - 1 } : current)
         await refresh()
+        return true
       },
     )
-    if (result.ok && currentAccount.current === account) {
+    if (result.ok && result.data && currentAccount.current === account) {
       ui.status('후기가 삭제되었습니다.')
       setDeleting((current) => current === submitted ? null : current)
     }
