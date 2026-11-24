@@ -111,6 +111,49 @@ test.describe('작은 화면에서 목록의 선택 상품 비교', () => {
   })
 })
 
+for (const width of [390, 1440]) test.describe(`${width}px 상단 비교의 검색 목록 복귀`, () => {
+  test.use({ viewport: { width, height: 900 }, hasTouch: width === 390 })
+  test('터치·키보드 진입과 같은 비교 재클릭 뒤에도 정확한 검색·페이지·선택으로 돌아옴', async ({ page, comparisonApi }) => {
+    const listing = '/products?q=%EB%B9%84%EA%B5%90&type=%ED%83%81%EC%A3%BC&minPriceKrw=0&maxPriceKrw=30000&sort=priceAsc&page=2#catalog-max-price'
+    const catalogReads = []
+    await page.route('**/api/products?**', (route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      const url = new URL(route.request().url()); catalogReads.push(url.search)
+      // A two-item last page of a 14-item catalog; no comparison/detail snapshots.
+      return route.fulfill({ json: success({ items: [product(201), product(202)], page: 2, size: 12, total: 14, totalPages: 2, hasNext: false }) })
+    })
+    await page.goto(listing)
+    for (const id of [201, 202]) {
+      const choose = page.getByRole('button', { name: `비교 표본 ${id} 비교 선택`, exact: true })
+      if (width === 390) await choose.tap()
+      else await choose.press('Enter')
+    }
+    expect(itemReads(comparisonApi.calls)).toEqual([])
+    const menu = page.getByRole('button', { name: '메뉴 열기', exact: true })
+    const compare = page.getByRole('navigation', { name: '주요 메뉴', exact: true }).getByRole('link', { name: '상품 비교 2', exact: true })
+    const browse = page.getByRole('link', { name: '상품 더 고르기', exact: true })
+    for (const entry of ['from-catalog', 'same-comparison']) {
+      if (width === 390) { await menu.tap(); await compare.tap(); await expect(menu).toHaveAttribute('aria-expanded', 'false') }
+      else await compare.press('Enter')
+      await expect(page).toHaveURL('/compare?productId=201&productId=202')
+      await expect(browse).toHaveAttribute('href', listing)
+      if (entry === 'from-catalog') await expect(cell(page, 202, 'price')).toHaveText('20,200원')
+    }
+    if (width === 390) await browse.tap()
+    else await browse.press('Enter')
+    await expect(page).toHaveURL(listing)
+    await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('비교')
+    await expect(page.getByRole('combobox', { name: '주종', exact: true })).toHaveValue('탁주')
+    await expect(page.getByRole('combobox', { name: '정렬', exact: true })).toHaveValue('priceAsc')
+    await expect(page.getByLabel('최소 가격(원)', { exact: true })).toHaveValue('0')
+    await expect(page.getByLabel('최대 가격(원)', { exact: true })).toHaveValue('30000')
+    for (const id of [201, 202]) await expect(page.getByRole('button', { name: `비교 표본 ${id} 비교 해제`, exact: true })).toHaveAttribute('aria-pressed', 'true')
+    expect(catalogReads).toHaveLength(2); expect(catalogReads[1]).toBe(catalogReads[0])
+    expect(new URLSearchParams(catalogReads[1]).get('page')).toBe('2')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
+})
+
 test('목록·상세의 비교 선택은 필터 URL·Product7 장바구니를 보존하고 현재 값을 따로 조회', async ({ page, comparisonApi }) => {
   const url = '/products?minPriceKrw=0&tasteTag=dry%2Csweet&sort=name&page=1'
   await page.goto(url)
@@ -125,6 +168,7 @@ test('목록·상세의 비교 선택은 필터 URL·Product7 장바구니를 �
   comparisonApi.products.set(201, { ...product(201), price: 7777 })
   await page.getByRole('link', { name: '상품 비교 2', exact: true }).click()
   await expect(page).toHaveURL('/compare?productId=201&productId=202')
+  await expect(page.getByRole('link', { name: '상품 더 고르기', exact: true })).toHaveAttribute('href', '/products')
   await expect(cell(page, 201, 'price')).toHaveText('7,777원')
   await expect(cell(page, 201, 'abv')).toHaveText('0%')
   await expect(cell(page, 201, 'volume')).toHaveText('500 mL')
@@ -155,6 +199,7 @@ test('최대 네 개 선택과 동일 상품 해제는 동기적으로 적용되
 
 test('직접 비교 URL의 순서·새로고침·뒤로와 키보드 제거/전체 해제는 현재 선택에 속함', async ({ page, comparisonApi }) => {
   await page.goto('/compare?productId=203&productId=201')
+  await expect(page.getByRole('link', { name: '상품 더 고르기', exact: true })).toHaveAttribute('href', '/products')
   await expect(cell(page, 201, 'price')).toHaveText('0원')
   await page.reload()
   await expect(cell(page, 203, 'taste')).toHaveText('등록된 태그 없음')
