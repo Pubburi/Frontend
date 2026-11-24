@@ -182,6 +182,34 @@ for (const width of [1280, 390]) test(`비공개 기록 ${width}px 상세에서 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
+for (const width of [390, 1440]) test(`기록의 마지막 태그 키보드 삭제·추가는 새 입력에 연결하고 나머지 초안·요청을 보존 ${width}px`, async ({ page, notebookApi: s }) => {
+  s.notes.member = [entry({ rating: 2.25, tasteTags: ['원래 맛'], aromaTags: ['원래 향'] })]
+  await page.setViewportSize({ width, height: 900 }); await open(page)
+  await memo(page).fill('  보존할 개인 메모\n원문  ')
+  const calls = s.calls.length
+  for (const [label, key] of [['내가 느낀 맛', 'Enter'], ['내가 느낀 향', 'Space']]) {
+    const add = form(page).getByRole('button', { name: `${label} 추가`, exact: true })
+    await form(page).getByRole('button', { name: `${label} 1 삭제`, exact: true }).press(key)
+    await expect(add).toBeFocused()
+    await expect(form(page).getByRole('textbox', { name: `${label} 1`, exact: true })).toHaveCount(0)
+    await expect(form(page).getByRole('combobox', { name: `${label} 확인 상태`, exact: true })).toHaveValue('tags')
+    await add.press(key)
+    const input = form(page).getByRole('textbox', { name: `${label} 1`, exact: true })
+    await expect(input).toBeFocused(); await input.fill(`  ${label}\n원문  `)
+    await expect(input).toHaveValue(`  ${label}\n원문  `)
+    await expect(memo(page)).toHaveValue('  보존할 개인 메모\n원문  ')
+    await expect(form(page).getByLabel('나의 평점 (선택)', { exact: true })).toHaveValue('2.25')
+  }
+  const add = form(page).getByRole('button', { name: '내가 느낀 맛 추가', exact: true })
+  await form(page).getByRole('button', { name: '내가 느낀 맛 1 삭제', exact: true }).click()
+  await expect(add).not.toBeFocused()
+  await add.click(); await expect(add).toBeFocused()
+  await expect(form(page).getByRole('textbox', { name: '내가 느낀 맛 1', exact: true })).not.toBeFocused()
+  expect(s.calls).toHaveLength(calls); expect(writes(s)).toEqual([])
+  expect(s.notes.member[0]).toMatchObject({ rating: 2.25, tasteTags: ['원래 맛'], aromaTags: ['원래 향'], memo: 'private original', version: 0 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
 test('비회원과 세션503은 개인 API를 요청하지 않고 공개 상세·담기와 명시 복구를 유지', async ({ page, notebookApi: s }) => {
   s.user = null; await page.goto('/products/7'); await page.locator('.notebook-panel summary').click()
   const panel = page.locator('.notebook-panel')

@@ -87,8 +87,8 @@ export function TagEditor({
                 type="button"
                 className="btn btn-sm btn-outline-secondary"
                 aria-label={`${label} ${index + 1} 삭제`}
-                onClick={() => {
-                  if (optional) focus.current = index
+                onClick={(event) => {
+                  if (optional || event.detail === 0 && document.activeElement === event.currentTarget && document.hasFocus()) focus.current = index
                   onChange({
                     ...value,
                     values: value.values.filter((_, i) => i !== index),
@@ -104,8 +104,8 @@ export function TagEditor({
             className="btn btn-sm btn-outline-dark"
             disabled={value.values.length >= 20}
             ref={add}
-            onClick={() => {
-              if (optional) focus.current = value.values.length
+            onClick={(event) => {
+              if (optional || event.detail === 0 && document.activeElement === event.currentTarget && document.hasFocus()) focus.current = value.values.length
               onChange({ ...value, values: [...value.values, ''] })
             }}
           >
