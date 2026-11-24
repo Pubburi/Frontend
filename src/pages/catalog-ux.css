@@ -217,6 +217,14 @@
 :is(.catalog-recent-actions, .comparison-actions) > * { min-height: 44px; }
 .catalog-home-themes .theme-options button { min-height: 44px; }
 
+@media (min-width: 1280px) {
+  .catalog-products { gap: 40px; }
+  .catalog-products :is(.product-grid, .skeleton-grid) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 24px;
+  }
+}
+
 @media (max-width: 1090px) {
   .catalog-products > .catalog-compare-shortcut {
     display: inline-flex;
