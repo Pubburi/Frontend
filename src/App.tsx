@@ -87,6 +87,9 @@ export function App() {
   const client = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
+  const comparisonOrigin = location.pathname === '/products' ? location.pathname + location.search + location.hash :
+    location.pathname === '/compare' && typeof location.state?.catalogCompareFrom === 'string' &&
+    /^\/products(?:[?#]|$)/.test(location.state.catalogCompareFrom) ? location.state.catalogCompareFrom : null
   const currentLocation = useRef(location.key)
   currentLocation.current = location.key
   const [menu, setMenu] = useState(false)
@@ -192,7 +195,7 @@ export function App() {
               <div className="nav-extra">
                 <NavLink to="/" end onClick={() => setMenu(false)}>홈</NavLink>
                 <NavLink to="/recent" onClick={() => setMenu(false)}>최근 본 상품</NavLink>
-                <NavLink to={comparisonUrl(comparisonIds)} onClick={() => setMenu(false)}>
+                <NavLink to={comparisonUrl(comparisonIds)} state={comparisonOrigin ? { catalogCompareFrom: comparisonOrigin } : undefined} onClick={() => setMenu(false)}>
                   상품 비교{comparisonIds.length > 0 ? ` ${comparisonIds.length}` : ''}
                 </NavLink>
                 {member?.role === 'ADMIN' && <NavLink to="/admin" onClick={() => setMenu(false)}>관리</NavLink>}
