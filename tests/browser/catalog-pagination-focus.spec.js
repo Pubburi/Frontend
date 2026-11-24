@@ -50,6 +50,44 @@ async function holdSecondPage(page, status = 200) {
 const nextButton = (page) => page.getByRole('navigation', { name: 'pagination', exact: true }).getByRole('button', { name: '다음', exact: true })
 const results = (page) => page.getByRole('region', { name: '상품 검색 결과', exact: true })
 
+for (const width of [390, 1280, 1440, 1920]) test(`${width}px 목록 카드와 로딩은 지정된 열·간격을 유지하고 문서를 넘치지 않음`, async ({ page, focusApi }) => {
+  await page.setViewportSize({ width, height: 900 })
+  const columns = width === 390 ? 2 : 4, gap = width === 390 ? 12 : 24, sectionGap = width === 390 ? 12 : 40
+  const gate = await holdSecondPage(page)
+  try {
+    await page.goto(initialUrl); await expect(page.locator('.product-card')).toHaveCount(12)
+    const sections = await page.locator('.catalog-products').evaluate((element) => {
+      const intro = element.querySelector('.shop-intro').getBoundingClientRect(), form = element.querySelector('.filter-panel').getBoundingClientRect()
+      return { gap: parseFloat(getComputedStyle(element).rowGap), distance: form.top - intro.bottom }
+    })
+    expect(sections.gap).toBe(sectionGap); expect(sections.distance).toBeCloseTo(sectionGap, 1)
+    for (const phase of ['results', 'loading']) {
+      const grid = results(page).locator(phase === 'results' ? '.product-grid' : '.skeleton-grid')
+      await expect(grid).toBeVisible()
+      const geometry = await grid.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { columns: style.gridTemplateColumns.split(/\s+/).length, rowGap: parseFloat(style.rowGap), columnGap: parseFloat(style.columnGap),
+          items: Array.from(element.children).map((child) => { const rect = child.getBoundingClientRect(); return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right } }) }
+      })
+      expect(geometry.columns).toBe(columns); expect(geometry.rowGap).toBe(gap); expect(geometry.columnGap).toBe(gap)
+      expect(geometry.items).toHaveLength(phase === 'results' ? 12 : 4)
+      for (let index = 1; index < columns; index++) {
+        expect(geometry.items[index].top).toBeCloseTo(geometry.items[0].top, 1)
+        expect(geometry.items[index].left - geometry.items[index - 1].right).toBeCloseTo(gap, 1)
+      }
+      if (geometry.items.length > columns)
+        expect(geometry.items[columns].top - Math.max(...geometry.items.slice(0, columns).map((item) => item.bottom))).toBeCloseTo(gap, 1)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      if (phase === 'results') {
+        await nextButton(page).press('Enter'); await expect.poll(gate.started).toBe(true)
+      }
+    }
+    gate.release(); await expect(page.locator('.product-card')).toHaveCount(2)
+    await expect(page).toHaveURL((url) => url.searchParams.get('page') === '2')
+    expect(focusApi.calls.filter((call) => call.path === '/api/products')).toHaveLength(2)
+  } finally { gate.release() }
+})
+
 for (const width of [390, 1280]) {
   test(`${width}px 카드 사진과 이름은 같은 상세 링크이고 담기와 비교는 독립적으로 작동`, async ({ page, focusApi }) => {
     const secondName = '포커스 상품 1 긴 이름의 전통주 봄 한정판 첫 번째 양조장 병입 상품'
