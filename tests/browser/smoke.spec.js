@@ -808,11 +808,12 @@ test('세션 조회 장애는 비로그인으로 오인하지 않고 재시도�
 
 test('가입·중복 확인·로그인 복귀와 계정 전환 시 비공개 캐시 분리', async ({ page, api }) => {
   await page.goto('/account?redirect=/profile')
-  const accountStory = page.getByRole('complementary', { name: '발견한 취향을 한곳에 모으세요', exact: true })
-  await expect(accountStory).toContainText('시연 주문의 접수 상태와 주문 당시 금액을 확인하세요.')
-  await expect(accountStory).not.toContainText(/스탬프|등급/)
-  await page.locator('.segmented').getByRole('button', { name: '회원가입', exact: true }).click()
-  await expect(accountStory).not.toContainText(/스탬프|등급/)
+  const modes = page.getByRole('group', { name: '계정 메뉴', exact: true })
+  const loginMode = modes.getByRole('button', { name: '로그인', exact: true })
+  const joinMode = modes.getByRole('button', { name: '회원가입', exact: true })
+  await expect(loginMode).toHaveAttribute('aria-pressed', 'true')
+  await joinMode.click()
+  await expect(joinMode).toHaveAttribute('aria-pressed', 'true')
   await page.getByLabel(/^아이디/).fill('new-member')
   await page.getByRole('button', { name: '중복 확인', exact: true }).click()
   await expect(page.getByText('사용할 수 있는 아이디입니다.')).toBeVisible()
@@ -3114,6 +3115,31 @@ async function prepareJoin(page, id = 'recovery-member') {
   await page.getByLabel('이름', { exact: true }).fill('복구흐름회원')
   await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
 }
+
+for (const width of [390, 1280, 1440, 1920]) test(`계정 ${width}px 로그인·가입은 홍보 패널 없이 단일 중심 폼과 입력 동선을 유지`, async ({ page, api }) => {
+  await page.setViewportSize({ width, height: 900 }); await page.goto('/account?redirect=%2Fcart')
+  const layout = page.locator('.account-layout'), form = page.locator('.auth-form')
+  for (const mode of ['login', 'join']) {
+    if (mode === 'join') await page.locator('.segmented').getByRole('button', { name: '회원가입', exact: true }).press('Enter')
+    await expect(form).toHaveCount(1); await expect(layout.getByRole('heading')).toHaveCount(1)
+    await expect(layout.getByRole('complementary')).toHaveCount(0)
+    const geometry = await layout.evaluate((element) => {
+      const card = element.getBoundingClientRect(), form = element.querySelector('form').getBoundingClientRect()
+      return { viewport: innerWidth, document: document.documentElement.scrollWidth, width: card.width,
+        center: (card.left + card.right) / 2, formCenter: (form.left + form.right) / 2,
+        controls: [...element.querySelectorAll('input,select,button')].map((control) => { const rect = control.getBoundingClientRect(); return { left: rect.left, right: rect.right, height: rect.height } }) }
+    })
+    expect(geometry.width).toBeLessThanOrEqual(650); expect(geometry.document).toBeLessThanOrEqual(width)
+    expect(geometry.center).toBeCloseTo(geometry.viewport / 2, 1); expect(geometry.formCenter).toBeCloseTo(geometry.center, 1)
+    for (const control of geometry.controls) {
+      expect(control.height).toBeGreaterThanOrEqual(44); expect(control.left).toBeGreaterThanOrEqual(0); expect(control.right).toBeLessThanOrEqual(width)
+    }
+    const id = form.getByLabel('아이디', { exact: true }); await id.fill('layout-member'); await id.press('Tab')
+    await expect(mode === 'login' ? form.getByLabel('비밀번호', { exact: true }) : form.getByRole('button', { name: '중복 확인', exact: true })).toBeFocused()
+    await expect(page).toHaveURL('/account?redirect=%2Fcart')
+  }
+  expect(api.calls.filter((call) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(call.method))).toEqual([])
+})
 
 for (const width of [390, 1280]) {
   test(`가입 ${width}px은 공백 이름을 전송하지 않고 수정 후 기존 입력과 취향으로 완료`, async ({ page, api }) => {

@@ -1,8 +1,8 @@
 .account-redesign.account-layout {
   width: 100%;
-  max-width: 980px;
+  max-width: 620px;
   margin-inline: auto;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   min-height: 0;
   border-radius: 20px;
@@ -20,8 +20,7 @@
 .account-redesign .segmented button { min-height: 44px; border-radius: 8px; }
 .account-redesign .segmented button.active { color: white; background: var(--forest-dark); }
 .account-redesign .auth-form { gap: 18px; }
-.account-redesign .auth-form-heading h1,
-.account-redesign .account-story h2 {
+.account-redesign .auth-form-heading h1 {
   margin: 0;
   font-size: clamp(27px, 3.8vw, 42px);
   line-height: 1.18;
@@ -70,21 +69,6 @@
 .preferences-view .signup-review dt { color: var(--ink-soft); }
 .preferences-view .signup-review dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 .preferences-view .signup-review .btn { min-height: 44px; }
-.account-redesign .account-story {
-  min-height: 0;
-  padding: clamp(24px, 5vw, 52px);
-  background: radial-gradient(ellipse at top right, var(--forest), transparent 65%), var(--forest-dark);
-}
-.account-redesign .account-story ul { gap: 0; margin-top: 18px; }
-.account-redesign .account-story li {
-  display: grid;
-  gap: 4px;
-  padding-block: 12px;
-  border-top: 1px solid rgb(255 255 255 / 24%);
-}
-.account-redesign .account-story li::before { content: none; }
-.account-redesign .account-story li span { color: #e4ebe6; font-size: .9rem; line-height: 1.55; }
-
 .profile-redesign .profile-hero {
   align-items: start;
   flex-wrap: wrap;
@@ -218,8 +202,6 @@
 }
 
 @media (max-width: 720px) {
-  .account-redesign.account-layout { grid-template-columns: minmax(0, 1fr); }
-  .account-redesign .account-story h2 { font-size: clamp(23px, 5vw, 30px); }
   .admin-redesign .admin-tabs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 84px), 1fr)); }
   .admin-redesign .admin-tabs button { padding-inline: 8px; }
 }

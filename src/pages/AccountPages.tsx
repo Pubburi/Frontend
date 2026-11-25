@@ -685,15 +685,6 @@ export function AccountPage() {
           </button>
         </form>
       </div>
-      <aside className="account-story" aria-labelledby="account-benefits">
-        <p className="section-kicker">주점부리에서 만나는 술</p>
-        <h2 id="account-benefits">발견한 취향을 한곳에 모으세요</h2>
-        <ul>
-          <li><strong>마음에 든 술</strong><span>찜해 두고 다음에 바로 찾아보세요.</span></li>
-          <li><strong>기억하고 싶은 한 잔</strong><span>개인 취향 기록에 감상을 남기세요.</span></li>
-          <li><strong>주문 내역</strong><span>시연 주문의 접수 상태와 주문 당시 금액을 확인하세요.</span></li>
-        </ul>
-      </aside>
     </section>
   )
 }

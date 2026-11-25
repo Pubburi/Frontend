@@ -1092,30 +1092,12 @@ main select:focus {
 .order-type-help { margin: -3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .account-layout {
-  grid-template-columns: minmax(280px, 0.85fr) minmax(340px, 1fr);
-  min-height: 620px;
   overflow: hidden;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 16px;
   box-shadow: var(--shadow-md);
 }
-
-.account-story {
-  display: grid;
-  align-content: center;
-  padding: clamp(28px, 5vw, 64px);
-  color: white;
-  background:
-    linear-gradient(145deg, rgba(23, 32, 27, 0.96), rgba(31, 106, 75, 0.88)),
-    var(--forest-dark);
-}
-
-.account-story .section-kicker { color: #f3d477; }
-.account-story h1 { margin: 0; font-size: clamp(38px, 5vw, 58px); line-height: 1.1; letter-spacing: -0.04em; }
-.account-story p { max-width: 460px; color: #e4ebe6; line-height: 1.7; }
-.account-story ul { display: grid; gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; }
-.account-story li::before { margin-right: 8px; color: var(--gold); content: "✦"; }
 
 .auth-panel {
   align-content: center;
@@ -1330,7 +1312,6 @@ main select:focus {
   .checkout-card { position: static; }
   .cart-row { grid-template-columns: 82px minmax(140px, 1fr) auto auto; }
   .cart-row .danger-text { grid-column: 4; }
-  .account-layout { grid-template-columns: 1fr 1fr; }
   .table-row,
   .table-row.wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .table-head { display: none; }
@@ -1346,8 +1327,6 @@ main select:focus {
   .detail-media { position: static; }
   .comment-form { grid-template-columns: 1fr; }
   .comment-form .btn { width: 100%; }
-  .account-layout { grid-template-columns: 1fr; }
-  .account-story { min-height: 360px; }
   .admin-section-heading, .shop-intro, .profile-hero { align-items: flex-start; flex-direction: column; }
 }
 
@@ -1368,9 +1347,7 @@ main select:focus {
   .cart-row .line-total,
   .cart-row .danger-text { grid-column: 2; }
   .cart-row .danger-text { width: fit-content; }
-  .account-story { min-height: 330px; }
-  .account-story h1 { font-size: 38px; }
-  .auth-panel, .account-story { padding: 28px 22px; }
+  .auth-panel { padding: 28px 22px; }
   .inline-field { grid-template-columns: 1fr; }
   /* Leave the stacked manual search button above the suggestions. */
   .home-search { position: relative; }
