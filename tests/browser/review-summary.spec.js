@@ -358,6 +358,47 @@ test('누락/불일치 집계는 0이나 페이지평균으로 만들지 않고 
   await expect(page.locator('.review-summary')).toHaveText('평균 4점 · 전체 후기 1개')
 })
 
+for (const width of [390, 1440]) test.describe(`${width}px 후기 복구 안내`, () => {
+  test.use({ viewport: { width, height: 900 }, hasTouch: width === 390 })
+
+  test('안내와 재시도 버튼을 분리하고 집계·로그인 상태를 복구', async ({ page, reviewsApi }) => {
+    reviewsApi.reviews = [review(1, 4)]
+    reviewsApi.omitSummary = true
+    let sessionUnavailable = true
+    await page.route('**/api/auth/me', (route) => sessionUnavailable
+      ? route.fulfill({ status: 503, json: error('SERVICE_UNAVAILABLE') })
+      : route.fallback())
+
+    await page.goto('/products/901')
+    const section = page.locator('.comment-box')
+    const summaryRetry = section.getByRole('button', { name: '평점 집계 다시 확인', exact: true })
+    const sessionRetry = section.getByRole('button', { name: '로그인 상태 다시 확인', exact: true })
+    const summaryCopy = section.locator('.review-summary p').filter({ hasText: '전체 평점 정보를 확인하지 못했습니다.' })
+    const sessionCopy = section.getByRole('status').filter({ hasText: '후기를 쓰려면 현재 로그인 상태를 확인해 주세요.' })
+    for (const [copy, button] of [[summaryCopy, summaryRetry], [sessionCopy, sessionRetry]]) {
+      await expect(copy).toBeVisible()
+      await expect(button).toBeVisible()
+      const copyBox = await copy.boundingBox()
+      const buttonBox = await button.boundingBox()
+      expect(buttonBox.y - (copyBox.y + copyBox.height)).toBeGreaterThanOrEqual(12)
+      expect(buttonBox.height).toBeGreaterThanOrEqual(44)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+
+    const retry = (button) => width === 390 ? button.tap() : button.press('Enter')
+    reviewsApi.omitSummary = false
+    await retry(summaryRetry)
+    await expect(section.locator('.review-summary')).toHaveText('평균 4점 · 전체 후기 1개')
+    await expect(section.locator('.comment-row > p')).toHaveText('회원 평가 1')
+    sessionUnavailable = false
+    await retry(sessionRetry)
+    await expect(section.getByRole('textbox', { name: '후기', exact: true })).toBeVisible()
+    expect(reviewsApi.calls.filter(({ path }) => path === '/api/products/901/comments')).toHaveLength(2)
+    expect(reviewsApi.calls.filter(({ path }) => path === '/api/auth/me')).toHaveLength(1)
+    expect(reviewsApi.calls.every(({ method }) => method === 'GET')).toBe(true)
+  })
+})
+
 test('현재 정렬의 오류는 이전 집계를 노출하지 않고 초안을 유지한 채 같은 조건으로 재시도', async ({ page, reviewsApi }) => {
   reviewsApi.reviews = [review(1, 3)]
   await page.goto('/products/901')
