@@ -14,7 +14,7 @@ const authPending = () => ['login', 'join', 'logout', 'settings-password'].some(
 const writes = new WeakMap<QueryClient, Map<string, Promise<void>>>()
 type Actor = { user: User; ready: boolean; sameActor: () => boolean; owns: () => boolean; recheck: () => void; rejectAuth: (error: unknown) => void }
 
-function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }) {
+function NotebookAccount({ children, returnTo }: { children: (actor: Actor) => ReactNode; returnTo?: string }) {
   const client = useQueryClient(), location = useLocation()
   const session = useSession()
   const pending = useUi((state) => ['login', 'join', 'logout', 'settings-password'].some((key) => state.pending[key]))
@@ -46,7 +46,7 @@ function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }
     (verified.user === null ? verified.auth.state.data === null : (verified.auth.state.data as User | undefined)?.id === verified.user.id)
   if (failed || verified && !current) return <div role="status"><p>{failed === 'expired' ? '로그인 상태가 바뀌어 내 기록을 표시하지 않았습니다.' : '내 기록의 로그인 상태를 확인하지 못했습니다.'}</p><button className="btn btn-outline-dark" onClick={recheck}>기록 로그인 상태 다시 확인</button></div>
   if (!current || !verified) return <p role="status">내 기록의 로그인 상태를 확인하는 중입니다.</p>
-  if (!verified.user) return <Link className="btn btn-outline-dark" to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`}>로그인하고 내 기록 남기기</Link>
+  if (!verified.user) return <Link className="btn btn-outline-dark" to={`/account?${new URLSearchParams({ redirect: returnTo ?? location.pathname + location.search })}`}>로그인하고 내 기록 남기기</Link>
   const token = active.current
   const sameActor = () => active.current === token && client.getQueryCache().find({ queryKey: ['session'], exact: true }) === verified.auth &&
     (verified.auth.state.data as User | undefined)?.id === verified.user!.id && !authPending()
@@ -67,13 +67,25 @@ function NotebookAccount({ children }: { children: (actor: Actor) => ReactNode }
 }
 
 export function ProductNotebook({ productId }: { productId: number }) {
-  const location = useLocation(), [seen, setSeen] = useState(false)
-  return <details className="notebook-panel" onToggle={(event) => { if (event.currentTarget.open) setSeen(true) }}>
-    <summary className="text-link">나만의 취향 기록</summary>
+  const location = useLocation(), [seen, setSeen] = useState(location.hash === '#tasting-notebook')
+  const disclosure = useRef<HTMLDetailsElement>(null)
+  useLayoutEffect(() => {
+    const panel = disclosure.current
+    if (!panel || location.hash !== '#tasting-notebook') return
+    panel.open = true
+    const active = document.activeElement
+    if (document.hasFocus() && (active === document.body || active?.id === 'main-content')) {
+      const summary = panel.querySelector('summary')
+      summary?.scrollIntoView({ block: 'start', behavior: 'instant' })
+      summary?.focus({ preventScroll: true })
+    }
+  }, [location.key, location.hash])
+  return <details ref={disclosure} className="notebook-panel" onToggle={(event) => { if (event.currentTarget.open) setSeen(true) }}>
+    <summary id="tasting-notebook" className="text-link">나만의 취향 기록</summary>
     {seen && <div className="notebook-panel-body">
       <p>나만 보는 기록입니다. 공개 회원 후기와 별도로 보관합니다.</p>
       <Link className="text-link" to="/notebook">내 취향 기록 모아보기</Link>
-      <NotebookAccount key={location.key}>{(actor) => <NotebookEditor actor={actor} productId={productId} />}</NotebookAccount>
+      <NotebookAccount key={location.key} returnTo={`${location.pathname}${location.search}#tasting-notebook`}>{(actor) => <NotebookEditor actor={actor} productId={productId} />}</NotebookAccount>
     </div>}
   </details>
 }

@@ -210,13 +210,60 @@ for (const width of [390, 1440]) test(`기록의 마지막 태그 키보드 삭�
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
+for (const width of [390, 1440]) test.describe(`${width}px 상품 기록 로그인 복귀`, () => {
+  test.use({ viewport: { width, height: 900 }, hasTouch: width === 390 })
+  test('기록 작성으로 로그인하면 같은 상품·조건의 편집을 바로 열고 수동 접기·Tab을 유지', async ({ page, notebookApi: s }) => {
+    s.user = null; s.notes.member = [entry({ memo: '서버의 개인 기록' })]
+    await page.goto('/products/7?source=notebook-entry#another-section')
+    const panel = page.locator('.notebook-panel'), summary = panel.locator('summary')
+    await expect(panel).not.toHaveAttribute('open', '')
+    if (width === 390) await summary.tap()
+    else await summary.press('Enter')
+    const login = panel.getByRole('link', { name: '로그인하고 내 기록 남기기', exact: true })
+    if (width === 390) await login.tap()
+    else await login.press('Enter')
+    await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === '/products/7?source=notebook-entry#tasting-notebook')
+    await page.getByLabel('아이디', { exact: true }).fill('member'); await page.getByLabel('비밀번호', { exact: true }).fill('fixture-pass')
+    const submit = page.locator('.auth-form').getByRole('button', { name: '로그인', exact: true })
+    if (width === 390) await submit.tap()
+    else await submit.press('Enter')
+    await expect(page).toHaveURL('/products/7?source=notebook-entry#tasting-notebook')
+    await expect(panel).toHaveAttribute('open', ''); await expect(memo(page)).toHaveValue('서버의 개인 기록')
+    await expect(summary).toBeFocused(); await expect(summary).toBeInViewport()
+    const visible = await summary.evaluate((element) => { const rect = element.getBoundingClientRect(); return rect.top >= document.querySelector('.topbar').getBoundingClientRect().bottom && rect.bottom <= innerHeight })
+    expect(visible).toBe(true)
+    await page.keyboard.press('Tab'); await expect(panel.getByRole('link', { name: '내 취향 기록 모아보기', exact: true })).toBeFocused()
+    await page.keyboard.press('Tab'); await expect(form(page).getByRole('combobox', { name: '기록 구분', exact: true })).toBeFocused()
+    await summary.press('Enter'); await expect(panel).not.toHaveAttribute('open', ''); await expect(form(page)).toHaveCount(0)
+    const quantity = page.getByRole('spinbutton', { name: `${product.name} 수량`, exact: true }); await quantity.fill('2'); await quantity.press('Tab')
+    await expect(panel).not.toHaveAttribute('open', '')
+    await summary.press('Enter'); await expect(memo(page)).toHaveValue('서버의 개인 기록')
+    expect(s.calls.filter((call) => call.path === '/api/users/me/notebook/by-product/7')).toHaveLength(1)
+    expect(writes(s)).toEqual([])
+  })
+})
+
+test('기록 복귀의 늦은 상품 로딩은 현재 다른 컨트롤의 초점을 가져가지 않음', async ({ page, notebookApi: s }) => {
+  s.notes.member = [entry()]
+  const g = gate(); let started = false
+  await page.route('**/api/products/7', async (route) => { started = true; await g.promise; await route.fallback() })
+  try {
+    await page.goto('/products/7#tasting-notebook'); await expect.poll(() => started).toBe(true)
+    const current = page.getByRole('navigation', { name: '주요 메뉴', exact: true }).getByRole('link', { name: '전체 주류', exact: true })
+    await current.focus(); g.release()
+    await expect(memo(page)).toHaveValue('private original')
+    await expect(page.locator('.notebook-panel')).toHaveAttribute('open', '')
+    await expect(current).toBeFocused(); expect(writes(s)).toEqual([])
+  } finally { g.release() }
+})
+
 test('비회원과 세션503은 개인 API를 요청하지 않고 공개 상세·담기와 명시 복구를 유지', async ({ page, notebookApi: s }) => {
   s.user = null; await page.goto('/products/7'); await page.locator('.notebook-panel summary').click()
   const panel = page.locator('.notebook-panel')
   const description = panel.getByText(/^나만 보는 기록입니다\./)
   const collection = panel.getByRole('link', { name: '내 취향 기록 모아보기', exact: true })
   const login = panel.getByRole('link', { name: '로그인하고 내 기록 남기기', exact: true })
-  await expect(login).toHaveAttribute('href', '/account?redirect=%2Fproducts%2F7')
+  await expect(login).toHaveAttribute('href', '/account?redirect=%2Fproducts%2F7%23tasting-notebook')
   for (const width of [390, 1280, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 })
     const [copyBox, collectionBox, loginBox] = await Promise.all([description.boundingBox(), collection.boundingBox(), login.boundingBox()])
