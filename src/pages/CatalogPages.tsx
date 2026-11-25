@@ -92,16 +92,20 @@ export type CatalogProductOrigin = {
   keyboard: boolean
 }
 
+export function catalogOriginForProduct(origin: CatalogProductOrigin | undefined, productId: string | undefined) {
+  return origin && typeof origin.url === 'string' &&
+    String(origin.productId) === productId && /^\/products(?:[?#]|$)/.test(origin.url) ? origin : null
+}
+
 function opensInSameTab(event: MouseEvent<HTMLAnchorElement>) {
   return event.button === 0 && !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
 }
 
-function CatalogCompareShortcut() {
+function CatalogCompareShortcut({ catalogFrom }: { catalogFrom?: string }) {
   const ids = useComparison((state) => state.ids)
-  const { pathname, search, hash } = useLocation()
   if (ids.length === 0) return null
   return <Link className="btn btn-dark catalog-compare-shortcut" to={comparisonUrl(ids)}
-    state={{ catalogCompareFrom: pathname + search + hash }}>
+    state={catalogFrom ? { catalogCompareFrom: catalogFrom } : undefined}>
     선택한 상품 {ids.length}개 비교하기
   </Link>
 }
@@ -517,7 +521,7 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
       </section>
       <Pagination page={invalidUrlFilters || repairPage !== null ? undefined : resultPage}
         onChange={(page) => navigate(page, filters)} onKeyboardNavigate={changeKeyboardPage} />
-      <CatalogCompareShortcut />
+      <CatalogCompareShortcut catalogFrom={location.pathname + location.search + location.hash} />
     </section>
   )
 }
@@ -537,8 +541,7 @@ function ProductDetail({ id }: { id: string }) {
   const client = useQueryClient()
   const location = useLocation()
   const navigate = useNavigate()
-  const origin = location.state?.catalogProductOrigin as CatalogProductOrigin | undefined
-  const catalogOrigin = origin && String(origin.productId) === id && /^\/products(?:[?#]|$)/.test(origin.url) ? origin : null
+  const catalogOrigin = catalogOriginForProduct(location.state?.catalogProductOrigin, id)
   function catalogLink(className: string) {
     return <Link className={className} to={catalogOrigin?.url ?? '/products'} onClick={(event) => {
       if (!catalogOrigin || !opensInSameTab(event)) return
@@ -1048,6 +1051,7 @@ function ProductDetail({ id }: { id: string }) {
             )}
           </div>
         </div>
+        <CatalogCompareShortcut catalogFrom={catalogOrigin?.url} />
       </section>
       {writable && deleting && (
         <Confirm

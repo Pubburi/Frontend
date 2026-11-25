@@ -6,6 +6,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useMatch,
   useNavigate,
   useNavigationType,
   useSearchParams,
@@ -18,7 +19,7 @@ import { cartTotals, useCart } from './state/cart'
 import { useAccountCart } from './state/accountCart'
 import { useUi } from './state/ui'
 import { Empty, Image, Loading } from './components/ui'
-import { HomePage, ProductsPage, ProductDetailPage, type CatalogProductOrigin } from './pages/CatalogPages'
+import { HomePage, ProductsPage, ProductDetailPage, catalogOriginForProduct, type CatalogProductOrigin } from './pages/CatalogPages'
 import { AccountPage, CartPage, ProfilePage } from './pages/AccountPages'
 import { PreferencesPage } from './pages/PreferencesPage'
 import { FavoritesPage } from './pages/FavoritesPage'
@@ -87,9 +88,11 @@ export function App() {
   const client = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
+  const detail = useMatch('/products/:id')
+  const detailOrigin = catalogOriginForProduct(location.state?.catalogProductOrigin, detail?.params.id)
   const comparisonOrigin = location.pathname === '/products' ? location.pathname + location.search + location.hash :
     location.pathname === '/compare' && typeof location.state?.catalogCompareFrom === 'string' &&
-    /^\/products(?:[?#]|$)/.test(location.state.catalogCompareFrom) ? location.state.catalogCompareFrom : null
+    /^\/products(?:[?#]|$)/.test(location.state.catalogCompareFrom) ? location.state.catalogCompareFrom : detailOrigin?.url ?? null
   const currentLocation = useRef(location.key)
   currentLocation.current = location.key
   const [menu, setMenu] = useState(false)
