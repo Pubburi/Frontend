@@ -832,7 +832,10 @@ function ProductDetail({ id }: { id: string }) {
               {comments.isPending || comments.isFetching ? <p>전체 평점을 불러오는 중입니다.</p> : comments.isError ?
                 <p>전체 평점 정보를 불러오지 못했습니다.</p> : summary ?
                   <p>{summary.average === null ? '아직 등록된 평점이 없습니다.' : <strong>평균 {summary.average.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}점</strong>} · 전체 후기 {summary.count}개</p> :
-                  <p>전체 평점 정보를 확인하지 못했습니다. <button className="text-button" onClick={() => comments.refetch()}>평점 집계 다시 확인</button></p>}
+                  <div className="review-recovery">
+                    <p>전체 평점 정보를 확인하지 못했습니다.</p>
+                    <button type="button" className="text-button" onClick={() => void comments.refetch()}>평점 집계 다시 확인</button>
+                  </div>}
             </div>
             {writable ? (
               <form className="comment-form" onSubmit={submit}>
@@ -884,9 +887,10 @@ function ProductDetail({ id }: { id: string }) {
                 </button>
               </form>
             ) : session.data || session.isPending || session.isError ? (
-              <p role="status">후기를 쓰려면 현재 로그인 상태를 확인해 주세요.
-                {session.isError && <button className="text-button" onClick={() => session.refetch()}>로그인 상태 다시 확인</button>}
-              </p>
+              <div className="review-recovery">
+                <p role="status">후기를 쓰려면 현재 로그인 상태를 확인해 주세요.</p>
+                {session.isError && <button type="button" className="text-button" onClick={() => void session.refetch()}>로그인 상태 다시 확인</button>}
+              </div>
             ) : (
               <div className="login-prompt">
                 <p>로그인하고 이 상품의 후기를 남겨보세요.</p>
