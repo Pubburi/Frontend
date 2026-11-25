@@ -154,6 +154,69 @@ for (const width of [390, 1440]) test.describe(`${width}px 상단 비교의 검�
   })
 })
 
+for (const width of [390, 1280, 1440, 1920]) test.describe(`${width}px 상세 비교의 검색 목록 복귀`, () => {
+  const touch = width === 390
+  test.use({ viewport: { width, height: 900 }, hasTouch: touch })
+  test('선택을 해제해도 상세를 열었던 검색 결과로 돌아온다', async ({ page }) => {
+    const listing = '/products?q=%EB%B9%84%EA%B5%90&type=%ED%83%81%EC%A3%BC&minPriceKrw=0&maxPriceKrw=30000&sort=priceAsc&page=2#catalog-max-price'
+    const choose = (id, action = '선택') => page.getByRole('button', { name: `비교 표본 ${id} 비교 ${action}`, exact: true })
+    const activate = (control) => touch ? control.tap() : control.press('Enter')
+    const catalogReads = []
+    await page.route('**/api/products?**', (route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      catalogReads.push(new URL(route.request().url()).search)
+      return route.fulfill({ json: success({ items: [product(201), product(202)], page: 2, size: 12, total: 14, totalPages: 2, hasNext: false }) })
+    })
+    await page.goto(listing)
+    await activate(choose(201))
+    await activate(choose(202))
+    await activate(page.getByRole('link', { name: '비교 표본 202', exact: true }))
+    await expect(page).toHaveURL('/products/202')
+    await expect(page.getByRole('heading', { name: '비교 표본 202', exact: true, level: 1 })).toBeVisible()
+
+    const shortcut = page.getByRole('link', { name: '선택한 상품 2개 비교하기', exact: true })
+    if (touch) {
+      const menu = page.getByRole('button', { name: '메뉴 열기' })
+      await expect(menu).toHaveAttribute('aria-expanded', 'false')
+      await expect(shortcut).toBeInViewport({ ratio: 1 })
+      expect((await shortcut.boundingBox()).height).toBeGreaterThanOrEqual(44)
+      await page.evaluate(() => scrollTo(0, Math.max(0, (document.documentElement.scrollHeight - innerHeight) / 2)))
+      await expect(shortcut).toBeInViewport({ ratio: 1 })
+      await activate(shortcut)
+    } else {
+      await expect(shortcut).toBeHidden()
+      const navigation = page.getByRole('navigation', { name: '주요 메뉴', exact: true })
+      await activate(navigation.getByRole('link', { name: '상품 비교 2', exact: true }))
+    }
+
+    await expect(page).toHaveURL('/compare?productId=201&productId=202')
+    const browse = page.getByRole('link', { name: '상품 더 고르기', exact: true })
+    await expect(browse).toHaveAttribute('href', listing)
+    await activate(page.getByRole('button', { name: '상품 201 비교 해제', exact: true }))
+    await expect(page).toHaveURL('/compare?productId=202')
+    await expect(browse).toHaveAttribute('href', listing)
+    await activate(browse)
+    await expect(page).toHaveURL(listing)
+    await expect(choose(201)).toHaveAttribute('aria-pressed', 'false')
+    await expect(choose(202, '해제')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('비교')
+    await expect(page.getByRole('combobox', { name: '정렬', exact: true })).toHaveValue('priceAsc')
+    await expect.poll(() => catalogReads).toHaveLength(2)
+    expect(catalogReads[1]).toBe(catalogReads[0])
+    expect(new URLSearchParams(catalogReads[1]).get('page')).toBe('2')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  })
+})
+
+test('직접 연 상품 상세의 비교는 일반 목록으로 돌아간다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 })
+  await page.goto('/products/202')
+  await page.getByRole('button', { name: '비교 표본 202 비교 선택', exact: true }).click()
+  await page.getByRole('link', { name: '선택한 상품 1개 비교하기', exact: true }).click()
+  await expect(page).toHaveURL('/compare?productId=202')
+  await expect(page.getByRole('link', { name: '상품 더 고르기', exact: true })).toHaveAttribute('href', '/products')
+})
+
 test('목록·상세의 비교 선택은 필터 URL·Product7 장바구니를 보존하고 현재 값을 따로 조회', async ({ page, comparisonApi }) => {
   const url = '/products?minPriceKrw=0&tasteTag=dry%2Csweet&sort=name&page=1'
   await page.goto(url)
@@ -168,7 +231,7 @@ test('목록·상세의 비교 선택은 필터 URL·Product7 장바구니를 �
   comparisonApi.products.set(201, { ...product(201), price: 7777 })
   await page.getByRole('link', { name: '상품 비교 2', exact: true }).click()
   await expect(page).toHaveURL('/compare?productId=201&productId=202')
-  await expect(page.getByRole('link', { name: '상품 더 고르기', exact: true })).toHaveAttribute('href', '/products')
+  await expect(page.getByRole('link', { name: '상품 더 고르기', exact: true })).toHaveAttribute('href', url)
   await expect(cell(page, 201, 'price')).toHaveText('7,777원')
   await expect(cell(page, 201, 'abv')).toHaveText('0%')
   await expect(cell(page, 201, 'volume')).toHaveText('500 mL')
