@@ -76,7 +76,7 @@ for (const width of [390, 1440]) test(`주문 마지막 페이지가 사라지�
     await expect(history.getByRole('link', { name: '주문 901 상세 보기', exact: true })).toBeVisible()
     await expect(reload).toBeFocused()
     expect(fixture.calls.slice(before).filter((call) => call.path === '/users/member/orders').map((call) => call.query.page)).toEqual(['2', '1'])
-    await expect(page).toHaveURL('/profile?from=history')
+    await expect(page).toHaveURL('/profile?from=history#order-history')
   } finally { release() }
 })
 
@@ -93,7 +93,54 @@ for (const status of [401, 503, 200]) test(`마지막 주문 페이지 ${status 
   await expect(page.getByRole('heading', { name: status === 401 ? '다시 로그인해 주세요' : status === 503 ? '주문 내역을 불러오지 못했습니다' : '아직 주문 내역이 없습니다', exact: true })).toBeVisible()
   await expect(history.locator('.order-row')).toHaveCount(0)
   expect(fixture.calls.slice(before).filter((call) => call.path === '/users/member/orders').map((call) => call.query.page)).toEqual(['2'])
-  await expect(page).toHaveURL('/profile')
+  await expect(page).toHaveURL('/profile?ordersPage=2#order-history')
+})
+
+for (const width of [390, 1440]) test(`주문 상세에서 링크와 뒤로 가기로 같은 주문 페이지에 복귀 ${width}px`, async ({ page, fixture }) => {
+  fixture.orders = Array.from({ length: 12 }, (_, index) => ({ ...initialOrder, oId: 901 + index }))
+  await page.setViewportSize({ width, height: 900 })
+  await page.goto('/profile?from=history')
+  const history = page.locator('.profile-order-history')
+  const heading = history.getByRole('heading', { name: '주문 내역', exact: true })
+  const chosen = history.getByRole('link', { name: '주문 911 상세 보기', exact: true })
+  const original = history.getByRole('link', { name: '주문 901 상세 보기', exact: true })
+  await history.getByRole('button', { name: '다음', exact: true }).press('Enter')
+  await expect(page).toHaveURL('/profile?from=history&ordersPage=2#order-history')
+  await expect(heading).toBeFocused()
+  await chosen.press('Enter')
+  await facts(page, 911)
+  await expect(page).toHaveURL('/orders/911?ordersPage=2')
+
+  await page.goBack()
+  await expect(page).toHaveURL('/profile?from=history&ordersPage=2#order-history')
+  await expect(chosen).toBeVisible()
+  await expect(original).toHaveCount(0)
+  await expect(heading).toBeFocused()
+
+  await chosen.press('Enter')
+  await page.reload()
+  await facts(page, 911)
+  await page.getByRole('link', { name: '내 주문 내역', exact: true }).press('Enter')
+  await expect(page).toHaveURL('/profile?ordersPage=2#order-history')
+  await expect(chosen).toBeVisible()
+  await expect(original).toHaveCount(0)
+  await expect(heading).toBeFocused()
+  const reads = fixture.calls.filter((call) => call.path === '/users/member/orders').map((call) => call.query.page)
+  expect(reads[0]).toBe('1')
+  expect(reads.slice(1)).toContain('2')
+  expect(reads.slice(1).every((value) => value === '2')).toBe(true)
+})
+
+test('형식이 잘못된 주문 페이지는 첫 페이지의 주문만 조회한다', async ({ page, fixture }) => {
+  for (const query of ['ordersPage=02', 'ordersPage=214748366', 'ordersPage=1&ordersPage=2']) {
+    const before = fixture.calls.length
+    await page.goto(`/profile?${query}`)
+    await expect(page.getByRole('link', { name: '주문 901 상세 보기', exact: true })).toBeVisible()
+    expect(fixture.calls.slice(before).filter((call) => call.path === '/users/member/orders').map((call) => call.query.page)).toEqual(['1'])
+  }
+  await page.goto('/orders/901?ordersPage=214748366')
+  await facts(page)
+  await expect(page.getByRole('link', { name: '내 주문 내역', exact: true })).toHaveAttribute('href', '/profile#order-history')
 })
 
 for (const width of [1280, 390]) {

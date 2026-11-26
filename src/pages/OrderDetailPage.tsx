@@ -5,7 +5,7 @@ import { api, ApiClientError } from '../services/api'
 import { useSession } from '../queries'
 import { useUi } from '../state/ui'
 import { orderPrivacy } from '../state/authReadPrivacy'
-import { parseOrderId, demoOrderStatus } from '../orders'
+import { demoOrderStatus, orderHistorySearch, parseOrderHistoryPage, parseOrderId } from '../orders'
 import { Empty, Loading } from '../components/ui'
 import { OrderLines, orderMoney } from '../components/OrderLines'
 import { orderType } from '../utils/format'
@@ -19,10 +19,11 @@ const authPending = () => {
   return Boolean(pending.login || pending.join || pending.logout || pending['settings-password'])
 }
 function OrderShell({ id, children, action }: { id: number | null; children: ReactNode; action?: ReactNode }) {
+  const historyPage = parseOrderHistoryPage(useLocation().search)
   return <section className="view order-detail-view" data-order-id={id ?? undefined}>
     <div className="shop-intro compact-intro purchase-intro">
       <div><p className="section-kicker">시연 주문</p><h1>데모 주문 상세</h1><p>실제 결제·배송·예약 없이 접수한 시연 주문입니다.</p></div>
-      <div className="order-detail-actions"><Link className="btn btn-outline-dark" to="/profile#order-history">내 주문 내역</Link>{action}</div>
+      <div className="order-detail-actions"><Link className="btn btn-outline-dark" to={{ pathname: '/profile', search: orderHistorySearch(historyPage), hash: '#order-history' }}>내 주문 내역</Link>{action}</div>
     </div>
     {children}
   </section>

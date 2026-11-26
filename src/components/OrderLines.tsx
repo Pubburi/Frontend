@@ -1,7 +1,7 @@
 import { date, money, orderType } from '../utils/format'
 import type { Order } from '../types'
 import { Link } from 'react-router-dom'
-import { demoOrderStatus } from '../orders'
+import { demoOrderStatus, orderHistorySearch } from '../orders'
 
 export function priceBasisLabel(value?: string | null) {
   if (value === 'ORDER_SNAPSHOT') return '주문 당시 금액'
@@ -35,7 +35,7 @@ export function OrderLines({ order, showUnitPrice = false }: { order: Order; sho
     </>
   )
 }
-export function OrderCard({ order }: { order: Order }) {
+export function OrderCard({ order, page }: { order: Order; page: number }) {
   return (
     <article className="order-row profile-order-row">
       <div className="order-summary-head">
@@ -49,7 +49,7 @@ export function OrderCard({ order }: { order: Order }) {
         <div className="purchase-order-total"><span className="muted">주문 합계</span><strong className="order-total">{orderMoney(order.totalPrice)}</strong></div>
       </div>
       <OrderLines order={order} />
-      <Link className="text-link" to={`/orders/${order.oId}`} aria-label={`주문 ${order.oId} 상세 보기`}>주문 상세 보기 →</Link>
+      <Link className="text-link" to={{ pathname: `/orders/${order.oId}`, search: orderHistorySearch(page) }} aria-label={`주문 ${order.oId} 상세 보기`}>주문 상세 보기 →</Link>
     </article>
   )
 }
