@@ -175,6 +175,10 @@
   align-items: center;
 }
 
+.cart-view .account-cart-row-unavailable {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .cart-view .purchase-item-name,
 .cart-view .purchase-item-total {
   min-width: 0;

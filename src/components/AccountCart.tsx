@@ -9,26 +9,27 @@ import './purchase-journey.css'
 
 type Account = ReturnType<typeof useAccountCart>
 function AccountLine({ item, account }: { item: AccountCartItem; account: Account }) {
+  const product = item.currentProduct
   const draft = account.drafts[item.productId] ?? String(item.quantity)
   const valid = /^\d+$/.test(draft) && Number(draft) >= 1 && Number(draft) <= 99
   const unavailable = account.pending || account.loading || account.blocked || !!account.operation
   const changed = Number(draft) !== item.quantity
   function save(event: FormEvent) {
     event.preventDefault()
-    if (valid && !unavailable && changed) void account.quantity(item.productId, Number(draft))
+    if (product && valid && !unavailable && changed) void account.quantity(item.productId, Number(draft))
   }
-  return <article className="account-cart-row settings-card">
+  return <article className={`account-cart-row settings-card${product ? '' : ' account-cart-row-unavailable'}`}>
     <div className="purchase-item-name">
-      {item.currentProduct && <span className="product-type">{item.currentProduct.type}</span>}
-      <h3>{item.currentProduct ? <Link to={`/products/${item.productId}`}>{item.currentProduct.name}</Link> : item.productName}</h3>
-      <p className="muted">{item.currentProduct ? `현재 병당 ${money(item.currentProduct.price)}원` : '삭제된 상품입니다. 주문하려면 이 항목을 제거해 주세요.'}</p>
+      {product && <span className="product-type">{product.type}</span>}
+      <h3>{product ? <Link to={`/products/${item.productId}`}>{product.name}</Link> : item.productName}</h3>
+      <p className="muted">{product ? `현재 병당 ${money(product.price)}원` : '삭제된 상품입니다. 주문하려면 이 항목을 제거해 주세요.'}</p>
     </div>
-    <form onSubmit={save} className="account-cart-quantity">
+    {product && <form onSubmit={save} className="account-cart-quantity">
       <label className="field-group"><span>수량</span><input className="form-control" type="number" min={1} max={99} step={1} aria-label={`${item.productName} 수량`} value={draft} disabled={account.pending} onChange={(event) => account.draft(item.productId, event.target.value)} /></label>
       <button className={`btn ${changed && valid ? 'btn-dark' : 'btn-outline-dark'} btn-sm`} disabled={!valid || unavailable || !changed}>수량 저장</button>
-    </form>
+    </form>}
     <div className="purchase-item-total">
-      <strong>{item.currentProduct ? `${money(item.currentProduct.price * item.quantity)}원` : '금액 미확인'}</strong>
+      <strong>{product ? `${money(product.price * item.quantity)}원` : '금액 미확인'}</strong>
       <p className="muted">저장 수량 {item.quantity}개</p>
       <button className="text-button danger-text" disabled={unavailable} aria-label={`${item.productName} 계정에서 삭제`} onClick={() => void account.remove(item.productId)}>삭제</button>
     </div>
@@ -46,7 +47,7 @@ export function AccountCartView({ account }: { account: Account }) {
   const unavailable = !account.ready || account.pending || account.loading || account.blocked || !!account.operation
   const total = data ? accountCartTotal(data.items) : null
   const missing = !!data && total === null
-  const unsaved = data?.items.some((item) => Number(account.drafts[item.productId] ?? item.quantity) !== item.quantity)
+  const unsaved = data?.items.some((item) => item.currentProduct !== null && Number(account.drafts[item.productId] ?? item.quantity) !== item.quantity)
   const count = data?.items.reduce((sum, item) => sum + item.quantity, 0)
   const deviceCount = cartTotals(guest.items).count
   const requestLength = Array.from(guest.orderForm.orderTable).length

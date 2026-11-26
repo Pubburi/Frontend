@@ -218,9 +218,45 @@ test('합산99 초과409와 서버읽기503은 양쪽원본·수량초안·요�
   s.readStatus = 503; await page.getByRole('button', { name: '계정 장바구니 새로고침', exact: true }).click(); await expect(own(page)).toHaveCount(0)
   s.readStatus = 0; await page.getByRole('button', { name: '계정 장바구니 새로고침', exact: true }).click(); await expect(own(page).getByRole('spinbutton')).toHaveValue('97'); await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('남을 요청')
 })
-test('삭제 상품은 금액미확인·주문차단 뒤 명시제거, 실제0원과 구분', async ({ page, cartApi: s }) => {
-  s.carts.member = { version: 1, items: [{ ...row(), currentProduct: null }] }; await page.goto('/cart'); await expect(own(page)).toContainText('금액 미확인'); await expect(page.getByRole('button', { name: '금액 미확인 · 주문할 수 없음', exact: true })).toBeDisabled()
-  await page.getByRole('button', { name: '카트 표본 7 계정에서 삭제', exact: true }).click(); await expect(page.getByRole('heading', { name: '계정 장바구니가 비어 있습니다', exact: true })).toBeVisible()
+test('삭제 상품은 저장 수량과 제거만 표시하고 판매 상품의 수량과 주문을 보존한다', async ({ page, cartApi: s }) => {
+  s.carts.member = { version: 1, items: [row(7, 2), row(8, 2)] }
+  await page.goto('/cart')
+  const removed = own(page).getByRole('article').filter({ has: page.getByRole('heading', { name: '카트 표본 7', exact: true }) })
+  const available = own(page).getByRole('article').filter({ has: page.getByRole('heading', { name: '카트 표본 8', exact: true }) })
+  const request = page.getByLabel('테이블·요청 사항', { exact: true })
+  const unsaved = page.getByText(/바꾼 수량을 먼저 저장한 뒤 주문해 주세요/)
+  await expect(removed).toContainText('현재 병당 0원')
+  await removed.getByRole('spinbutton').fill('9')
+  await request.fill('창가 요청')
+  await expect(unsaved).toBeVisible()
+  s.products = s.products.filter((item) => item.id !== 7)
+  s.carts.member.items[0].currentProduct = null
+  await own(page).getByRole('button', { name: '계정 장바구니 새로고침', exact: true }).click()
+
+  await expect(removed).toContainText('삭제된 상품입니다')
+  await expect(removed).toContainText('금액 미확인')
+  await expect(removed).toContainText('저장 수량 2개')
+  await expect(removed.getByRole('spinbutton')).toHaveCount(0)
+  await expect(removed.getByRole('button')).toHaveCount(1)
+  await expect(unsaved).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '금액 미확인 · 주문할 수 없음', exact: true })).toBeDisabled()
+  await available.getByRole('spinbutton').fill('3')
+  await expect(unsaved).toBeVisible()
+  await removed.getByRole('button', { name: '카트 표본 7 계정에서 삭제', exact: true }).press('Enter')
+
+  await expect(removed).toHaveCount(0)
+  await expect(available.getByRole('spinbutton')).toHaveValue('3')
+  await expect(request).toHaveValue('창가 요청')
+  await expect(page.getByRole('button', { name: '10,000원 주문하기', exact: true })).toBeDisabled()
+  await available.getByRole('button', { name: '수량 저장', exact: true }).press('Enter')
+  const checkout = page.getByRole('button', { name: '15,000원 주문하기', exact: true })
+  await expect(checkout).toBeEnabled()
+  await checkout.press('Enter')
+
+  await expect(page.getByRole('heading', { name: '주문 #90', exact: true })).toBeVisible()
+  expect(s.calls.filter((call) => ['PUT', 'DELETE'].includes(call.method) && call.path.includes('/cart/items/')).map((call) => [call.method, call.path.split('/').at(-1)])).toEqual([['DELETE', '7'], ['PUT', '8']])
+  expect(s.orders).toHaveLength(1)
+  expect(s.orders[0]).toMatchObject({ totalPrice: 15000, orderTable: '창가 요청', details: [{ productId: 8, quantity: 3 }] })
 })
 test('checkout 응답유실은 동일 주문만 재생하고 대기중 다음 요청은 유지', async ({ page, cartApi: s }) => {
   s.carts.member = { version: 1, items: [row(8, 2)] }; s.lost = 'checkout'; await page.goto('/cart'); await page.getByLabel('테이블·요청 사항', { exact: true }).fill('제출요청'); await page.getByRole('button', { name: '10,000원 주문하기', exact: true }).click()
