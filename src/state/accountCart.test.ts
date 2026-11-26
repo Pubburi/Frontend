@@ -78,11 +78,37 @@ describe('account cart ownership and exact operations', () => {
   })
   it('checkout replay returns original order and preserves later form input; no second UUID after unknown', async () => {
     const { store } = ready(); vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 2, items: [row(2)] }); await store.getState().load()
-    cartStore.getState().setOrderForm({ orderTable: '  원문  ' }); vi.mocked(api.cartOperation).mockRejectedValueOnce(new ApiClientError({}, 0)); await store.getState().checkout()
-    const intent = vi.mocked(api.cartOperation).mock.calls.at(-1)![2]; expect(intent.orderTable).toBe('  원문  ')
-    cartStore.getState().setOrderForm({ orderTable: '다음 요청' }); expect(await store.getState().checkout()).toBeNull()
+    cartStore.getState().setOrderForm({ orderTable: '  원문  ' }); vi.mocked(api.cartOperation).mockRejectedValueOnce(new ApiClientError({}, 0)); await store.getState().checkout(0)
+    const intent = vi.mocked(api.cartOperation).mock.calls.at(-1)![2]; expect(intent.orderTable).toBe('  원문  '); expect(intent.expectedTotalPrice).toBe(0)
+    cartStore.getState().setOrderForm({ orderTable: '다음 요청' }); expect(await store.getState().checkout(0)).toBeNull()
     vi.mocked(api.cartOperation).mockResolvedValueOnce({ operationId: intent.operationId, replayed: true, status: 'APPLIED', orderId: 90, cart: { version: 5, items: [row(1)] } })
     expect(await store.getState().retry()).toBe(90); expect(cartStore.getState().orderForm.orderTable).toBe('다음 요청'); expect(store.getState().data?.version).toBe(5)
+    expect(api.cartOperation).toHaveBeenLastCalledWith('member', 'checkout', intent)
+  })
+  it('refreshes the cart after a price conflict and leaves the next checkout to the user', async () => {
+    const { store } = ready()
+    const oldItem = { ...row(2), currentProduct: { ...product, price: 5100 } }
+    const updatedItem = { ...oldItem, currentProduct: { ...product, price: 6900 } }
+    vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 2, items: [oldItem] }).mockResolvedValueOnce({ version: 2, items: [updatedItem] })
+    await store.getState().load()
+    cartStore.getState().setOrderForm({ orderType: 'OFFLINE', orderTable: '창가 요청' })
+    vi.mocked(api.cartOperation).mockRejectedValueOnce(new ApiClientError({ code: 'CART_PRICE_CHANGED' }, 409))
+
+    expect(await store.getState().checkout(10200)).toBeNull()
+    expect(api.accountCart).toHaveBeenCalledTimes(2)
+    expect(api.cartOperation).toHaveBeenCalledTimes(1)
+    expect(store.getState()).toMatchObject({ data: { version: 2, items: [updatedItem] }, priceChanged: true, pending: false, blocked: false, operation: null })
+    expect(cartStore.getState().orderForm).toMatchObject({ orderType: 'OFFLINE', orderTable: '창가 요청' })
+    expect(await store.getState().checkout(10200)).toBeNull()
+    expect(api.cartOperation).toHaveBeenCalledTimes(1)
+
+    vi.mocked(api.cartOperation).mockImplementationOnce(async (_owner, _kind, intent) => ({ operationId: intent.operationId, replayed: false, status: 'APPLIED', orderId: 90, cart: { version: 3, items: [] } }))
+    expect(await store.getState().checkout(13800)).toBe(90)
+    const [first, second] = vi.mocked(api.cartOperation).mock.calls.map((call) => call[2])
+    expect(second.operationId).not.toBe(first.operationId)
+    expect([first.expectedTotalPrice, second.expectedTotalPrice]).toEqual([10200, 13800])
+    expect(second).toMatchObject({ items: [{ productId: 7, quantity: 2 }], orderType: 'OFFLINE', orderTable: '창가 요청' })
+    expect(store.getState().priceChanged).toBe(false)
   })
   it('same-auth freshness failures hide state; actual uncertain auth writes require a new authoritative read', async () => {
     const { client, store } = ready(); vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 2, items: [row()] }); await store.getState().load()
@@ -105,8 +131,15 @@ describe('account cart ownership and exact operations', () => {
   })
   it('guards unsaved quantity and order validity at the checkout function, not just the button', async () => {
     const { store } = ready(); vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 2, items: [row(2)] }); await store.getState().load()
-    store.getState().draft(7, '3'); await store.getState().checkout(); expect(api.cartOperation).not.toHaveBeenCalled(); expect(store.getState().drafts[7]).toBe('3'); expect(useUi.getState().notice).toBeNull()
-    store.getState().draft(7, '2'); cartStore.getState().setOrderForm({ orderTable: '가'.repeat(21) }); await store.getState().checkout(); expect(api.cartOperation).not.toHaveBeenCalled()
+    store.getState().draft(7, '3'); await store.getState().checkout(0); expect(api.cartOperation).not.toHaveBeenCalled(); expect(store.getState().drafts[7]).toBe('3'); expect(useUi.getState().notice).toBeNull()
+    store.getState().draft(7, '2'); cartStore.getState().setOrderForm({ orderTable: '가'.repeat(21) }); await store.getState().checkout(0); expect(api.cartOperation).not.toHaveBeenCalled()
+  })
+  it('blocks a displayed total outside the provider order amount range', async () => {
+    const { store } = ready()
+    vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 2, items: [{ ...row(2), currentProduct: { ...product, price: 2_147_483_647 } }] })
+    await store.getState().load()
+    expect(await store.getState().checkout(4_294_967_294)).toBeNull()
+    expect(api.cartOperation).not.toHaveBeenCalled()
   })
   it('an old add failure cannot re-announce the new account error or a success notice', async () => {
     const { client, store } = ready(); vi.mocked(api.accountCart).mockResolvedValueOnce({ version: 0, items: [] }); await store.getState().load()

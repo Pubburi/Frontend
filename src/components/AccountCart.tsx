@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAccountCart } from '../state/accountCart'
+import { accountCartTotal, MAX_ACCOUNT_CART_ORDER_TOTAL, useAccountCart } from '../state/accountCart'
 import { useCart, cartTotals } from '../state/cart'
 import type { AccountCartItem } from '../types'
 import { money } from '../utils/format'
@@ -37,21 +37,34 @@ function AccountLine({ item, account }: { item: AccountCartItem; account: Accoun
 export function AccountCartView({ account }: { account: Account }) {
   const guest = useCart(), location = useLocation(), navigate = useNavigate()
   const currentLocation = useRef(location.key), mounted = useRef(false)
+  const checkoutButton = useRef<HTMLButtonElement>(null)
+  const handledPriceFocus = useRef(account.priceChanged)
   currentLocation.current = location.key
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const [clearing, setClearing] = useState<Account['scope']>(null)
   const data = account.ready && !account.error && !account.loading ? account.data : null
   const unavailable = !account.ready || account.pending || account.loading || account.blocked || !!account.operation
-  const missing = data?.items.some((item) => item.currentProduct === null)
+  const total = data ? accountCartTotal(data.items) : null
+  const missing = !!data && total === null
   const unsaved = data?.items.some((item) => Number(account.drafts[item.productId] ?? item.quantity) !== item.quantity)
-  const total = data && !missing ? data.items.reduce((sum, item) => sum + item.currentProduct!.price * item.quantity, 0) : null
   const count = data?.items.reduce((sum, item) => sum + item.quantity, 0)
   const deviceCount = cartTotals(guest.items).count
   const requestLength = Array.from(guest.orderForm.orderTable).length
-  const checkoutBlocked = unavailable || missing || unsaved || requestLength > 20
-  async function checkout(retry = false) {
+  const overOrderLimit = total !== null && total > MAX_ACCOUNT_CART_ORDER_TOTAL
+  const checkoutBlocked = unavailable || missing || unsaved || overOrderLimit || requestLength > 20
+  useEffect(() => {
+    if (!account.priceChanged) {
+      handledPriceFocus.current = false
+      return
+    }
+    if (handledPriceFocus.current || account.pending || account.loading || (account.blocked && !account.error)) return
+    handledPriceFocus.current = true
+    const button = checkoutButton.current
+    if (button && !button.disabled && document.activeElement === document.body) button.focus()
+  }, [account.priceChanged, account.pending, account.loading, account.blocked, account.error])
+  async function checkout(submit: () => Promise<number | null>) {
     const submittedLocation = location.key
-    const id = await (retry ? account.retry() : account.checkout())
+    const id = await submit()
     if (id !== null && mounted.current && currentLocation.current === submittedLocation) navigate(`/orders/${id}`)
   }
   return <section className="view cart-view">
@@ -60,6 +73,7 @@ export function AccountCartView({ account }: { account: Account }) {
       {count !== undefined && <span className="purchase-chip">계정에 담은 상품 {count}개</span>}
     </div>
     {account.error && <p className="notice error" role="alert">{account.error}</p>}
+    {account.ready && account.priceChanged && <p className="notice error" role="alert">상품 가격이 바뀌어 주문이 접수되지 않았습니다. 새 금액을 확인한 뒤 다시 주문해 주세요.</p>}
     {!account.ready && <div role="status"><p>로그인 상태 확인 전에는 계정 장바구니를 표시하지 않습니다.</p><button className="btn btn-outline-dark" onClick={() => void account.recheck()}>장바구니 로그인 상태 다시 확인</button></div>}
     {account.ready && <>
       {account.recoveryMessage && <p className="notice success" role="status">{account.recoveryMessage} {account.confirmedOrderId !== null && <Link className="text-link" to={`/orders/${account.confirmedOrderId}`}>확인한 주문 보기</Link>}</p>}
@@ -68,7 +82,7 @@ export function AccountCartView({ account }: { account: Account }) {
       {account.operation && !account.pending && <div className="settings-card purchase-recovery">
         <h2>{account.operation.kind === 'merge' ? '기기 병합' : '주문'} 결과를 확인해 주세요</h2>
         <p role="status">{account.resolveRequired ? '이전 작업을 안전하게 확인하거나 닫습니다. 새 상품이나 주문은 전송하지 않습니다.' : account.recoveryOnly ? '이전 로그인에서 보낸 작업의 접수 결과만 조회합니다.' : '같은 작업의 결과만 확인합니다. 중복으로 반영되지 않습니다.'}</p>
-        <button className="btn btn-dark" onClick={() => account.resolveRequired ? void account.resolve() : account.operation?.kind === 'checkout' && !account.recoveryOnly ? void checkout(true) : void account.retry()}>{account.resolveRequired ? '이전 작업 안전 종료·결과 확인' : account.recoveryOnly ? '이전 작업 결과 조회' : '같은 작업 결과 확인'}</button>
+        <button className="btn btn-dark" onClick={() => account.resolveRequired ? void account.resolve() : account.operation?.kind === 'checkout' && !account.recoveryOnly ? void checkout(account.retry) : void account.retry()}>{account.resolveRequired ? '이전 작업 안전 종료·결과 확인' : account.recoveryOnly ? '이전 작업 결과 조회' : '같은 작업 결과 확인'}</button>
       </div>}
     </>}
     {!!guest.items.length && <section className="settings-card guest-cart-summary purchase-merge" aria-label="이 기기에 담은 상품">
@@ -100,7 +114,7 @@ export function AccountCartView({ account }: { account: Account }) {
             <div><dt>저장 수량</dt><dd>{count}개</dd></div>
             <div className="summary-total"><dt>주문 예정 금액</dt><dd>{total === null ? '금액 미확인' : `${money(total)}원`}</dd></div>
           </dl>
-          <form className="checkout-form" onSubmit={(event) => { event.preventDefault(); if (!checkoutBlocked) void checkout() }}>
+          <form className="checkout-form" onSubmit={(event) => { event.preventDefault(); if (!checkoutBlocked && total !== null) void checkout(() => account.checkout(total)) }}>
             <label className="field-group"><span>주문 방식</span><select className="form-select" aria-label="주문 방식" value={guest.orderForm.orderType} onChange={(event) => guest.setOrderForm({ orderType: event.target.value })}>
               <option value="TAKEOUT">포장 주문</option><option value="ONLINE">온라인 주문</option><option value="OFFLINE">매장 주문</option>
             </select></label>
@@ -111,8 +125,9 @@ export function AccountCartView({ account }: { account: Account }) {
             </label>
             {missing && <p className="purchase-feedback" role="status">삭제된 상품을 제거한 뒤 주문해 주세요.</p>}
             {unsaved && <p className="purchase-feedback" role="status">바꾼 수량을 먼저 저장한 뒤 주문해 주세요. 금액은 저장 수량 기준입니다.</p>}
+            {overOrderLimit && <p className="purchase-feedback" role="status">주문 금액 한도를 넘었습니다. 수량을 줄이거나 상품을 빼 주세요.</p>}
             {requestLength > 20 && <p className="purchase-feedback" role="status">요청 사항을 20자 이내로 줄여 주세요.</p>}
-            <button className="btn btn-gold btn-wide" disabled={checkoutBlocked}>{total === null ? '금액 미확인 · 주문할 수 없음' : `${money(total)}원 주문하기`}</button>
+            <button ref={checkoutButton} className="btn btn-gold btn-wide" disabled={checkoutBlocked}>{total === null ? '금액 미확인 · 주문할 수 없음' : `${money(total)}원 주문하기`}</button>
             <p className="muted">시연용 주문입니다. 실제 결제와 매장 수령은 지원하지 않습니다. 접수된 수량만 장바구니에서 빠집니다.</p>
           </form>
         </aside>

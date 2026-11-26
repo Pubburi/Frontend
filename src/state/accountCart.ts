@@ -11,7 +11,7 @@ import type { AccountCart, CartIntentItem, Product, User } from '../types'
 const authKeys = ['login', 'join', 'logout', 'settings-password']
 const authPending = () => authKeys.some((key) => useUi.getState().pending[key])
 type Scope = { auth: Query; id: string; role: string }
-type Operation = { scope: Scope; kind: 'merge' | 'checkout'; resolveRequired?: boolean; payload: { operationId: string; expectedVersion: number; items: CartIntentItem[]; orderType?: string; orderTable?: string | null }; guest?: CartSubmission; form?: ReturnType<typeof cartStore.getState>['orderForm'] }
+type Operation = { scope: Scope; kind: 'merge' | 'checkout'; resolveRequired?: boolean; payload: { operationId: string; expectedVersion: number; items: CartIntentItem[]; orderType?: string; orderTable?: string | null; expectedTotalPrice?: number }; guest?: CartSubmission; form?: ReturnType<typeof cartStore.getState>['orderForm'] }
 export function checkedCart(value: unknown): AccountCart {
   const cart = value as AccountCart
   if (!cart || !Number.isSafeInteger(cart.version) || cart.version < 0 || !Array.isArray(cart.items) || cart.items.length > 100) throw new Error('장바구니 응답을 확인하지 못했습니다.')
@@ -25,15 +25,24 @@ export function checkedCart(value: unknown): AccountCart {
   }
   return cart
 }
+export function accountCartTotal(items: AccountCart['items']): number | null {
+  let total = 0
+  for (const { currentProduct, quantity } of items) {
+    if (currentProduct === null) return null
+    total += currentProduct.price * quantity
+  }
+  return total
+}
+export const MAX_ACCOUNT_CART_ORDER_TOTAL = 2_147_483_647
 interface State {
   scope: Scope | null; mode: 'account' | 'guest' | 'unknown'; ready: boolean; legacy: boolean
   data: AccountCart | null; loading: boolean; pending: boolean; blocked: boolean; error: string; operation: Operation | null
-  recoveryOnly: boolean; resolveRequired: boolean; recoveryMessage: string; confirmedOrderId: number | null
+  recoveryOnly: boolean; resolveRequired: boolean; recoveryMessage: string; confirmedOrderId: number | null; priceChanged: boolean
   drafts: Record<number, string>; draft: (productId: number, value: string) => void
   load: () => Promise<void>; recheck: () => Promise<void>
   add: (product: Product, quantity?: number) => Promise<boolean>
   quantity: (productId: number, value: number) => Promise<void>; remove: (productId: number | null) => Promise<void>
-  merge: () => Promise<number | null>; checkout: () => Promise<number | null>; retry: () => Promise<number | null>; resolve: () => Promise<null>
+  merge: () => Promise<number | null>; checkout: (expectedTotalPrice: number) => Promise<number | null>; retry: () => Promise<number | null>; resolve: () => Promise<null>
 }
 const stores = new WeakMap<QueryClient, ReturnType<typeof createAccountCart>>()
 export function createAccountCart(client: QueryClient) {
@@ -106,7 +115,8 @@ export function createAccountCart(client: QueryClient) {
       const scope = get().scope
       if (!scope || op.scope !== scope || !owns(scope) || writes.has(scope.id)) return null
       recoveries.set(scope.id, op)
-      set({ pending: true, error: '', operation: op, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null })
+      set({ pending: true, error: '', operation: op, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null, priceChanged: op.kind === 'merge' && get().priceChanged })
+      let refreshPrice = false
       const request = (async () => {
         try {
           const result = await api.cartOperation(scope.id, op.kind, op.payload)
@@ -127,15 +137,20 @@ export function createAccountCart(client: QueryClient) {
         } catch (error) {
           if (owns(scope)) {
             const status = error instanceof ApiClientError ? error.status : 0
+            refreshPrice = op.kind === 'checkout' && error instanceof ApiClientError && status === 409 && error.code === 'CART_PRICE_CHANGED'
             // The provider can return401 from its post-commit session check.
             if ([400, 403, 404, 409].includes(status)) { if (recoveries.get(scope.id) === op) recoveries.delete(scope.id); set({ operation: null, recoveryOnly: false, resolveRequired: false }) }
-            failed(scope, error, true)
+            if (refreshPrice) set({ priceChanged: true, blocked: true })
+            else failed(scope, error, true)
           }
           return null
         } finally { if (get().scope === scope) set({ pending: false }) }
       })()
       writes.set(scope.id, request)
-      try { return await request } finally { if (writes.get(scope.id) === request) writes.delete(scope.id) }
+      try { return await request } finally {
+        if (writes.get(scope.id) === request) writes.delete(scope.id)
+        if (refreshPrice && owns(scope)) await load()
+      }
     }
     async function receipt(op: Operation, retire = false): Promise<null> {
       const scope = get().scope
@@ -146,7 +161,8 @@ export function createAccountCart(client: QueryClient) {
         await writes.get(scope.id)
         if (!owns(scope)) return null
         const result = retire ? await api.resolveCartOperation(scope.id, op.payload.operationId, { kind: op.kind === 'merge' ? 'MERGE' : 'CHECKOUT', items: op.payload.items,
-          orderType: op.payload.orderType ?? null, orderTable: op.payload.orderTable ?? null }) : await api.cartOperationResult(scope.id, op.payload.operationId)
+          orderType: op.payload.orderType ?? null, orderTable: op.payload.orderTable ?? null,
+          ...(op.kind === 'checkout' && { expectedTotalPrice: op.payload.expectedTotalPrice }) }) : await api.cartOperationResult(scope.id, op.payload.operationId)
         const cart = checkedCart(result.cart)
         if (result.operationId !== op.payload.operationId || typeof result.replayed !== 'boolean' || !retire && result.replayed !== true ||
           !['APPLIED', 'RETIRED'].includes(result.status) ||
@@ -172,7 +188,7 @@ export function createAccountCart(client: QueryClient) {
     }
     const canSubmit = () => get().ready && !!get().scope && !!get().data && !get().pending && !get().loading && !get().blocked && !get().operation
     return {
-      scope: null, mode: 'unknown', ready: false, legacy: false, data: null, loading: false, pending: false, blocked: false, error: '', operation: null, drafts: {}, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null,
+      scope: null, mode: 'unknown', ready: false, legacy: false, data: null, loading: false, pending: false, blocked: false, error: '', operation: null, drafts: {}, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null, priceChanged: false,
       draft: (id, value) => set((state) => ({ drafts: { ...state.drafts, [id]: value } })),
       load,
       async recheck() {
@@ -205,15 +221,16 @@ export function createAccountCart(client: QueryClient) {
         if (!guest.items.length) return null
         return operation({ scope: get().scope!, kind: 'merge', guest, payload: { operationId: crypto.randomUUID(), expectedVersion: get().data!.version, items: guest.items.map(({ productId, quantity }) => ({ productId, quantity })) } })
       },
-      async checkout() {
-        if (!canSubmit() || !get().data!.items.length || get().data!.items.some((item) => !item.currentProduct)) return null
-        if (get().data!.items.some((item) => Number(get().drafts[item.productId] ?? item.quantity) !== item.quantity)) return null
+      async checkout(expectedTotalPrice) {
+        const { data, drafts, scope } = get()
+        if (!canSubmit() || !data?.items.length || expectedTotalPrice > MAX_ACCOUNT_CART_ORDER_TOTAL || accountCartTotal(data.items) !== expectedTotalPrice) return null
+        if (data.items.some((item) => Number(drafts[item.productId] ?? item.quantity) !== item.quantity)) return null
         const form = cartStore.getState().orderForm
         if (Array.from(form.orderTable).length > 20 || !['TAKEOUT', 'ONLINE', 'OFFLINE'].includes(form.orderType)) {
           useUi.getState().error(new Error('주문 방식과 요청 사항을 확인해 주세요. 요청은20자까지 입력할 수 있습니다.')); return null
         }
-        return operation({ scope: get().scope!, kind: 'checkout', form, payload: { operationId: crypto.randomUUID(), expectedVersion: get().data!.version,
-          items: get().data!.items.map(({ productId, quantity }) => ({ productId, quantity })), orderType: form.orderType, orderTable: form.orderTable } })
+        return operation({ scope: scope!, kind: 'checkout', form, payload: { operationId: crypto.randomUUID(), expectedVersion: data.version, expectedTotalPrice,
+          items: data.items.map(({ productId, quantity }) => ({ productId, quantity })), orderType: form.orderType, orderTable: form.orderTable } })
       },
       retry: async () => get().operation ? get().resolveRequired ? receipt(get().operation!, true) : get().recoveryOnly ? receipt(get().operation!) : operation(get().operation!) : null,
       resolve: async () => get().operation ? receipt(get().operation!, true) : null,
@@ -221,19 +238,19 @@ export function createAccountCart(client: QueryClient) {
   })
   function sync() {
     const query = cache.find({ queryKey: ['session'], exact: true }), state = store.getState()
-    if (!query) { if (state.scope || state.mode !== 'unknown') store.setState({ scope: null, mode: 'unknown', ready: false, legacy: false, data: null, operation: null, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null, drafts: {}, error: '', pending: false, loading: false, blocked: false }); return }
-    if (authPending()) { if (state.scope || state.ready) store.setState({ scope: null, mode: 'unknown', ready: false, data: null, operation: null, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null, drafts: {}, pending: false, loading: false }); return }
+    if (!query) { if (state.scope || state.mode !== 'unknown') store.setState({ scope: null, mode: 'unknown', ready: false, legacy: false, data: null, operation: null, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null, priceChanged: false, drafts: {}, error: '', pending: false, loading: false, blocked: false }); return }
+    if (authPending()) { if (state.scope || state.ready) store.setState({ scope: null, mode: 'unknown', ready: false, data: null, operation: null, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null, priceChanged: false, drafts: {}, pending: false, loading: false }); return }
     if (query.state.status !== 'success' || query.state.fetchStatus !== 'idle') { if (state.ready) store.setState({ ready: false }); return }
     if (fence) {
       if (query === fence.auth && (completed.get(query) ?? -1) <= fence.sequence) { if (state.ready) store.setState({ ready: false }); return }
       fence = null
     }
     const user = query.state.data as User | null
-    if (user === null) { if (state.mode !== 'guest' || !state.ready) store.setState({ scope: null, mode: 'guest', ready: true, data: null, operation: null, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null, drafts: {}, legacy: false, error: '', blocked: false, pending: false, loading: false }); return }
+    if (user === null) { if (state.mode !== 'guest' || !state.ready) store.setState({ scope: null, mode: 'guest', ready: true, data: null, operation: null, recoveryOnly: false, resolveRequired: false, recoveryMessage: '', confirmedOrderId: null, priceChanged: false, drafts: {}, legacy: false, error: '', blocked: false, pending: false, loading: false }); return }
     if (!user || typeof user.id !== 'string') return
     if (state.scope?.auth === query && state.scope.id === user.id && state.scope.role === user.role) { if (!state.ready) store.setState({ ready: true }); return }
     const recovery = recoveries.get(user.id) ?? null
-    store.setState({ scope: { auth: query, id: user.id, role: user.role }, mode: 'account', ready: true, legacy: false, data: null, operation: recovery, recoveryOnly: !!recovery, resolveRequired: !!recovery?.resolveRequired, recoveryMessage: '', confirmedOrderId: null, drafts: {}, pending: false, loading: false, blocked: false, error: '' })
+    store.setState({ scope: { auth: query, id: user.id, role: user.role }, mode: 'account', ready: true, legacy: false, data: null, operation: recovery, recoveryOnly: !!recovery, resolveRequired: !!recovery?.resolveRequired, recoveryMessage: '', confirmedOrderId: null, priceChanged: false, drafts: {}, pending: false, loading: false, blocked: false, error: '' })
   }
   cache.subscribe((event) => {
     if (event.query.queryKey.length !== 1 || event.query.queryKey[0] !== 'session') return
