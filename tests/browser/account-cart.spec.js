@@ -6,7 +6,7 @@ const user = (id = 'member') => ({ id, name: id === 'member' ? '카트 회원' :
 const row = (id = 7, quantity = 1) => ({ productId: id, productName: product(id).name, currentProduct: product(id), quantity })
 const ok = (data) => ({ data, error: null }), bad = (code) => ({ data: null, error: { code } })
 const emptyPage = (items = []) => ({ items, total: items.length, totalPages: items.length ? 1 : 0, page: 1, size: 12, hasNext: false })
-const intentOf = (kind, body) => JSON.stringify({ kind: kind.toLowerCase(), items: body.items, orderType: kind.toLowerCase() === 'merge' ? null : body.orderType, orderTable: kind.toLowerCase() === 'merge' ? null : body.orderTable })
+const intentOf = (kind, body) => JSON.stringify({ kind: kind.toLowerCase(), items: body.items, orderType: kind.toLowerCase() === 'merge' ? null : body.orderType, orderTable: kind.toLowerCase() === 'merge' ? null : body.orderTable, expectedTotalPrice: body.expectedTotalPrice ?? null })
 const test = base.extend({ cartApi: [async ({ page }, use) => {
   const s = { user: user(), carts: { member: { version: 0, items: [] }, other: { version: 0, items: [] } }, receipts: new Map(), orders: [], calls: [], errors: [], unexpected: [], readStatus: 0, writeStatus: 0, afterApply401: null, keepUserAfter401: false, lost: null, hold: null, products: [product(7), product(8)] }
   page.on('pageerror', (e) => s.errors.push(e.message))
@@ -50,17 +50,27 @@ const test = base.extend({ cartApi: [async ({ page }, use) => {
       let orderId = null
       if (kind === 'merge' || kind === 'checkout') {
         const next = structuredClone(cart.items)
+        const details = []
         for (const item of body.items) {
           const current = next.find((line) => line.productId === item.productId)
           const actual = s.products.find((p) => p.id === item.productId)
           if (!actual || kind === 'merge' && (current?.quantity ?? 0) + item.quantity > 99 || kind === 'checkout' && (!current || current.quantity < item.quantity)) return reply(null, 409)
           if (kind === 'merge') { if (current) current.quantity += item.quantity; else next.push(row(item.productId, item.quantity)) }
-          else current.quantity -= item.quantity
+          else {
+            current.quantity -= item.quantity
+            details.push({ id: details.length, productId: item.productId, name: actual.name, quantity: item.quantity,
+              unitPrice: actual.price, sumPrice: actual.price * item.quantity, priceBasis: 'SNAPSHOT' })
+          }
         }
         if (next.filter((item) => item.quantity).length > 100) return reply(null, 409)
         if (kind === 'checkout') {
+          const totalPrice = details.reduce((sum, item) => sum + item.sumPrice, 0)
+          if (body.expectedTotalPrice != null && body.expectedTotalPrice !== totalPrice) {
+            s.receipts.set(receiptKey, { intent, status: 'RETIRED', orderId: null })
+            return reply(null, 409, 'CART_PRICE_CHANGED')
+          }
           orderId = s.orders.length + 90
-          s.orders.push({ oId: orderId, userId: id, orderType: body.orderType, orderTable: body.orderTable, orderTime: '2026-11-08T00:00:00', completed: 'N', priceBasis: 'SNAPSHOT', totalPrice: body.items.reduce((sum, item) => sum + product(item.productId).price * item.quantity, 0), details: body.items.map((item, index) => ({ id: index, productId: item.productId, name: product(item.productId).name, quantity: item.quantity, unitPrice: product(item.productId).price, sumPrice: product(item.productId).price * item.quantity, priceBasis: 'SNAPSHOT' })) })
+          s.orders.push({ oId: orderId, userId: id, orderType: body.orderType, orderTable: body.orderTable, orderTime: '2026-11-08T00:00:00', completed: 'N', priceBasis: 'SNAPSHOT', totalPrice, details })
         }
         cart.items = next.filter((item) => item.quantity); cart.version++
         s.receipts.set(receiptKey, { intent, status: 'APPLIED', orderId })
@@ -182,11 +192,18 @@ test('320px에서 긴 상품명과 주문 예정 금액이 요약 영역 안에 
   await expect(own(page).getByRole('link', { name, exact: true })).toBeVisible()
   const summary = page.getByRole('complementary', { name: '주문 요약', exact: true })
   const submit = summary.getByRole('button', { name: '2,147,483,647원 주문하기', exact: true })
-  await expect(submit).toBeVisible()
+  await expect(submit).toBeEnabled()
   const bounds = await submit.boundingBox()
   expect(bounds.height).toBeGreaterThanOrEqual(44)
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(320)
   expect(await summary.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(await summary.evaluate((el) => el.clientWidth))
+  s.carts.member.items[0].quantity = 2
+  s.carts.member.version++
+  await own(page).getByRole('button', { name: '계정 장바구니 새로고침', exact: true }).click()
+  await expect(summary.getByRole('button', { name: '4,294,967,294원 주문하기', exact: true })).toBeDisabled()
+  await expect(summary.getByRole('status')).toHaveText('주문 금액 한도를 넘었습니다. 수량을 줄이거나 상품을 빼 주세요.')
+  await summary.locator('form').evaluate((form) => form.requestSubmit())
+  expect(s.calls.filter((call) => call.path.endsWith('/cart/checkout'))).toHaveLength(0)
 })
 test('병합 응답유실은 같은UUID로 현재결과만 확인하고 clear뒤에도 부활·중복합산 없음', async ({ page, cartApi: s }) => {
   await localCart(page); s.lost = 'merge'; await page.goto('/cart'); await page.getByRole('button', { name: '기기 상품을 계정에 합치기', exact: true }).click()
@@ -291,6 +308,38 @@ test('미저장 수량이 있는 주문은 버튼과 다른submit 경로 모두 
   await expect(page.getByRole('alert')).toHaveCount(0); await expect(page.getByText(/바꾼 수량을 먼저 저장한 뒤 주문해 주세요/)).toHaveCount(0)
 })
 
+test('가격이 바뀐 주문은 최신 금액과 기존 요청을 유지하고 Enter로 다시 확인한다', async ({ page, cartApi: s }) => {
+  s.carts.member = { version: 1, items: [row(8, 2)] }
+  await page.goto('/cart')
+  await page.getByLabel('주문 방식', { exact: true }).selectOption('OFFLINE')
+  await page.getByLabel('테이블·요청 사항', { exact: true }).fill('창가 요청')
+  const firstSubmit = page.getByRole('button', { name: '10,000원 주문하기', exact: true })
+  await firstSubmit.focus()
+  s.products[1] = { ...product(8), price: 7000 }
+  s.carts.member.items[0].currentProduct = s.products[1]
+  await page.keyboard.press('Enter')
+
+  await expect(page.getByRole('alert')).toHaveText('상품 가격이 바뀌어 주문이 접수되지 않았습니다. 새 금액을 확인한 뒤 다시 주문해 주세요.')
+  const confirm = page.getByRole('button', { name: '14,000원 주문하기', exact: true })
+  await expect(confirm).toBeFocused()
+  await expect(confirm).toBeEnabled()
+  await expect(own(page).getByRole('spinbutton')).toHaveValue('2')
+  await expect(page.getByLabel('주문 방식', { exact: true })).toHaveValue('OFFLINE')
+  await expect(page.getByLabel('테이블·요청 사항', { exact: true })).toHaveValue('창가 요청')
+  const checkoutCalls = () => s.calls.filter((call) => call.path.endsWith('/cart/checkout'))
+  expect(checkoutCalls()).toHaveLength(1)
+  expect(checkoutCalls()[0].body.expectedTotalPrice).toBe(10000)
+  expect(s.orders).toHaveLength(0)
+  await page.keyboard.press('Enter')
+
+  await expect(page.getByRole('heading', { name: '주문 #90', exact: true })).toBeVisible()
+  expect(checkoutCalls()).toHaveLength(2)
+  expect(checkoutCalls()[1].body.expectedTotalPrice).toBe(14000)
+  expect(checkoutCalls()[1].body.operationId).not.toBe(checkoutCalls()[0].body.operationId)
+  expect(s.orders).toHaveLength(1)
+  expect(s.orders[0]).toMatchObject({ totalPrice: 14000, orderType: 'OFFLINE', orderTable: '창가 요청' })
+})
+
 for (const kind of ['merge', 'checkout']) for (const winner of ['original', 'resolve']) test(`receipt404 ${kind}의 ${winner} 먼저: 미확정 nonce를 안전하게 끝낸 뒤에만 새작업 허용`, async ({ page, cartApi: s }, info) => {
   let oldIntent
   if (kind === 'merge') await localCart(page)
@@ -311,6 +360,8 @@ for (const kind of ['merge', 'checkout']) for (const winner of ['original', 'res
     s.receipts.set(`member:${oldIntent.operationId}`, { intent: intentOf(kind, oldIntent), status: 'APPLIED', orderId: kind === 'checkout' ? 90 : null })
   }
   await page.getByRole('button', { name: '이전 작업 안전 종료·결과 확인', exact: true }).click(); await expect(page.getByRole('button', { name: '이전 작업 안전 종료·결과 확인', exact: true })).toHaveCount(0); await expect(page).toHaveURL('/cart')
+  const resolution = s.calls.find((call) => call.path.endsWith('/resolve'))
+  expect(resolution.body.expectedTotalPrice).toBe(kind === 'checkout' ? 0 : undefined)
   if (winner === 'resolve') {
     const late = await page.evaluate(async ({ kind, body }) => { const response = await fetch(`/api/users/me/cart/${kind}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Pubburi-Account-Owner': 'member' }, body: JSON.stringify(body) }); return { status: response.status, body: await response.json() } }, { kind, body: oldIntent })
     expect(late.status).toBe(409); expect(late.body.error.code).toBe('CART_OPERATION_RETIRED'); expect(s.orders).toHaveLength(0)
