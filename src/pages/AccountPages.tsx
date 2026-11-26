@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useNavigationType, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '../services/api'
 import { safeRedirect, useSession } from '../queries'
@@ -10,6 +10,7 @@ import { useUi } from '../state/ui'
 import { profilePrivacy } from '../state/authReadPrivacy'
 import { Empty, Image, Loading, Pagination, Quantity } from '../components/ui'
 import { OrderCard } from '../components/OrderLines'
+import { ORDER_HISTORY_PAGE_SIZE, orderHistorySearch, parseOrderHistoryPage } from '../orders'
 import { money, productImage } from '../utils/format'
 import { validAccountName, validPassword } from '../settings'
 import { categories } from '../catalog'
@@ -227,7 +228,8 @@ export function ProfilePage() {
   const ui = useUi()
   const queryCache = client.getQueryCache()
   const authOwner = queryCache.find({ queryKey: ['session'], exact: true })
-  const [page, setPage] = useState(1)
+  const page = parseOrderHistoryPage(location.search)
+  const repairedPage = useNavigationType() === 'REPLACE' && location.state?.orderHistoryRepair === true
   const orderHeading = useRef<HTMLHeadingElement>(null)
   const profileKey = ['account', user?.id, 'profile'] as const
   const ordersKey = ['account', user?.id, 'orders', page] as const
@@ -238,7 +240,7 @@ export function ProfilePage() {
   })
   const orders = useQuery<Page<Order>>({
     queryKey: ordersKey,
-    queryFn: () => api.userOrders(user!.id, { page, size: 10 }),
+    queryFn: () => api.userOrders(user!.id, { page, size: ORDER_HISTORY_PAGE_SIZE }),
     enabled: Boolean(user),
   })
   const privacy = profilePrivacy(client)
@@ -259,19 +261,20 @@ export function ProfilePage() {
     if (auth && auth === authOwner && auth.state.data === user && auth.state.status === 'success' && auth.state.fetchStatus === 'idle' &&
         currentOrders?.state.status === 'success' && currentOrders.state.fetchStatus === 'idle' && currentOrders.state.data === orders.data) {
       client.removeQueries({ queryKey: ['account', user.id, 'orders', repairOrdersPage], exact: true, type: 'inactive' })
-      setPage(repairOrdersPage)
+      navigate({ search: orderHistorySearch(repairOrdersPage, location.search), hash: location.hash },
+        { replace: true, state: { orderHistoryRepair: true } })
     }
-  }, [repairOrdersPage, page, orders.data, user, authOwner, queryCache, client, unauthorizedReads.length, ui.pending])
+  }, [repairOrdersPage, page, orders.data, user, authOwner, queryCache, client, unauthorizedReads.length, ui.pending, navigate, location.search, location.hash])
   const orderAnchorReady = Boolean(user && !profile.isPending && !unauthorizedReads.length)
   useEffect(() => {
-    if (location.hash !== '#order-history' || !orderAnchorReady) return
+    if (repairedPage || location.hash !== '#order-history' || !orderAnchorReady) return
     const frame = requestAnimationFrame(() => {
       const heading = orderHeading.current
       heading?.focus({ preventScroll: true })
       heading?.scrollIntoView({ block: 'start' })
     })
     return () => cancelAnimationFrame(frame)
-  }, [location.key, location.hash, orderAnchorReady])
+  }, [location.key, location.hash, orderAnchorReady, repairedPage])
   function loginAgain() {
     const currentAuth = queryCache.find({ queryKey: ['session'], exact: true })
     if (!user || !currentAuth || currentAuth !== authOwner ||
@@ -288,7 +291,7 @@ export function ProfilePage() {
     ui.clear()
     client.clear()
     client.setQueryData(['session'], null)
-    navigate(`/account?${new URLSearchParams({ redirect: location.pathname + location.search })}`)
+    navigate(`/account?${new URLSearchParams({ redirect: location.pathname + location.search + location.hash })}`)
   }
   if (user && unauthorizedReads.length)
     return (
@@ -358,9 +361,9 @@ export function ProfilePage() {
         ) : orders.data.items.length ? (
           <div className="order-list">
             {orders.data.items.map((order) => (
-              <OrderCard key={order.oId} order={order} />
+              <OrderCard key={order.oId} order={order} page={page} />
             ))}
-            <Pagination page={orders.data} onChange={setPage} />
+            <Pagination page={orders.data} onChange={(next) => navigate({ search: orderHistorySearch(next, location.search), hash: '#order-history' })} />
           </div>
         ) : (
           <Empty
