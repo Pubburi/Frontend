@@ -96,13 +96,91 @@ for (const width of [1280, 390]) test(`F08 ${width}px 같은 화면 테마 전�
   await info.attach(`product-themes-${width}.png`, { path: screenshot, contentType: 'image/png' })
   const first = cards(page).first().getByRole('link')
   await page.keyboard.press('Tab'); await expect(first).toBeFocused()
+  await first.evaluate((link) => link.scrollIntoView({ block: 'center', behavior: 'instant' }))
+  const before = await first.evaluate((link) => ({ top: link.getBoundingClientRect().top, key: history.state?.key }))
+  await page.evaluate(() => { history.scrollRestoration = 'manual' })
   await first.press('Enter')
   await expect(page.getByRole('heading', { name: large.product.name, level: 1, exact: true })).toBeVisible()
-  await page.goBack()
+  const back = page.getByRole('link', { name: '테마 목록으로 돌아가기', exact: true })
+  await expect(back).toHaveAttribute('href', '/?occasion=demo')
+  if (width === 390) await back.press('Enter')
+  else await page.goBack()
+  await expect(page).toHaveURL('/?occasion=demo')
   await expect(option(page, '음식 자리')).toHaveAttribute('aria-pressed', 'true')
   await expect(cards(page)).toHaveCount(2)
+  await expect(first).toBeFocused()
+  await expect.poll(() => first.evaluate((link, top) => Math.abs(link.getBoundingClientRect().top - top), before.top)).toBeLessThan(4)
+  expect(await page.evaluate(() => history.state?.key)).toBe(before.key)
   expect(await ids(page)).toEqual([9, 8])
   expect(fixture.themeReads).toBe(2)
+})
+
+test('상세에서 창 높이를 줄인 뒤 돌아오면 방문한 상품이 현재 화면의 포커스와 시야 안에 있다', async ({ page }) => {
+  const smallerHeight = 570
+  await page.setViewportSize({ width: 1280, height: 1200 })
+  await page.goto('/')
+  await option(page, '음식 자리').press('Enter')
+  const chosen = panel(page).getByRole('link', { name: large.product.name, exact: true })
+  const original = await chosen.evaluate((link) => {
+    history.scrollRestoration = 'manual'
+    link.focus({ preventScroll: true })
+    window.scrollBy({ top: link.getBoundingClientRect().top - (innerHeight - 100), behavior: 'instant' })
+    const { top, bottom } = link.getBoundingClientRect()
+    return { top, bottom, viewportHeight: innerHeight }
+  })
+  expect(original.top).toBeGreaterThan(smallerHeight)
+  expect(original.bottom).toBeLessThanOrEqual(original.viewportHeight)
+  await chosen.press('Enter')
+  await expect(page.getByRole('heading', { name: large.product.name, level: 1, exact: true })).toBeVisible()
+
+  await page.setViewportSize({ width: 1280, height: smallerHeight })
+  await page.goBack()
+  await expect(chosen).toBeFocused()
+  await expect.poll(() => chosen.evaluate((link) => {
+    const { top, bottom } = link.getBoundingClientRect()
+    const inset = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0
+    return top >= inset && bottom <= innerHeight
+  })).toBe(true)
+})
+
+test('최신 테마에서 방문한 상품이 사라지면 선택한 테마 버튼으로 복귀한다', async ({ page, fixture }) => {
+  await page.goto('/')
+  await option(page, '음식 자리').press('Enter')
+  await panel(page).getByRole('link', { name: large.product.name, exact: true }).press('Enter')
+  await expect(page.getByRole('heading', { name: large.product.name, level: 1, exact: true })).toBeVisible()
+  fixture.replies.push({ status: 200, data: wire([[small, middle], [small, middle], [middle]]) })
+  await page.goBack()
+  await expect(cards(page)).toHaveCount(1)
+  expect(await ids(page)).toEqual([8])
+  await expect(option(page, '음식 자리')).toBeFocused()
+  await expect(option(page, '음식 자리')).toHaveAttribute('aria-pressed', 'true')
+  expect(fixture.themeReads).toBe(2)
+})
+
+for (const changesTheme of [true, false]) test(`돌아오는 테마 응답을 기다리는 동안 ${changesTheme ? '다른 테마 선택' : '전체 주류 이동'}을 우선한다`, async ({ page, fixture }) => {
+  await page.goto('/')
+  await option(page, '음식 자리').press('Enter')
+  await panel(page).getByRole('link', { name: large.product.name, exact: true }).press('Enter')
+  await expect(page.getByRole('heading', { name: large.product.name, level: 1, exact: true })).toBeVisible()
+  const gate = fixture.hold()
+  await page.goBack()
+  await expect.poll(() => gate.started).toBe(true)
+  if (changesTheme) {
+    await option(page, '선물').press('Enter')
+    gate.release()
+    await expect(cards(page)).toHaveCount(2)
+    expect(await ids(page)).toEqual([7, 8])
+    await expect(option(page, '선물')).toHaveAttribute('aria-pressed', 'true')
+    await expect(option(page, '선물')).toBeFocused()
+  } else {
+    await page.getByRole('link', { name: '전체 주류 둘러보기', exact: true }).press('Enter')
+    const search = page.getByLabel('상품 검색', { exact: true })
+    await search.focus()
+    gate.release()
+    await expect(page).toHaveURL('/products')
+    await expect(search).toBeFocused()
+    await expect(panel(page)).toHaveCount(0)
+  }
 })
 
 test('F08 첫 조회가 늦어도 마지막으로 고른 테마에만 목록을 표시', async ({ page, fixture }) => {

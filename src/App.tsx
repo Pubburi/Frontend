@@ -19,7 +19,7 @@ import { cartTotals, useCart } from './state/cart'
 import { useAccountCart } from './state/accountCart'
 import { useUi } from './state/ui'
 import { Empty, Image, Loading } from './components/ui'
-import { HomePage, ProductsPage, ProductDetailPage, catalogOriginForProduct, type CatalogProductOrigin } from './pages/CatalogPages'
+import { HomePage, ProductsPage, ProductDetailPage, productOriginForProduct, type ProductOrigin } from './pages/CatalogPages'
 import { AccountPage, CartPage, ProfilePage } from './pages/AccountPages'
 import { PreferencesPage } from './pages/PreferencesPage'
 import { FavoritesPage } from './pages/FavoritesPage'
@@ -89,10 +89,11 @@ export function App() {
   const navigate = useNavigate()
   const location = useLocation()
   const detail = useMatch('/products/:id')
-  const detailOrigin = catalogOriginForProduct(location.state?.catalogProductOrigin, detail?.params.id)
+  const detailOrigin = productOriginForProduct(location.state?.catalogProductOrigin, detail?.params.id)
+  const catalogOrigin = detailOrigin?.theme === undefined ? detailOrigin : null
   const comparisonOrigin = location.pathname === '/products' ? location.pathname + location.search + location.hash :
     location.pathname === '/compare' && typeof location.state?.catalogCompareFrom === 'string' &&
-    /^\/products(?:[?#]|$)/.test(location.state.catalogCompareFrom) ? location.state.catalogCompareFrom : detailOrigin?.url ?? null
+    /^\/products(?:[?#]|$)/.test(location.state.catalogCompareFrom) ? location.state.catalogCompareFrom : catalogOrigin?.url ?? null
   const currentLocation = useRef(location.key)
   currentLocation.current = location.key
   const [menu, setMenu] = useState(false)
@@ -117,17 +118,17 @@ export function App() {
     }
   }, [menu])
   const navigationType = useNavigationType()
-  const previousLocation = useRef<{ key: string; destination: string; productOrigin?: CatalogProductOrigin } | null>(null)
-  const [catalogReturn, setCatalogReturn] = useState<CatalogProductOrigin | null>(null)
+  const previousLocation = useRef<{ key: string; destination: string; productOrigin: ProductOrigin | null } | null>(null)
+  const [productReturn, setProductReturn] = useState<ProductOrigin | null>(null)
   useEffect(() => {
     const previous = previousLocation.current
     const destination = location.pathname + location.search + location.hash
-    previousLocation.current = { key: location.key, destination, productOrigin: location.state?.catalogProductOrigin }
+    previousLocation.current = { key: location.key, destination, productOrigin: detailOrigin }
     setMenu(false)
     const origin = previous?.productOrigin
     const returned = navigationType === 'POP' && origin && origin.key === location.key && origin.url === destination &&
       previous?.destination === `/products/${origin.productId}` ? origin : null
-    setCatalogReturn(returned)
+    setProductReturn(returned)
     // Preserve the catalog viewport only on a return to the entry that opened the product.
     if (returned || previous?.destination === destination) return
     if (location.hash) {
@@ -150,7 +151,7 @@ export function App() {
     const repairedPage = navigationType === 'REPLACE' && previous && pageRepair?.fromLocationKey === previous.key &&
       pageRepair.destination === destination
     if (!focusedResults && !removedFilter && !repairedPage) window.scrollTo({ top: 0 })
-  }, [location.key, location.pathname, location.search, location.hash, navigationType])
+  }, [location.key, location.pathname, location.search, location.hash, navigationType, detailOrigin])
   async function logout() {
     const submittedLocation = location.key
     const result = await ui.run(
@@ -251,8 +252,8 @@ export function App() {
         )}
         <Suspense fallback={<Loading label="화면을 불러오는 중입니다." />}>
           <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/products" element={<ProductsPage catalogReturn={catalogReturn?.key === location.key ? catalogReturn : null} />} />
+            <Route path="/" element={<HomePage productReturn={productReturn?.key === location.key && productReturn.theme ? productReturn : null} />} />
+            <Route path="/products" element={<ProductsPage catalogReturn={productReturn?.key === location.key && productReturn.theme === undefined ? productReturn : null} />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/markets/:id" element={<MarketDetailPage />} />
             <Route path="/orders/:id" element={<OrderDetailPage />} />
