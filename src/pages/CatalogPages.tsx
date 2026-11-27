@@ -234,15 +234,20 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: ProductOrigin |
         return
       }
       if (catalogReturn.keyboard) target.focus({ preventScroll: true })
-      window.scrollBy({ top: target.getBoundingClientRect().top - catalogReturn.top, behavior: 'instant' })
+      const { top, height } = target.getBoundingClientRect()
+      const inset = Number.parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0
+      if (catalogReturn.top >= inset && catalogReturn.top + height <= window.innerHeight) {
+        window.scrollBy({ top: top - catalogReturn.top, behavior: 'instant' })
+      } else {
+        target.scrollIntoView({ block: 'center', behavior: 'instant' })
+      }
     }
-    window.addEventListener('pointerdown', discard, { once: true })
-    window.addEventListener('wheel', discard, { once: true, passive: true })
+    const interactions = ['keydown', 'pointerdown', 'wheel']
+    for (const event of interactions) window.addEventListener(event, discard, { once: true, passive: true })
     const frame = repairPage === null && !products.isPending && products.fetchStatus !== 'fetching' ? requestAnimationFrame(restore) : null
     return () => {
       if (frame !== null) cancelAnimationFrame(frame)
-      window.removeEventListener('pointerdown', discard)
-      window.removeEventListener('wheel', discard)
+      for (const event of interactions) window.removeEventListener(event, discard)
     }
   }, [catalogReturn, products.isPending, products.fetchStatus, repairPage])
   useLayoutEffect(() => {
