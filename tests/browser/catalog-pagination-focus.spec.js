@@ -139,11 +139,13 @@ for (const { width, browserBack } of [{ width: 390, browserBack: false }, { widt
     await page.goto(listUrl)
     const product = page.getByRole('link', { name: '포커스 상품 23', exact: true })
     await expect(product).toBeVisible()
-    await product.scrollIntoViewIfNeeded()
-    await product.focus()
-    const before = await product.evaluate((el) => ({ top: el.getBoundingClientRect().top, scroll: scrollY, entry: history.state?.key }))
+    const before = await product.evaluate((el) => {
+      history.scrollRestoration = 'manual'
+      el.scrollIntoView({ block: 'center', behavior: 'instant' })
+      el.focus({ preventScroll: true })
+      return { top: el.getBoundingClientRect().top, scroll: scrollY, entry: history.state?.key }
+    })
     expect(before.scroll).toBeGreaterThan(0)
-    await page.evaluate(() => { history.scrollRestoration = 'manual' })
     await product.press('Enter')
     await expect(page.getByRole('heading', { name: '포커스 상품 23', level: 1, exact: true })).toBeVisible()
     if (browserBack) await page.goBack()
@@ -156,6 +158,39 @@ for (const { width, browserBack } of [{ width: 390, browserBack: false }, { widt
   })
 }
 
+test('상품 상세에서 창 높이를 줄인 뒤 복귀해도 같은 필터와 방문 상품이 화면 안에 있다', async ({ page, focusApi }) => {
+  focusApi.products = Array.from({ length: 24 }, (_, index) => ({ ...products[0], id: 1700 + index, name: `포커스 상품 ${index + 1}` }))
+  const shorterHeight = 560
+  const listUrl = initialUrl.replace('page=1', 'page=2')
+  await page.setViewportSize({ width: 1280, height: 1200 })
+  await page.goto(listUrl)
+  const product = results(page).getByRole('link', { name: '포커스 상품 23', exact: true })
+  const original = await product.evaluate((link) => {
+    history.scrollRestoration = 'manual'
+    link.focus({ preventScroll: true })
+    const { top, height } = link.getBoundingClientRect()
+    window.scrollBy({ top: top - (innerHeight - height - 100), behavior: 'instant' })
+    const rect = link.getBoundingClientRect()
+    return { top: rect.top, bottom: rect.bottom, viewportHeight: innerHeight, entry: history.state?.key }
+  })
+  expect(original.top).toBeGreaterThan(shorterHeight)
+  expect(original.bottom).toBeLessThanOrEqual(original.viewportHeight)
+  await product.press('Enter')
+  await expect(page.getByRole('heading', { name: '포커스 상품 23', level: 1, exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 1280, height: shorterHeight })
+
+  await page.getByRole('link', { name: '검색 결과로 돌아가기', exact: true }).press('Enter')
+  await expect(page).toHaveURL(listUrl)
+  expect(await page.evaluate(() => history.state?.key)).toBe(original.entry)
+  await expect(page.getByLabel('상품 검색', { exact: true })).toHaveValue('포커스')
+  await expect(product).toBeFocused()
+  await expect.poll(() => product.evaluate((link) => {
+    const { top, bottom } = link.getBoundingClientRect()
+    const headerBottom = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0
+    return top >= headerBottom && bottom <= innerHeight
+  })).toBe(true)
+})
+
 test('직접 연 상품 상세에서는 일반 상품 목록 링크로 이동한다', async ({ page }) => {
   await page.goto('/products/1700')
   await expect(page.getByRole('heading', { name: '포커스 상품 0', level: 1, exact: true })).toBeVisible()
@@ -165,7 +200,7 @@ test('직접 연 상품 상세에서는 일반 상품 목록 링크로 이동한
   await expect(page).toHaveURL('/products')
 })
 
-test('상세에서 돌아온 뒤 목록을 다시 읽는 동안 사용자가 스크롤하면 그 위치를 유지한다', async ({ page }) => {
+for (const method of ['휠', '키보드']) test(`상세에서 돌아온 뒤 목록을 다시 읽는 동안 ${method}로 스크롤하면 그 위치를 유지한다`, async ({ page }) => {
   await page.goto(initialUrl)
   const product = page.getByRole('link', { name: '포커스 상품 11', exact: true })
   await product.scrollIntoViewIfNeeded()
@@ -185,13 +220,20 @@ test('상세에서 돌아온 뒤 목록을 다시 읽는 동안 사용자가 스
   try {
     await page.goBack()
     await expect.poll(() => started).toBe(true)
-    await page.mouse.move(500, 300)
-    await page.mouse.wheel(0, 160)
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(160)
+    const intendedScroll = method === '휠' ? 160 : await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)
+    expect(intendedScroll).toBeGreaterThan(0)
+    if (method === '휠') {
+      await page.mouse.move(500, 300)
+      await page.mouse.wheel(0, intendedScroll)
+    } else {
+      await page.keyboard.press('End')
+    }
+    await expect.poll(() => page.evaluate(() => scrollY)).toBe(intendedScroll)
     release()
     await expect(results(page)).toHaveAttribute('aria-busy', 'false')
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
     await expect(product).not.toBeFocused()
-    expect(await page.evaluate(() => scrollY)).toBe(160)
+    expect(await page.evaluate(() => scrollY)).toBe(intendedScroll)
   } finally { release() }
 })
 
