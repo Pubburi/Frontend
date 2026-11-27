@@ -38,12 +38,14 @@ import type { Page, Product, Review } from '../types'
 import { ProductNotebook } from '../components/Notebook'
 import { HomeProductSearch } from '../components/HomeProductSearch'
 import { HomeProductThemes } from '../components/HomeProductThemes'
+import { productThemes, type ProductThemeId } from '../productThemes'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
 import './catalog-ux.css'
 
 const maxPriceFieldId = 'catalog-max-price'
 
-export function HomePage() {
+export function HomePage({ productReturn }: { productReturn: ProductOrigin | null }) {
+  const openProduct = useOpenProduct()
   return (
     <section className="view home-view catalog-home">
       <section className="catalog-home-lead" aria-labelledby="catalog-home-title">
@@ -79,26 +81,44 @@ export function HomePage() {
           ))}
         </div>
       </section>
-      <HomeProductThemes />
+      <HomeProductThemes productReturn={productReturn} onOpen={openProduct} />
     </section>
   )
 }
 
-export type CatalogProductOrigin = {
+export type ProductOrigin = {
   key: string
   url: string
   productId: number
   top: number
   keyboard: boolean
+  theme?: ProductThemeId
 }
 
-export function catalogOriginForProduct(origin: CatalogProductOrigin | undefined, productId: string | undefined) {
-  return origin && typeof origin.url === 'string' &&
-    String(origin.productId) === productId && /^\/products(?:[?#]|$)/.test(origin.url) ? origin : null
+export function productOriginForProduct(origin: ProductOrigin | undefined, productId: string | undefined) {
+  if (!origin || typeof origin.key !== 'string' || typeof origin.url !== 'string' ||
+    !Number.isSafeInteger(origin.productId) || origin.productId < 1 || String(origin.productId) !== productId ||
+    !Number.isFinite(origin.top) || typeof origin.keyboard !== 'boolean') return null
+  if (origin.theme === undefined) return /^\/products(?:[?#]|$)/.test(origin.url) ? origin : null
+  return /^\/(?:[?#]|$)/.test(origin.url) && productThemes.some((theme) => theme.id === origin.theme) ? origin : null
 }
 
 function opensInSameTab(event: MouseEvent<HTMLAnchorElement>) {
   return event.button === 0 && !event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+}
+
+function useOpenProduct() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  return (event: MouseEvent<HTMLAnchorElement>, productId: number, theme?: ProductThemeId) => {
+    if (!opensInSameTab(event)) return
+    event.preventDefault()
+    navigate(`/products/${productId}`, { state: { catalogProductOrigin: {
+      key: location.key, url: location.pathname + location.search + location.hash, productId, theme,
+      top: event.currentTarget.getBoundingClientRect().top,
+      keyboard: event.detail === 0 && document.activeElement === event.currentTarget,
+    } satisfies ProductOrigin } })
+  }
 }
 
 function CatalogCompareShortcut({ catalogFrom }: { catalogFrom?: string }) {
@@ -110,10 +130,10 @@ function CatalogCompareShortcut({ catalogFrom }: { catalogFrom?: string }) {
   </Link>
 }
 
-export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductOrigin | null }) {
+export function ProductsPage({ catalogReturn }: { catalogReturn: ProductOrigin | null }) {
   const [search, setSearch] = useSearchParams()
   const location = useLocation()
-  const navigateTo = useNavigate()
+  const openProduct = useOpenProduct()
   const filters = parseProductQuery(
     { ...Object.fromEntries(search), tasteTag: search.getAll('tasteTag'), aromaTag: search.getAll('aromaTag') },
     categories.map((category) => category.label),
@@ -192,7 +212,7 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
   const hasAdvancedError = Boolean(Object.keys(rangeErrors).length || Object.keys(tagIssues).length || rejectedTags)
   const searchButton = useRef<HTMLButtonElement>(null)
   const results = useRef<HTMLElement>(null)
-  const restored = useRef<CatalogProductOrigin | null>(null)
+  const restored = useRef<ProductOrigin | null>(null)
   useLayoutEffect(() => {
     const region = results.current
     if (!catalogReturn || restored.current === catalogReturn || !region) return
@@ -290,15 +310,6 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: CatalogProductO
   }
   function navigate(page = 1, criteria = form) {
     setSearch(new URLSearchParams(pageQuery(buildProductQuery(criteria, page))))
-  }
-  function openProduct(event: MouseEvent<HTMLAnchorElement>, productId: number) {
-    if (!opensInSameTab(event)) return
-    event.preventDefault()
-    navigateTo(`/products/${productId}`, { state: { catalogProductOrigin: {
-      key: location.key, url: location.pathname + location.search + location.hash, productId,
-      top: event.currentTarget.getBoundingClientRect().top,
-      keyboard: event.detail === 0 && document.activeElement === event.currentTarget,
-    } satisfies CatalogProductOrigin } })
   }
   function changeKeyboardPage(page: number, trigger: HTMLButtonElement) {
     if (document.activeElement !== trigger || !results.current) {
@@ -541,13 +552,14 @@ function ProductDetail({ id }: { id: string }) {
   const client = useQueryClient()
   const location = useLocation()
   const navigate = useNavigate()
-  const catalogOrigin = catalogOriginForProduct(location.state?.catalogProductOrigin, id)
+  const productOrigin = productOriginForProduct(location.state?.catalogProductOrigin, id)
+  const catalogOrigin = productOrigin?.theme === undefined ? productOrigin : null
   function catalogLink(className: string) {
-    return <Link className={className} to={catalogOrigin?.url ?? '/products'} onClick={(event) => {
-      if (!catalogOrigin || !opensInSameTab(event)) return
+    return <Link className={className} to={productOrigin?.url ?? '/products'} onClick={(event) => {
+      if (!productOrigin || !opensInSameTab(event)) return
       event.preventDefault()
       navigate(-1)
-    }}>{catalogOrigin ? '검색 결과로 돌아가기' : '전체 주류 보기'}</Link>
+    }}>{productOrigin?.theme ? '테마 목록으로 돌아가기' : catalogOrigin ? '검색 결과로 돌아가기' : '전체 주류 보기'}</Link>
   }
   const [quantity, setQuantity] = useState(1)
   const [reviewView, setReviewView] = useState({ page: 1, sort: 'latest' })
