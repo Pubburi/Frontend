@@ -15,9 +15,10 @@ const test = base.extend({
   fixture: [async ({ page }, use) => {
     const fixture = { calls: [], themeReads: 0, replies: [], gates: [], pageErrors: [], unexpected: [] }
     fixture.hold = () => {
-      let release
+      let release, finish
       const wait = new Promise((done) => { release = done })
-      const gate = { wait, release, started: false }
+      const finished = new Promise((done) => { finish = done })
+      const gate = { wait, release, finished, finish, started: false }
       fixture.gates.push(gate)
       return gate
     }
@@ -34,7 +35,11 @@ const test = base.extend({
         const reply = fixture.replies.shift() ?? { status: 200, data: wire() }
         const gate = fixture.gates.find((value) => !value.started)
         if (gate) { gate.started = true; await gate.wait }
-        return route.fulfill({ status: reply.status, json: reply.status === 200 ? ok(reply.data) : { data: null, error: { code: 'REQUEST_FAILED' } } })
+        try {
+          return await route.fulfill({ status: reply.status, json: reply.status === 200 ? ok(reply.data) : { data: null, error: { code: 'REQUEST_FAILED' } } })
+        } finally {
+          gate?.finish()
+        }
       }
       if (method === 'GET' && path === '/auth/me') return route.fulfill({ status: 401, json: { data: null, error: { code: 'UNAUTHORIZED' } } })
       if (method === 'GET' && ['/products/popular', '/products/suggestions'].includes(path)) return route.fulfill({ json: ok(path.endsWith('/suggestions') ? { items: [] } : []) })
@@ -174,12 +179,15 @@ for (const changesTheme of [true, false]) test(`돌아오는 테마 응답을 �
     await expect(option(page, '선물')).toBeFocused()
   } else {
     await page.getByRole('link', { name: '전체 주류 둘러보기', exact: true }).press('Enter')
+    await expect(page).toHaveURL('/products')
+    await expect(panel(page)).toHaveCount(0)
     const search = page.getByLabel('상품 검색', { exact: true })
     await search.focus()
+    await expect(search).toBeFocused()
     gate.release()
+    await gate.finished
     await expect(page).toHaveURL('/products')
     await expect(search).toBeFocused()
-    await expect(panel(page)).toHaveCount(0)
   }
 })
 
