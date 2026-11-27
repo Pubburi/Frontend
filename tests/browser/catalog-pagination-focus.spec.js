@@ -285,6 +285,77 @@ for (const status of [400, 503]) {
   })
 }
 
+for (const { outcome, width } of [
+  { outcome: '검색 성공', width: 390 },
+  { outcome: '다시 오류', width: 1440 },
+  { outcome: '다른 입력', width: 1440 },
+  { outcome: '다른 화면', width: 1440 },
+]) test(`목록 재시도는 기존 검색 조건과 의도한 키보드 포커스를 유지한다 · ${outcome}`, async ({ page }) => {
+  let release
+  const pending = new Promise((resolve) => { release = resolve })
+  const attempts = []
+  await page.route('**/api/products?**', async (route) => {
+    attempts.push(new URL(route.request().url()).search)
+    if (attempts.length > 1) {
+      await pending
+      if (outcome !== '다시 오류') return route.fallback()
+    }
+    return route.fulfill({ status: 503, json: failure('SERVICE_UNAVAILABLE') })
+  })
+
+  try {
+    await page.setViewportSize({ width, height: 900 })
+    const target = initialUrl.replace('page=1', 'page=2')
+    await page.goto(target)
+    const region = results(page)
+    const retry = region.getByRole('button', { name: '다시 시도', exact: true })
+    const input = page.getByLabel('상품 검색', { exact: true })
+    await expect(retry).toBeVisible()
+    await input.fill('아직 제출하지 않은 검색어')
+    await retry.press('Enter')
+    await expect.poll(() => attempts.length).toBe(2)
+    await expect(region).toBeFocused()
+    await expect(region).toHaveAttribute('aria-busy', 'true')
+    await expect(input).toHaveValue('아직 제출하지 않은 검색어')
+    await page.keyboard.press('Enter')
+
+    const cart = page.getByRole('navigation', { name: '주요 메뉴', exact: true }).getByRole('link', { name: '장바구니', exact: true })
+    if (outcome === '다른 화면') {
+      await cart.click()
+      await expect(page).toHaveURL('/cart')
+      await expect(region).toHaveCount(0)
+      await expect(cart).toBeFocused()
+    } else if (outcome === '다른 입력') {
+      await input.fill('재시도 중 작성한 검색어')
+      await expect(input).toBeFocused()
+    }
+
+    const response = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/api/products')
+    release()
+    await (await response).finished()
+    if (outcome === '다른 화면') {
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+      await expect(page).toHaveURL('/cart')
+      await expect(cart).toBeFocused()
+    } else {
+      await expect(page).toHaveURL(target)
+      await expect(region).toHaveAttribute('aria-busy', 'false')
+      if (outcome === '다시 오류') {
+        await expect(region).toBeFocused()
+        await page.keyboard.press('Tab')
+        await expect(retry).toBeFocused()
+      } else {
+        await expect(region.locator('.product-card')).toHaveCount(2)
+        await expect(outcome === '다른 입력' ? input : region).toBeFocused()
+      }
+      await expect(input).toHaveValue(outcome === '다른 입력' ? '재시도 중 작성한 검색어' : '아직 제출하지 않은 검색어')
+    }
+    expect(attempts).toEqual([attempts[0], attempts[0]])
+  } finally {
+    release()
+  }
+})
+
 test('페이지 요청 중 다른 경로로 이동해도 늦은 응답이 포커스를 가져가지 않음', async ({ page }) => {
   const gate = await holdSecondPage(page)
   try {
