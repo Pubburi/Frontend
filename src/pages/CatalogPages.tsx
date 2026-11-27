@@ -311,19 +311,29 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: ProductOrigin |
   function navigate(page = 1, criteria = form) {
     setSearch(new URLSearchParams(pageQuery(buildProductQuery(criteria, page))))
   }
+  function focusResultsFrom(trigger: HTMLButtonElement) {
+    const region = results.current
+    if (document.activeElement !== trigger || !region) return false
+    // This element survives loading, success and rejection. No response moves focus.
+    region.focus({ preventScroll: true })
+    region.scrollIntoView({ block: 'start', behavior: 'instant' })
+    return true
+  }
   function changeKeyboardPage(page: number, trigger: HTMLButtonElement) {
-    if (document.activeElement !== trigger || !results.current) {
+    if (!focusResultsFrom(trigger)) {
       navigate(page, filters)
       return
     }
     const destination = new URLSearchParams(pageQuery(buildProductQuery(filters, page)))
-    // This element survives loading, success and rejection. No response moves focus.
-    results.current.focus({ preventScroll: true })
-    results.current.scrollIntoView({ block: 'start', behavior: 'instant' })
     setSearch(destination, { state: { catalogResultsNavigation: {
       fromLocationKey: location.key,
       destination: location.pathname + '?' + destination.toString(),
     } } })
+  }
+  function retryProducts(event: MouseEvent<HTMLButtonElement>) {
+    if (products.fetchStatus !== 'idle') return
+    if (event.detail === 0) focusResultsFrom(event.currentTarget)
+    void products.refetch({ cancelRefetch: false })
   }
   function applySearchHint() {
     if (!searchHint) return
@@ -503,7 +513,7 @@ export function ProductsPage({ catalogReturn }: { catalogReturn: ProductOrigin |
           title="상품을 불러오지 못했습니다"
           description="연결 상태를 확인한 뒤 다시 시도해 주세요."
         >
-          <button className="btn btn-dark" onClick={() => products.refetch()}>
+          <button type="button" className="btn btn-dark" aria-disabled={products.fetchStatus !== 'idle'} onClick={retryProducts}>
             다시 시도
           </button>
         </Empty>
