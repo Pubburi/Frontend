@@ -36,7 +36,7 @@ import { productRangeFields, validateProductRanges, type ProductRangeKey, type P
 import { money, productImage } from '../utils/format'
 import type { Page, Product, Review } from '../types'
 import { ProductNotebook } from '../components/Notebook'
-import { HomeProductSearch } from '../components/HomeProductSearch'
+import { HomeProductSearch, isSuggestionQuery } from '../components/HomeProductSearch'
 import { HomeProductThemes } from '../components/HomeProductThemes'
 import { productThemes, type ProductThemeId } from '../productThemes'
 import { reviewSummary, type ReviewPage } from '../reviewSummary'
@@ -53,7 +53,7 @@ export function HomePage({ productReturn }: { productReturn: ProductOrigin | nul
           <p className="section-kicker">주점부리 셀렉션</p>
           <h1 id="catalog-home-title">취향과 순간에 어울리는 한 잔</h1>
           <p>상품명으로 찾거나 주종과 도수, 가격을 비교해 보세요.</p>
-          <HomeProductSearch />
+          <HomeProductSearch productReturn={productReturn?.suggestionQuery !== undefined ? productReturn : null} />
           <div className="button-row catalog-home-actions">
             <Link className="text-link" to="/products">전체 주류 둘러보기</Link>
             <Link className="text-link" to={`/products#${maxPriceFieldId}`}>예산으로 찾기</Link>
@@ -81,7 +81,7 @@ export function HomePage({ productReturn }: { productReturn: ProductOrigin | nul
           ))}
         </div>
       </section>
-      <HomeProductThemes productReturn={productReturn} onOpen={openProduct} />
+      <HomeProductThemes productReturn={productReturn?.theme ? productReturn : null} onOpen={openProduct} />
     </section>
   )
 }
@@ -93,14 +93,19 @@ export type ProductOrigin = {
   top: number
   keyboard: boolean
   theme?: ProductThemeId
+  suggestionQuery?: string
 }
 
 export function productOriginForProduct(origin: ProductOrigin | undefined, productId: string | undefined) {
   if (!origin || typeof origin.key !== 'string' || typeof origin.url !== 'string' ||
     !Number.isSafeInteger(origin.productId) || origin.productId < 1 || String(origin.productId) !== productId ||
     !Number.isFinite(origin.top) || typeof origin.keyboard !== 'boolean') return null
-  if (origin.theme === undefined) return /^\/products(?:[?#]|$)/.test(origin.url) ? origin : null
-  return /^\/(?:[?#]|$)/.test(origin.url) && productThemes.some((theme) => theme.id === origin.theme) ? origin : null
+  if (origin.theme === undefined && origin.suggestionQuery === undefined)
+    return /^\/products(?:[?#]|$)/.test(origin.url) ? origin : null
+  if (!/^\/(?:[?#]|$)/.test(origin.url)) return null
+  if (origin.suggestionQuery !== undefined)
+    return origin.theme === undefined && isSuggestionQuery(origin.suggestionQuery) ? origin : null
+  return productThemes.some((theme) => theme.id === origin.theme) ? origin : null
 }
 
 function opensInSameTab(event: MouseEvent<HTMLAnchorElement>) {
@@ -563,13 +568,15 @@ function ProductDetail({ id }: { id: string }) {
   const location = useLocation()
   const navigate = useNavigate()
   const productOrigin = productOriginForProduct(location.state?.catalogProductOrigin, id)
-  const catalogOrigin = productOrigin?.theme === undefined ? productOrigin : null
+  const catalogOrigin = productOrigin?.theme === undefined && productOrigin?.suggestionQuery === undefined ? productOrigin : null
+  const returnLabel = productOrigin?.suggestionQuery !== undefined ? '검색 제안으로 돌아가기' :
+    productOrigin?.theme ? '테마 목록으로 돌아가기' : catalogOrigin ? '검색 결과로 돌아가기' : '전체 주류 보기'
   function catalogLink(className: string) {
     return <Link className={className} to={productOrigin?.url ?? '/products'} onClick={(event) => {
       if (!productOrigin || !opensInSameTab(event)) return
       event.preventDefault()
       navigate(-1)
-    }}>{productOrigin?.theme ? '테마 목록으로 돌아가기' : catalogOrigin ? '검색 결과로 돌아가기' : '전체 주류 보기'}</Link>
+    }}>{returnLabel}</Link>
   }
   const [quantity, setQuantity] = useState(1)
   const [reviewView, setReviewView] = useState({ page: 1, sort: 'latest' })

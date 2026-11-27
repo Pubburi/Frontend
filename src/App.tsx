@@ -90,7 +90,7 @@ export function App() {
   const location = useLocation()
   const detail = useMatch('/products/:id')
   const detailOrigin = productOriginForProduct(location.state?.catalogProductOrigin, detail?.params.id)
-  const catalogOrigin = detailOrigin?.theme === undefined ? detailOrigin : null
+  const catalogOrigin = detailOrigin?.theme === undefined && detailOrigin?.suggestionQuery === undefined ? detailOrigin : null
   const comparisonOrigin = location.pathname === '/products' ? location.pathname + location.search + location.hash :
     location.pathname === '/compare' && typeof location.state?.catalogCompareFrom === 'string' &&
     /^\/products(?:[?#]|$)/.test(location.state.catalogCompareFrom) ? location.state.catalogCompareFrom : catalogOrigin?.url ?? null
@@ -120,6 +120,7 @@ export function App() {
   const navigationType = useNavigationType()
   const previousLocation = useRef<{ key: string; destination: string; productOrigin: ProductOrigin | null } | null>(null)
   const [productReturn, setProductReturn] = useState<ProductOrigin | null>(null)
+  const currentProductReturn = productReturn?.key === location.key ? productReturn : null
   useEffect(() => {
     const previous = previousLocation.current
     const destination = location.pathname + location.search + location.hash
@@ -252,8 +253,8 @@ export function App() {
         )}
         <Suspense fallback={<Loading label="화면을 불러오는 중입니다." />}>
           <Routes>
-            <Route path="/" element={<HomePage productReturn={productReturn?.key === location.key && productReturn.theme ? productReturn : null} />} />
-            <Route path="/products" element={<ProductsPage catalogReturn={productReturn?.key === location.key && productReturn.theme === undefined ? productReturn : null} />} />
+            <Route path="/" element={<HomePage productReturn={currentProductReturn} />} />
+            <Route path="/products" element={<ProductsPage catalogReturn={currentProductReturn} />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/markets/:id" element={<MarketDetailPage />} />
             <Route path="/orders/:id" element={<OrderDetailPage />} />
