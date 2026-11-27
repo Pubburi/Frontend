@@ -431,6 +431,60 @@ test('홈 상품 제안은 중복 이름과 특수문자를 그대로 표시하�
   expect(api.calls.filter(({ path }) => path === '/products')).toEqual([])
 })
 
+for (const { width, nativeBack } of [{ width: 1280, nativeBack: true }, { width: 1440, nativeBack: false }]) {
+  test(`홈 상품 제안 ${nativeBack ? '브라우저 뒤로' : '상세 복귀 링크'}는 원래 입력과 최신 상품을 복원한다`, async ({ page, api }) => {
+    const keyword = '  시험_%  '
+    const home = '/?from=autocomplete#main-content'
+    api.suggestions[keyword] = api.catalog.map(({ id, name, type, price }) => ({ id, name, type, price }))
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(home)
+    const entry = await page.evaluate(() => history.state?.key ?? 'default')
+    const input = homeSearchInput(page)
+    await input.fill(keyword)
+    await expect(suggestions(page).getByRole('option')).toHaveCount(2)
+    await input.press('ArrowUp')
+    await input.press('Enter')
+    await expect(page).toHaveURL('/products/902')
+    await expect(page.getByRole('heading', { name: '시험 사케', level: 1, exact: true })).toBeVisible()
+    const back = page.getByRole('link', { name: '검색 제안으로 돌아가기', exact: true })
+    await expect(back).toHaveAttribute('href', home)
+
+    const [takju, sake] = api.suggestions[keyword]
+    api.suggestions[keyword] = nativeBack ? [{ ...sake, name: '새로 표기한 사케', price: 13500 }, takju] : [takju]
+    let release, started = false
+    const pending = new Promise((resolve) => { release = resolve })
+    await page.route('**/api/products/suggestions?**', async (route) => {
+      started = true
+      await pending
+      return route.fallback()
+    })
+    try {
+      if (nativeBack) await page.goBack()
+      else await back.press('Enter')
+      await expect(page).toHaveURL(home)
+      expect(await page.evaluate(() => history.state?.key ?? 'default')).toBe(entry)
+      await expect(input).toBeFocused()
+      await expect(input).toHaveValue(keyword)
+      await expect.poll(() => started).toBe(true)
+      await expect(suggestions(page)).toHaveCount(0)
+      release()
+
+      if (nativeBack) {
+        const fresh = suggestions(page).getByRole('option', { name: /새로 표기한 사케/ })
+        await expect(fresh).toContainText('13,500원')
+        await expect(fresh).toHaveAttribute('aria-selected', 'true')
+        await expect(input).toHaveAttribute('aria-activedescendant', await fresh.getAttribute('id'))
+        await expect(suggestions(page)).not.toContainText('12,000원')
+      } else {
+        await expect(suggestions(page).getByRole('option')).toHaveCount(1)
+        await expect(input).not.toHaveAttribute('aria-activedescendant')
+      }
+      await expect(input).toBeFocused()
+      expect(suggestionReads(api).map(({ query }) => query.q)).toEqual([keyword, keyword])
+    } finally { release() }
+  })
+}
+
 test.describe('홈 상품 제안 터치', () => {
   test.use({ hasTouch: true, viewport: { width: 390, height: 844 } })
   test('상품 옵션을 한 번 탭하면 현재 ID 상세로 이동', async ({ page, api }) => {
@@ -440,6 +494,15 @@ test.describe('홈 상품 제안 터치', () => {
     await suggestions(page).getByRole('option', { name: /시험 사케/ }).tap()
     await expect(page).toHaveURL('/products/902')
     await expect(page.getByRole('heading', { level: 1, name: '시험 사케', exact: true })).toBeVisible()
+    api.suggestions['시험'][1].price = 14000
+    await page.getByRole('link', { name: '검색 제안으로 돌아가기', exact: true }).tap()
+    await expect(page).toHaveURL('/')
+    await expect(homeSearchInput(page)).toHaveValue('시험')
+    await expect(homeSearchInput(page)).not.toBeFocused()
+    await expect(suggestions(page).getByRole('option', { name: /시험 사케/ })).toContainText('14,000원')
+    await page.getByRole('heading', { name: '취향과 순간에 어울리는 한 잔', exact: true }).tap()
+    await expect(suggestions(page)).toHaveCount(0)
+    expect(suggestionReads(api).map(({ query }) => query.q)).toEqual(['시험', '시험'])
   })
 
   test('홈 상품 제안이 열려 있어도 검색하기 버튼을 탭하면 원문으로 검색', async ({ page, api }) => {
@@ -452,6 +515,49 @@ test.describe('홈 상품 제안 터치', () => {
     await expect(page).toHaveURL((url) => url.pathname === '/products' && url.searchParams.get('q') === '시험')
     await expect(page.locator('.product-card')).toHaveCount(2)
   })
+})
+
+test('홈 복귀의 지연 제안은 뒤이어 변경한 검색어와 이동한 포커스를 덮지 않는다', async ({ page, api }) => {
+  await page.addInitScript(() => {
+    const fetchWithSignal = window.fetch.bind(window)
+    window.fetch = (request, init) => typeof request === 'string' && new URL(request, location.href).pathname === '/api/products/suggestions'
+      ? fetchWithSignal(request, { ...init, signal: undefined }) : fetchWithSignal(request, init)
+  })
+  api.suggestions['처음'] = [{ id: 902, name: '처음 제안', type: '사케', price: 12000 }]
+  api.suggestions['다음'] = [{ id: 901, name: '다음 제안', type: '탁주', price: 6000 }]
+  await page.goto('/')
+  const input = homeSearchInput(page)
+  await input.fill('처음')
+  await expect(suggestions(page)).toContainText('처음 제안')
+  await input.press('ArrowDown')
+  await input.press('Enter')
+  await expect(page).toHaveURL('/products/902')
+  await expect(page.getByRole('heading', { name: '시험 사케', level: 1, exact: true })).toBeVisible()
+  let release, started = false
+  const pending = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/products/suggestions?**', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('q') !== '처음') return route.fallback()
+    started = true
+    await pending
+    return route.fallback()
+  })
+  try {
+    await page.goBack()
+    await expect(input).toBeFocused()
+    await expect(input).toHaveValue('처음')
+    await expect.poll(() => started).toBe(true)
+    await input.fill('다음')
+    await expect(suggestions(page)).toContainText('다음 제안')
+    await input.press('Tab')
+    const submit = page.getByRole('button', { name: '검색하기', exact: true })
+    await expect(submit).toBeFocused()
+    const old = page.waitForResponse((reply) => new URL(reply.url()).searchParams.get('q') === '처음')
+    release()
+    await (await old).finished()
+    await expect(input).toHaveValue('다음')
+    await expect(submit).toBeFocused()
+    await expect(suggestions(page)).toHaveCount(0)
+  } finally { release() }
 })
 
 test('같은 검색어로 돌아온 뒤 늦은 이전 상품 제안이 현재 목록을 덮지 않음', async ({ page, api }) => {
