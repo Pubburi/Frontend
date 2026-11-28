@@ -4986,6 +4986,7 @@ test('공개 상품 특성은 원값·mL·단일 태그·출처 텍스트를 보
   expect(await tags.first().textContent()).toBe('grain\nsmoke')
   await expect(facts.locator('[data-feature="source"]')).toContainText(api.features[901].sourceName)
   await expect(facts.locator('[data-feature="note"] dd')).toHaveText(api.features[901].sourceNote)
+  await expect(facts.locator('.product-feature-unconfirmed')).toHaveCount(0)
   await expect(facts.locator('script, img, b')).toHaveCount(0)
   expect(await page.evaluate(() => window.featureSourceExecuted)).toBeUndefined()
   const source = facts.getByRole('link', { name: '출처 보기 (새 창)', exact: true })
@@ -5006,7 +5007,7 @@ for (const width of [390, 1440]) {
     const facts = page.getByRole('region', { name: '상품 특성', exact: true })
     await expect(facts.getByText('아직 확인된 상품 특성이 없습니다.', { exact: true })).toBeVisible()
     await expect(facts.getByText('미확인', { exact: true })).toHaveCount(0)
-    await expect(facts.getByRole('list')).toHaveCount(0)
+    await expect(facts.locator('dl, .product-feature-unconfirmed')).toHaveCount(0)
     await expect(facts.getByRole('link')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '1개 장바구니에 담기', exact: true })).toBeEnabled()
   })
@@ -5017,7 +5018,8 @@ test('공개 검수 빈 태그는 미확인이나 맛 없음으로 바꾸지 않
   await page.goto('/products/901')
   const facts = page.getByRole('region', { name: '상품 특성', exact: true })
   for (const field of ['taste', 'aroma']) await expect(facts.locator(`[data-feature="${field}"] dd`)).toHaveText('등록된 태그 없음')
-  await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('미확인')
+  await expect(facts.locator('.product-feature-row')).toHaveCount(3)
+  await expect(facts.locator('.product-feature-unconfirmed')).toHaveText('확인되지 않은 항목은 용량 · 설명 · 출처 메모입니다.')
   await expect(facts.locator('[data-feature="source"] dd')).toHaveText('직접 검수 시연')
   await expect(facts.getByRole('list')).toHaveCount(0)
   await expect(facts.getByText('맛 없음', { exact: true })).toHaveCount(0)
@@ -5029,13 +5031,17 @@ test('확인된 빈 태그만 있거나 출처 URL만 있어도 공개 특성에
   await page.goto('/products/901')
   const facts = page.getByRole('region', { name: '상품 특성', exact: true })
   await expect(facts.locator('[data-feature="taste"] dd')).toHaveText('등록된 태그 없음')
-  await expect(facts.locator('[data-feature="aroma"] dd')).toHaveText('미확인')
+  await expect(facts.locator('.product-feature-unconfirmed')).toHaveText('확인되지 않은 항목은 용량 · 설명 · 향 · 출처 · 출처 메모입니다.')
   await page.goto('/products/902')
   await expect(facts.getByRole('link', { name: '출처 보기 (새 창)', exact: true })).toHaveAttribute('href', 'https://example.test/facts')
+  await expect(facts.locator('.product-feature-row')).toHaveCount(1)
+  await expect(facts.locator('[data-feature="source"] dd')).toHaveText('출처 보기 (새 창)')
+  await expect(facts.locator('.product-feature-unconfirmed')).toHaveText('확인되지 않은 항목은 용량 · 설명 · 맛 · 향 · 출처 메모입니다.')
 })
 
 test('공개 특성 실패와 재시도는 가격·담기·후기 조회를 막지 않음', async ({ page, api }) => {
-  api.features[901] = publicFacts(901, { volumeMl: 375 })
+  api.features[901] = { ...unknownFeatures(901), volumeMl: 375, sourceName: '직접 검수 시연', sourceUrl: 'https://example.test/facts' }
+  await page.setViewportSize({ width: 390, height: 844 })
   let reads = 0
   await page.route('**/api/products/901/features', async route => {
     reads++
@@ -5049,6 +5055,10 @@ test('공개 특성 실패와 재시도는 가격·담기·후기 조회를 막�
   await expect(page.getByText('아직 등록된 후기가 없습니다', { exact: true })).toBeVisible()
   await facts.getByRole('button', { name: '특성 다시 불러오기', exact: true }).click()
   await expect(facts.locator('[data-feature="volume"] dd')).toHaveText('375 mL')
+  await expect(facts.locator('[data-feature="source"] dd')).toContainText('직접 검수 시연')
+  await expect(facts.locator('.product-feature-row')).toHaveCount(2)
+  await expect(facts.locator('.product-feature-unconfirmed')).toHaveText('확인되지 않은 항목은 설명 · 맛 · 향 · 출처 메모입니다.')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(reads).toBe(2)
   expect(api.calls.filter(call => call.path === '/products/901' && call.method === 'GET')).toHaveLength(1)
 })
