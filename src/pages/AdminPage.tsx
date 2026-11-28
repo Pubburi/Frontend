@@ -607,6 +607,8 @@ function AdminPanel({
               const id = idOf(item)
               if (tab === 'orders') {
                 const order = item as Order
+                const completed = order.completed === 'Y'
+                const completionUnavailable = completed || Boolean(ui.pending[`admin-order-complete-${order.oId}`])
                 return (
                   <div key={id}>
                     <div className="table-row wide">
@@ -626,10 +628,10 @@ function AdminPanel({
                         {orderType(order.orderType)}
                       </span>
                       <span
-                        className={`badge ${order.completed !== 'Y' ? 'muted' : ''}`}
+                        className={`badge ${completed ? '' : 'muted'}`}
                         data-label="상태"
                       >
-                        {order.completed === 'Y' ? '완료' : '진행 중'}
+                        {completed ? '완료' : '진행 중'}
                       </span>
                       <strong data-label="금액">
                         {orderMoney(order.totalPrice)}
@@ -637,12 +639,11 @@ function AdminPanel({
                       <div className="button-row table-actions">
                         <Link className="text-link" to={`/orders/${order.oId}`} aria-label={`주문 ${order.oId} 상세 보기`}>상세 보기</Link>
                         <button
+                          type="button"
                           className="btn btn-sm btn-outline-dark"
-                          disabled={
-                            order.completed === 'Y' ||
-                            ui.pending[`admin-order-complete-${order.oId}`]
-                          }
-                          onClick={() => complete(order)}
+                          aria-disabled={completionUnavailable}
+                          tabIndex={completed ? -1 : undefined}
+                          onClick={() => { if (!completionUnavailable) void complete(order) }}
                         >
                           완료
                         </button>

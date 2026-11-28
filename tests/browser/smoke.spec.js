@@ -1997,6 +1997,7 @@ for (const width of [1280, 390]) {
     await expect(complete).toBeEnabled(); await complete.press('Enter')
     await expect(complete).toBeDisabled()
     await expect(page.getByText('주문을 완료 처리했습니다.', { exact: true })).toBeVisible()
+    await expect(complete).toBeFocused()
     expect(api.calls.filter(({ method, path }) => method === 'PATCH' && path === '/admin/orders/581/complete')).toHaveLength(1)
     expect(api.orders[0].completed).toBe('Y')
   })
@@ -2019,11 +2020,50 @@ test('관리자 주문 완료 403·503은 목록과 미완료 상태를 보존�
     await expect(page).toHaveURL(adminOrdersUrl)
     await expect(page.getByText('current-customer', { exact: true })).toBeVisible()
     await expect(complete).toBeEnabled()
+    await expect(complete).toBeFocused()
     expect(api.orders[0].completed).toBe('N')
   }
   await complete.press('Enter')
   await expect(page.getByText('주문을 완료 처리했습니다.', { exact: true })).toBeVisible()
   expect(api.calls.filter(({ method, path }) => method === 'PATCH' && path === '/admin/orders/582/complete')).toHaveLength(1)
+})
+
+test('관리자 주문 완료는 처리 중과 처리 후 초점을 유지하고 한 번만 전송한다', async ({ page, api }) => {
+  api.user = api.users.find((user) => user.id === 'admin')
+  api.orders = [completionOrder(585, 'current-customer')]
+  await page.setViewportSize({ width: 1440, height: 900 })
+  let release, attempts = 0
+  const held = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/admin/orders/585/complete', async (route) => {
+    attempts++
+    await held
+    return route.fallback()
+  })
+  try {
+    await page.goto(adminOrdersUrl)
+    const row = page.locator('.table-row').filter({ has: page.getByRole('button', { name: /^#585\s/ }) })
+    const complete = row.getByRole('button', { name: '완료', exact: true })
+    await complete.press('Enter')
+    await expect.poll(() => attempts).toBe(1)
+    await expect(complete).toBeDisabled()
+    await expect(complete).toBeFocused()
+    await page.keyboard.press('Enter')
+    release()
+
+    await expect(row.locator('[data-label="상태"]')).toHaveText('완료')
+    await expect(page.getByText('주문을 완료 처리했습니다.', { exact: true })).toBeVisible()
+    await expect(complete).toBeDisabled()
+    await expect(complete).toHaveAttribute('tabindex', '-1')
+    await expect(complete).toBeFocused()
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Tab')
+    await expect(row.getByRole('button', { name: '삭제', exact: true })).toBeFocused()
+    await page.keyboard.press('Shift+Tab')
+    await expect(row.getByRole('link', { name: '주문 585 상세 보기', exact: true })).toBeFocused()
+    await expect(page).toHaveURL(adminOrdersUrl)
+    expect(attempts).toBe(1)
+    expect(api.calls.filter(({ method, path }) => method === 'PATCH' && path === '/admin/orders/585/complete')).toHaveLength(1)
+  } finally { release() }
 })
 
 for (const nextId of ['admin', 'admin-next']) {
@@ -2054,9 +2094,12 @@ for (const nextId of ['admin', 'admin-next']) {
       await expect(current).toBeVisible()
       const originalOrderAction = page.locator('.table-row').filter({ hasText: 'prior-customer' }).getByRole('button', { name: '완료', exact: true })
       await expect(originalOrderAction).toBeDisabled()
+      const newDetails = page.getByRole('link', { name: '주문 584 상세 보기', exact: true })
+      await newDetails.focus()
       const delayed = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/admin/orders/583/complete')
       release(); await (await delayed).finished()
       await expect(originalOrderAction).toBeEnabled()
+      await expect(newDetails).toBeFocused()
       await expect(current).toBeVisible()
       await expect(page).toHaveURL(adminOrdersUrl)
       await expect(page.getByText('로그인이 필요합니다.', { exact: true })).toHaveCount(0)
