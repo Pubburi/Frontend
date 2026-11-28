@@ -6,8 +6,7 @@ import { publicFeatureQueryKey, publicSourceLink } from '../publicProductFeature
 function FeatureRow({ name, field, children }: { name: string; field: string; children: ReactNode }) {
   return <div className="product-feature-row" data-feature={field}><dt>{name}</dt><dd>{children}</dd></div>
 }
-function Tags({ values, label }: { values: string[] | null; label: string }) {
-  if (values === null) return <span className="muted">미확인</span>
+function Tags({ values, label }: { values: string[]; label: string }) {
   if (!values.length) return <span className="muted">등록된 태그 없음</span>
   return <ul className="product-feature-tags" aria-label={label}>
     {values.map((tag, index) => <li key={`${index}:${tag}`}>{tag}</li>)}
@@ -26,10 +25,32 @@ export function ProductFeatureDetails({ productId }: { productId: number }) {
   })
   const features = query.data
   const source = features ? publicSourceLink(features.sourceUrl) : null
-  const allUnknown = features && [
-    features.volumeMl, features.description, features.tasteTags, features.aromaTags,
-    features.sourceName, features.sourceUrl, features.sourceNote,
-  ].every((value) => value === null)
+  const rows = features ? [
+    {
+      name: '용량', field: 'volume',
+      value: features.volumeMl === null ? null : `${features.volumeMl.toLocaleString('ko-KR')} mL`,
+    },
+    { name: '설명', field: 'description', value: features.description },
+    {
+      name: '맛', field: 'taste',
+      value: features.tasteTags === null ? null : <Tags values={features.tasteTags} label="맛 태그" />,
+    },
+    {
+      name: '향', field: 'aroma',
+      value: features.aromaTags === null ? null : <Tags values={features.aromaTags} label="향 태그" />,
+    },
+    {
+      name: '출처', field: 'source',
+      value: features.sourceName === null && features.sourceUrl === null ? null : <>
+        {features.sourceName !== null && <span>{features.sourceName}</span>}
+        {source ? <a href={source} target="_blank" rel="noopener noreferrer">출처 보기 (새 창)</a> :
+          features.sourceUrl !== null ? <span className="muted">출처 링크 미제공</span> : null}
+      </>,
+    },
+    { name: '출처 메모', field: 'note', value: features.sourceNote },
+  ] : []
+  const known = rows.filter(({ value }) => value !== null)
+  const missing = rows.filter(({ value }) => value === null).map(({ name }) => name)
   return (
     <section className="product-features" aria-labelledby={heading}>
       <h2 id={heading}>상품 특성</h2>
@@ -40,24 +61,14 @@ export function ProductFeatureDetails({ productId }: { productId: number }) {
           <p>상품 특성을 불러오지 못했습니다. 상품 정보와 장바구니는 계속 이용할 수 있습니다.</p>
           <button className="btn btn-outline-dark btn-sm" onClick={() => query.refetch()}>특성 다시 불러오기</button>
         </div>
-      ) : allUnknown ? (
-        <p className="muted">아직 확인된 상품 특성이 없습니다.</p>
-      ) : features ? (
-        <dl className="product-feature-list">
-          <FeatureRow name="용량" field="volume">
-            {features.volumeMl === null ? '미확인' : `${features.volumeMl.toLocaleString('ko-KR')} mL`}
-          </FeatureRow>
-          <FeatureRow name="설명" field="description">{features.description ?? '미확인'}</FeatureRow>
-          <FeatureRow name="맛" field="taste"><Tags values={features.tasteTags} label="맛 태그" /></FeatureRow>
-          <FeatureRow name="향" field="aroma"><Tags values={features.aromaTags} label="향 태그" /></FeatureRow>
-          <FeatureRow name="출처" field="source">
-            <span>{features.sourceName ?? '미확인'}</span>
-            {source ? <a href={source} target="_blank" rel="noopener noreferrer">출처 보기 (새 창)</a> :
-              features.sourceUrl !== null ? <span className="muted">출처 링크 미제공</span> : null}
-          </FeatureRow>
-          <FeatureRow name="출처 메모" field="note">{features.sourceNote ?? '미확인'}</FeatureRow>
-        </dl>
-      ) : null}
+      ) : known.length ? (
+        <>
+          <dl className="product-feature-list">
+            {known.map(({ name, field, value }) => <FeatureRow key={field} name={name} field={field}>{value}</FeatureRow>)}
+          </dl>
+          {!!missing.length && <p className="muted product-feature-unconfirmed">확인되지 않은 항목은 {missing.join(' · ')}입니다.</p>}
+        </>
+      ) : features ? <p className="muted">아직 확인된 상품 특성이 없습니다.</p> : null}
     </section>
   )
 }

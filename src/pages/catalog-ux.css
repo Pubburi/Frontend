@@ -193,6 +193,8 @@
 }
 .catalog-detail-content .product-feature-row { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .catalog-detail-content .product-feature-row:last-child { border-bottom: 0; }
+.catalog-detail-content .product-feature-row dd > a:only-child { margin-top: 0; }
+.catalog-detail-content .product-feature-unconfirmed { margin: 12px 0 0; line-height: 1.55; word-break: keep-all; }
 .catalog-detail-personal > details { min-width: 0; margin: 0; border-radius: 16px; }
 .catalog-detail-personal summary { min-height: 44px; }
 .catalog-home-themes .content-card { min-width: 0; border-radius: 16px; }
