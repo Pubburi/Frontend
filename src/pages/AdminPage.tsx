@@ -89,7 +89,7 @@ const blankForm = () => ({
   type: '',
   price: '0',
   img: '',
-  abv: '0',
+  abv: '',
   orderCount: '0',
   latitude: '0',
   longitude: '0',
