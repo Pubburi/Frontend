@@ -51,6 +51,7 @@ for (const width of [390, 1440]) test(`주문 마지막 페이지가 사라지�
   await expect(history.locator('.order-row')).toHaveCount(10)
   await history.getByRole('button', { name: '다음', exact: true }).click()
   await expect(history.getByRole('link', { name: '주문 911 상세 보기', exact: true })).toBeVisible()
+  await expect(history.getByRole('heading', { name: '주문 내역', exact: true })).toBeFocused()
   fixture.orders = fixture.orders.slice(0, 10)
   let started = false, release
   const gate = new Promise((resolve) => { release = resolve })
@@ -190,6 +191,7 @@ for (const width of [390, 1440]) test(`invalid IDs never request order details;g
   await page.goto(target)
   await expect(page.getByRole('heading', { name: '다시 만나 반가워요', exact: true })).toBeVisible()
   expect(new URL(page.url()).searchParams.get('redirect')).toBe(target)
+  await expect(page.getByLabel('아이디', { exact: true })).not.toBeFocused()
   await page.getByLabel('아이디', { exact: true }).fill('member')
   await page.getByLabel('비밀번호', { exact: true }).fill('fixture')
   await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
@@ -222,28 +224,62 @@ for (const status of [403, 404, 503]) test(`current${status} hides old facts and
   const count = fixture.orderReads(901); await page.evaluate(() => { dispatchEvent(new Event('offline')); dispatchEvent(new Event('online')) }); expect(fixture.orderReads(901)).toBe(count)
   fixture.responses.delete('/orders/901'); await refresh(page).click(); await facts(page); expect(fixture.calls.filter((c) => c.method !== 'GET')).toEqual([])
 })
-for (const width of [390, 1440]) test(`current session401 hides cached order and explicit login preserves query/anchor at${width}`, async ({ page, fixture }) => {
-  await page.setViewportSize({ width, height: 900 })
-  const target = '/orders/901?from=demo#main-content'
-  await page.goto(target); await facts(page); fixture.user = null
-  await refresh(page).click(); await expect(page.getByRole('heading', { name: '다시 로그인해 주세요', exact: true })).toBeVisible(); await expect(page.locator('.order-item-line')).toHaveCount(0)
-  await page.getByRole('button', { name: '다시 로그인', exact: true }).press('Enter')
-  expect(new URL(page.url()).searchParams.get('redirect')).toBe(target)
-  await page.getByLabel('아이디', { exact: true }).fill('member')
-  await page.getByLabel('비밀번호', { exact: true }).fill('fixture')
-  await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).press('Enter')
-  await expect(page).toHaveURL(target)
-  await facts(page)
-  await expect(page.locator('.order-detail-total')).toHaveText('15,554원')
-  await expect(page.getByRole('main')).toBeFocused()
-  await expect(page.getByRole('heading', { name: '데모 주문 상세', exact: true })).toBeInViewport()
-  for (let step = 0; step < 5; step++) {
-    await page.keyboard.press('Tab')
-    if (await refresh(page).evaluate((element) => element === document.activeElement)) break
-  }
-  await expect(refresh(page)).toBeFocused()
-  expect(fixture.calls.filter((c) => c.method !== 'GET').map((c) => c.path)).toEqual(['/auth/login'])
-})
+for (const { width, touch } of [{ width: 390, touch: true }, { width: 390, touch: false }, { width: 1440, touch: false }]) {
+  test.describe(`order recovery ${width}px ${touch ? 'touch' : 'keyboard'}`, () => {
+    test.use({ hasTouch: touch })
+    test('current session401 hides the order and explicit login preserves focus, query and anchor', async ({ page, fixture }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      const target = '/orders/901?from=demo#main-content'
+      await page.goto(target); await facts(page)
+      const originalEntry = await page.evaluate(() => history.state?.key ?? 'default')
+      fixture.user = null
+      const activate = (button) => touch ? button.tap() : button.press('Enter')
+      await activate(refresh(page))
+      await expect(page.getByRole('heading', { name: '다시 로그인해 주세요', exact: true })).toBeVisible()
+      await expect(page.locator('.order-item-line')).toHaveCount(0)
+      await activate(page.getByRole('button', { name: '다시 로그인', exact: true }))
+      await expect(page).toHaveURL((url) => url.pathname === '/account' && url.searchParams.get('redirect') === target)
+      const identifier = page.getByLabel('아이디', { exact: true })
+      if (touch) await expect(identifier).not.toBeFocused()
+      else await expect(identifier).toBeFocused()
+      await identifier.fill('member')
+      const password = page.getByLabel('비밀번호', { exact: true })
+      if (!touch) {
+        await page.keyboard.press('Tab')
+        await expect(password).toBeFocused()
+      }
+      await password.fill('fixture')
+      if (touch) await page.locator('form.auth-form').getByRole('button', { name: '로그인', exact: true }).tap()
+      else await password.press('Enter')
+
+      await expect(page).toHaveURL(target)
+      await facts(page)
+      await expect(page.locator('.order-detail-total')).toHaveText('15,554원')
+      await expect(page.getByRole('main')).toBeFocused()
+      await expect(page.getByRole('heading', { name: '데모 주문 상세', exact: true })).toBeInViewport()
+      if (!touch) {
+        for (let step = 0; step < 5; step++) {
+          await page.keyboard.press('Tab')
+          if (await refresh(page).evaluate((element) => element === document.activeElement)) break
+        }
+        await expect(refresh(page)).toBeFocused()
+      }
+      // A same-URL POP can still display the previous entry until its authority read starts.
+      const orderReads = fixture.orderReads(901)
+      const originalOrder = page.waitForResponse((reply) =>
+        reply.request().method() === 'GET' && new URL(reply.url()).pathname === '/api/orders/901')
+      await page.goBack()
+      await expect(page).toHaveURL(target)
+      const response = await originalOrder
+      expect(response.status()).toBe(200)
+      expect(await response.finished()).toBeNull()
+      await facts(page)
+      expect(await page.evaluate(() => history.state?.key ?? 'default')).toBe(originalEntry)
+      expect(fixture.orderReads(901)).toBe(orderReads + 1)
+      expect(fixture.calls.filter((c) => c.method !== 'GET').map((c) => c.path)).toEqual(['/auth/login'])
+    })
+  })
+}
 test('bootstrap503 blocks all order reads and recovers without treating it as guest', async ({ page, fixture }) => {
   fixture.meFailures.push(503); await page.goto('/orders/901'); await expect(page.getByRole('heading', { name: '로그인 상태를 확인하지 못했습니다', exact: true })).toBeVisible(); expect(fixture.orderReads(901)).toBe(0)
   await page.getByRole('button', { name: '로그인 상태 다시 확인', exact: true }).click(); await facts(page)

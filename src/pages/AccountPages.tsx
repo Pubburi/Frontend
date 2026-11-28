@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useNavigationType, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiClientError } from '../services/api'
@@ -382,6 +382,7 @@ export function ProfilePage() {
 
 export function AccountPage() {
   const location = useLocation()
+  const navigationType = useNavigationType()
   const currentLocation = useRef(location.key)
   currentLocation.current = location.key
   const mounted = useRef(false)
@@ -390,6 +391,8 @@ export function AccountPage() {
     return () => { mounted.current = false }
   }, [])
   const [mode, setMode] = useState<'login' | 'join'>('login')
+  const idInput = useRef<HTMLInputElement>(null)
+  const loginFocusEntry = useRef<string | null>(null)
   const [login, setLogin] = useState({ id: '', pass: '' })
   const [join, setJoin] = useState({ id: '', name: '', pass: '' })
   const [nameError, setNameError] = useState('')
@@ -408,6 +411,11 @@ export function AccountPage() {
   const authenticating = Boolean(ui.pending.login || ui.pending.join)
   const redirect = search.get('redirect')
   const returning = redirect !== null && safeRedirect(redirect) !== '/profile'
+  useLayoutEffect(() => {
+    if (navigationType !== 'PUSH' || !returning || location.state?.loginFocusFor !== redirect || loginFocusEntry.current === location.key) return
+    loginFocusEntry.current = location.key
+    if (mode === 'login' && !authenticating && document.activeElement === document.body) idInput.current?.focus({ preventScroll: true })
+  }, [location.key, location.state, navigationType, redirect, returning, mode, authenticating])
   function switchMode(next: 'login' | 'join') {
     setMode(next)
     setNameError('')
@@ -560,6 +568,7 @@ export function AccountPage() {
             <span>아이디</span>
             <div className="inline-field">
               <input
+                ref={idInput}
                 className="form-control"
                 autoComplete="username"
                 aria-label="아이디"

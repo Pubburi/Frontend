@@ -1,5 +1,5 @@
-import { useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient, type Query } from '@tanstack/react-query'
 import { api, ApiClientError } from '../services/api'
 import { useSession } from '../queries'
@@ -31,22 +31,41 @@ function OrderShell({ id, children, action }: { id: number | null; children: Rea
 export default function OrderDetailPage() {
   const id = parseOrderId(useParams().id)
   const location = useLocation()
+  const navigate = useNavigate()
   const session = useSession()
   const client = useQueryClient()
   const auth = client.getQueryCache().find({ queryKey: ['session'], exact: true })
   const transitioning = useUi(authPending)
+  const loginIntent = useRef<{ entry: string; keyboard: boolean } | null>(null)
+  const loginNavigation = useRef<string | null>(null)
+  const needsLogin = id !== null && !transitioning && !session.isPending && session.fetchStatus === 'idle' && !session.isError && !session.data
+  // The parent owns navigation because clearing the session can unmount OwnedOrder first.
+  useEffect(() => {
+    if (!needsLogin || loginNavigation.current === location.key) return
+    loginNavigation.current = location.key
+    const intent = loginIntent.current?.entry === location.key ? loginIntent.current : null
+    loginIntent.current = null
+    const redirect = location.pathname + location.search + location.hash
+    navigate(`/account?${new URLSearchParams({ redirect })}`, {
+      replace: !intent,
+      state: intent?.keyboard ? { loginFocusFor: redirect } : undefined,
+    })
+  }, [needsLogin, location, navigate])
+  function prepareLogin(keyboard: boolean) {
+    loginIntent.current = { entry: location.key, keyboard }
+    client.clear()
+    client.setQueryData(['session'], null)
+  }
   if (id === null) return <OrderShell id={null}><Empty title="주문 번호를 확인해 주세요" description="내 주문 내역에서 다시 선택해 주세요." /></OrderShell>
   if (transitioning || session.isPending || session.fetchStatus !== 'idle') return <OrderShell id={id}><Loading label="현재 로그인 상태를 확인하는 중입니다." /></OrderShell>
   if (session.isError) return <OrderShell id={id}><Empty title="로그인 상태를 확인하지 못했습니다"><button className="btn btn-dark" onClick={() => session.refetch()}>로그인 상태 다시 확인</button></Empty></OrderShell>
-  if (!session.data) return <Navigate to={`/account?${new URLSearchParams({ redirect: location.pathname + location.search + location.hash })}`} replace />
+  if (!session.data) return null
   if (!auth) return null
   if (!owners.has(auth)) owners.set(auth, ++nextOwner)
-  return <OwnedOrder key={`${owners.get(auth)}:${session.data.id}:${location.key}:${id}`} id={id} user={session.data} auth={auth} />
+  return <OwnedOrder key={`${owners.get(auth)}:${session.data.id}:${location.key}:${id}`} id={id} user={session.data} auth={auth} onLoginAgain={prepareLogin} />
 }
-function OwnedOrder({ id, user, auth }: { id: number; user: User; auth: Query }) {
+function OwnedOrder({ id, user, auth, onLoginAgain }: { id: number; user: User; auth: Query; onLoginAgain: (keyboard: boolean) => void }) {
   const client = useQueryClient()
-  const location = useLocation()
-  const navigate = useNavigate()
   const session = useSession()
   // New mounts after auth writes/ABA/route entries never reuse a pre-transition read.
   const [view] = useState(() => ++nextView)
@@ -73,10 +92,9 @@ function OwnedOrder({ id, user, auth }: { id: number; user: User; auth: Query })
   const currentQuery = client.getQueryCache().find({ queryKey: key, exact: true })
   const expired = failures.some((failure) => failure.auth === auth && (failure.query === currentQuery || key.every((value, index) => failure.query.queryKey[index] === value)))
   const busy = query.isPending || query.fetchStatus !== 'idle'
-  function loginAgain() {
+  function loginAgain(event: MouseEvent<HTMLButtonElement>) {
     if (!ownsActor() || session.fetchStatus !== 'idle' || query.fetchStatus !== 'idle') return
-    client.clear(); client.setQueryData(['session'], null)
-    navigate(`/account?${new URLSearchParams({ redirect: location.pathname + location.search + location.hash })}`)
+    onLoginAgain(event.detail === 0 && document.activeElement === event.currentTarget)
   }
   const action = expired ? <button className="btn btn-dark" disabled={query.fetchStatus !== 'idle' || session.fetchStatus !== 'idle'} onClick={loginAgain}>다시 로그인</button> :
     <button className="btn btn-outline-dark" aria-disabled={busy} onClick={() => { if (!busy && ownsActor()) void query.refetch() }}>주문 상태 새로고침</button>
